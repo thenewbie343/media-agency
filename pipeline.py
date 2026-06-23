@@ -552,7 +552,8 @@ def stage_6_assemble(script: list, output_format: str) -> str:
     concat_path = str(assembly_dir / "concat.txt")
     with open(concat_path, "w") as f:
         for sf in scene_files:
-            f.write(f"file '{sf}'\n")
+            abs_path = os.path.abspath(sf)
+            f.write(f"file '{abs_path}'\n")
 
     # Step 3: Concatenate all scenes into one video
     raw_output = str(WORKSPACE / "raw_output.mp4")
