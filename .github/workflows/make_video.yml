@@ -80,7 +80,7 @@ jobs:
           HF_TOKEN_2:       ${{ secrets.HF_TOKEN_2 }}
           HF_TOKEN_3:       ${{ secrets.HF_TOKEN_3 }}
           # These come from Agentarium's trigger payload
-          TOPIC:            ${{ github.event.client_payload.topic || github.event.inputs.topic }}
+          TOPIC: ${{ github.event.client_payload.raw_input || github.event.inputs.topic }}
           SCHEDULE_TIME:    ${{ github.event.client_payload.time || github.event.inputs.schedule_time }}
         run: python pipeline.py
 
