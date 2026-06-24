@@ -27,7 +27,7 @@ def trigger_pipeline(topic, time):
         headers={"Authorization": f"token {GH_TOKEN}",
                  "Accept": "application/vnd.github+json"},
         json={"event_type": "make_video",
-              "client_payload": {"topic": topic, "time": time}}
+              "client_payload": {"raw_input": text.replace("/make ","").strip(), "time": time_val}
     )
 
 last_id = get_last_update_id()
