@@ -30,13 +30,29 @@ from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import quote
 
+import json
+import re
+
 def robust_json_parse(text):
     """Strips markdown and forces extraction of JSON arrays or objects."""
     clean_text = text.strip()
-    # Remove markdown code block wraps if present
-    clean_text = re.sub(r'^
-http://googleusercontent.com/immersive_entry_chip/0
-
+    
+    # Safe regex construction to avoid syntax errors and markdown parser issues
+    tick = "`" * 3
+    pattern = r"^" + tick + r"(?:json)?\s*|\s*" + tick + r"$"
+    clean_text = re.sub(pattern, "", clean_text, flags=re.IGNORECASE).strip()
+    
+    try:
+        return json.loads(clean_text)
+    except json.JSONDecodeError:
+        # Fallback: find the first '[' or '{' and last ']' or '}'
+        match = re.search(r'(\[.*\]|\{.*\})', clean_text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+        raise ValueError("Could not extract a valid JSON array or object from the model's response.")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("agency")
 
