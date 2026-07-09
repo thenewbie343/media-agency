@@ -1,54 +1,60 @@
 # .github/workflows/make_video.yml
 # ─────────────────────────────────────────────────────────
-# This file goes in your GitHub repo at:
-# .github/workflows/make_video.yml
-#
-# It runs automatically when Agentarium sends a trigger.
-# You NEVER manually press Run.
+# Triggered by:
+#   1. daily_scheduler.yml (automatic daily videos)
+#   2. Telegram /make command via telegram_listener.py
+#   3. Manual run from GitHub Actions tab
 # ─────────────────────────────────────────────────────────
 
 name: Make Video
 
 on:
-  # Triggered by Agentarium when you send /make in Telegram
   repository_dispatch:
     types: [make_video]
 
-  # Also allows manual test run from GitHub Actions tab
   workflow_dispatch:
     inputs:
       topic:
-        description: "Video topic"
+        description: "Topic (with optional --genre --lang --duration flags)"
         required: true
-        default: "The History of the Internet"
+        default: "Paytm का सच --genre documentary --lang hindi --duration 8"
       schedule_time:
-        description: "Publish time HH:MM UTC"
+        description: "Upload time HH:MM UTC"
         required: true
         default: "18:00"
+      niche:
+        description: "Niche for daily auto mode: finance | tech | crime (leave empty for manual)"
+        required: false
+        default: ""
+      script:
+        description: "Optional: paste your script here"
+        required: false
+        default: ""
+
+  workflow_call:
+    inputs:
+      raw_video_json:
+        type: string
+        required: false
+        default: ""
 
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # Kill if stuck after 1 hour
+    timeout-minutes: 90
 
     steps:
-      # Step 1: Get your code
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # Step 2: Set up Python
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      # Step 3: Install system tools
-      - name: Install FFmpeg and system deps
+      - name: Install system deps
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg espeak-ng
+          sudo apt-get install -y ffmpeg espeak-ng fonts-dejavu-core
 
-      # Step 4: Install Python packages
       - name: Install Python packages
         run: |
           pip install --upgrade pip
@@ -63,32 +69,80 @@ jobs:
             google-auth-oauthlib \
             google-auth-httplib2
 
-      # Step 5: Write token.json for YouTube (stored as a secret)
-      - name: Setup YouTube auth token
+      - name: Parse input (handle all 3 trigger modes)
+        id: parse
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, sys
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          raw_json   = "${{ inputs.raw_video_json }}"
+          dispatch_topic  = "${{ github.event.client_payload.topic }}"
+          dispatch_niche  = "${{ github.event.client_payload.niche }}"
+          dispatch_script = "${{ github.event.client_payload.script }}"
+          manual_topic    = "${{ inputs.topic }}"
+          manual_time     = "${{ inputs.schedule_time }}"
+          manual_niche    = "${{ inputs.niche }}"
+          manual_script   = "${{ inputs.script }}"
+
+          topic = ""; niche = ""; script = ""; sched = "18:00"
+
+          # Mode 1: called from daily_scheduler (raw_video_json)
+          if raw_json and raw_json.strip() and raw_json != "":
+              try:
+                  v = json.loads(raw_json)
+                  topic  = v.get("topic","")
+                  niche  = v.get("niche","")
+                  sched  = v.get("time","18:00")
+                  script = v.get("script","") or ""
+                  # Add time to topic so pipeline can parse it
+                  topic  = f"{topic} {sched}"
+              except: pass
+
+          # Mode 2: Telegram / repository_dispatch
+          elif dispatch_topic:
+              topic  = dispatch_topic
+              niche  = dispatch_niche
+              script = dispatch_script
+
+          # Mode 3: Manual GitHub workflow
+          elif manual_topic:
+              topic  = f"{manual_topic} {manual_time}"
+              niche  = manual_niche
+              script = manual_script
+
+          with open(github_output, "a") as f:
+              f.write(f"TOPIC={topic}\n")
+              f.write(f"NICHE={niche}\n")
+              f.write(f"SCRIPT={script[:500] if script else ''}\n")
+
+          print(f"Topic: {topic}")
+          print(f"Niche: {niche}")
+          print(f"Has script: {'yes' if script else 'no'}")
+          PYEOF
+
+      - name: Write YouTube token
         run: echo '${{ secrets.YOUTUBE_TOKEN_JSON }}' > token.json
 
-      # Step 6: Run the pipeline
       - name: Run pipeline
         env:
-          GROQ_KEY:         ${{ secrets.GROQ_KEY }}
-          GEMINI_KEY:       ${{ secrets.GEMINI_KEY }}
-          PEXELS_KEY:       ${{ secrets.PEXELS_KEY }}
-          PIXABAY_KEY:      ${{ secrets.PIXABAY_KEY }}
-          TELEGRAM_TOKEN:   ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          HF_TOKEN_1:       ${{ secrets.HF_TOKEN_1 }}
-          HF_TOKEN_2:       ${{ secrets.HF_TOKEN_2 }}
-          HF_TOKEN_3:       ${{ secrets.HF_TOKEN_3 }}
-          # These come from Agentarium's trigger payload
-          TOPIC: ${{ github.event.client_payload.raw_input || github.event.inputs.topic }}
-          SCHEDULE_TIME:    ${{ github.event.client_payload.time || github.event.inputs.schedule_time }}
+          GROQ_KEY:            ${{ secrets.GROQ_KEY }}
+          GEMINI_KEY:          ${{ secrets.GEMINI_KEY }}
+          GEMINI_KEY_2:        ${{ secrets.GEMINI_KEY_2 }}
+          PEXELS_KEY:          ${{ secrets.PEXELS_KEY }}
+          PIXABAY_KEY:         ${{ secrets.PIXABAY_KEY }}
+          FREESOUND_KEY:       ${{ secrets.FREESOUND_KEY }}
+          TELEGRAM_TOKEN:      ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOPIC:               ${{ steps.parse.outputs.TOPIC }}
+          NICHE:               ${{ steps.parse.outputs.NICHE }}
+          SCRIPT:              ${{ steps.parse.outputs.SCRIPT }}
         run: python pipeline.py
 
-      # Step 7: Save workspace files for debugging if something fails
-      - name: Upload debug artifacts
+      - name: Upload debug workspace
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pipeline-workspace
+          name: workspace-${{ github.run_id }}
           path: workspace_*/
           retention-days: 3
