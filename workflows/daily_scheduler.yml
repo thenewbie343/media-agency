@@ -1,0 +1,105 @@
+# .github/workflows/daily_scheduler.yml
+# ─────────────────────────────────────────────────────────
+# Runs every day at 6:00 AM UTC
+# Reads topics.json from repo
+# Fires 3 videos: finance + tech + crime in Hindi
+# You never need to touch this — just update topics.json
+# ─────────────────────────────────────────────────────────
+
+name: Daily Auto Videos
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 6:00 AM UTC = 11:30 AM IST
+  workflow_dispatch:        # manual test trigger
+
+jobs:
+  schedule_videos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      has_videos: ${{ steps.read.outputs.has_videos }}
+      video_1: ${{ steps.read.outputs.video_1 }}
+      video_2: ${{ steps.read.outputs.video_2 }}
+      video_3: ${{ steps.read.outputs.video_3 }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read today's topics
+        id: read
+        env:
+          TODAY: ${{ env.TODAY }}
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          echo "Today: $TODAY"
+
+          python3 - <<PYEOF
+import json, os, sys
+from datetime import datetime
+
+today = datetime.utcnow().strftime("%Y-%m-%d")
+
+try:
+    with open("topics.json", "r", encoding="utf-8") as f:
+        data = json.load(f)
+except FileNotFoundError:
+    print("topics.json not found")
+    print("has_videos=false" >> open(os.environ["GITHUB_OUTPUT"],"a"))
+    sys.exit(0)
+
+# Find today's entry
+day_entry = None
+for entry in data:
+    if entry.get("date") == today:
+        day_entry = entry
+        break
+
+if not day_entry:
+    print(f"No videos scheduled for {today}")
+    with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+        f.write("has_videos=false\n")
+    sys.exit(0)
+
+videos = day_entry.get("videos", [])
+with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+    f.write("has_videos=true\n")
+    for i, v in enumerate(videos[:3], 1):
+        payload = json.dumps(v, ensure_ascii=False)
+        f.write(f"video_{i}={payload}\n")
+
+print(f"Found {len(videos)} videos for {today}")
+for v in videos:
+    print(f"  - {v.get('topic')} [{v.get('niche')}] at {v.get('time')}")
+PYEOF
+
+      - name: Notify start
+        if: steps.read.outputs.has_videos == 'true'
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="📅 Daily schedule started. Making 3 videos today. I'll update you on each one."
+
+  make_video_1:
+    needs: schedule_videos
+    if: needs.schedule_videos.outputs.has_videos == 'true'
+    uses: ./.github/workflows/make_video.yml
+    secrets: inherit
+    with:
+      raw_video_json: ${{ needs.schedule_videos.outputs.video_1 }}
+
+  make_video_2:
+    needs: [schedule_videos, make_video_1]
+    if: needs.schedule_videos.outputs.has_videos == 'true'
+    uses: ./.github/workflows/make_video.yml
+    secrets: inherit
+    with:
+      raw_video_json: ${{ needs.schedule_videos.outputs.video_2 }}
+
+  make_video_3:
+    needs: [schedule_videos, make_video_2]
+    if: needs.schedule_videos.outputs.has_videos == 'true'
+    uses: ./.github/workflows/make_video.yml
+    secrets: inherit
+    with:
+      raw_video_json: ${{ needs.schedule_videos.outputs.video_3 }}
