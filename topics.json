@@ -1,0 +1,71 @@
+[
+  {
+    "date": "2026-07-01",
+    "videos": [
+      {
+        "topic": "Paytm का सच — कैसे डूबा India का सबसे बड़ा Fintech",
+        "niche": "finance",
+        "time": "18:00",
+        "script": null
+      },
+      {
+        "topic": "ChatGPT से पैसे कैसे कमाएं 2026 में",
+        "niche": "tech",
+        "time": "12:00",
+        "script": null
+      },
+      {
+        "topic": "हर्षद मेहता 2.0 — Adani Scam की पूरी कहानी",
+        "niche": "crime",
+        "time": "20:00",
+        "script": null
+      }
+    ]
+  },
+  {
+    "date": "2026-07-02",
+    "videos": [
+      {
+        "topic": "Share Market क्रैश होने वाला है — 5 Warning Signs",
+        "niche": "finance",
+        "time": "18:00",
+        "script": null
+      },
+      {
+        "topic": "Jio का असली Plan — Reliance कैसे बना India का Master",
+        "niche": "tech",
+        "time": "12:00",
+        "script": null
+      },
+      {
+        "topic": "Nithari Case — India का सबसे Dark Secret",
+        "niche": "crime",
+        "time": "20:00",
+        "script": null
+      }
+    ]
+  },
+  {
+    "date": "2026-07-03",
+    "videos": [
+      {
+        "topic": "Mutual Fund का सच — जो कोई नहीं बताता",
+        "niche": "finance",
+        "time": "18:00",
+        "script": null
+      },
+      {
+        "topic": "AI से India में Jobs खत्म हो रही हैं — Data",
+        "niche": "tech",
+        "time": "12:00",
+        "script": null
+      },
+      {
+        "topic": "Honey Trap — IB Officer की Real Story",
+        "niche": "crime",
+        "time": "20:00",
+        "script": null
+      }
+    ]
+  }
+]
