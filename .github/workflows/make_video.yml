@@ -53,8 +53,7 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg espeak-ng fonts-dejavu-core
-
+          sudo apt-get install -y ffmpeg espeak-ng fonts-dejavu-core fonts-noto-devanagari
       - name: Install Python packages
         run: |
           pip install --upgrade pip
