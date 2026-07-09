@@ -804,7 +804,7 @@ def build_caption_drawtext(script):
             dt = (f"drawtext=text='{safe}':"
                   f"fontsize=28:fontcolor={color}:"
                   f"x=(w-text_w)/2:y=h*0.75:"
-                  f"fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:" 
+                  f"fontfile=/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf:" 
                   f"borderw=4:bordercolor=black:"
                   f"enable='between(t,{cs:.3f},{ce:.3f})'")
             filters.append(dt)
