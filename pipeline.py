@@ -430,7 +430,7 @@ CRITICAL: Return ONLY the raw JSON array. No reasoning, no explanation, no <thin
                 s["visual_search"] = f"{vprefix} {s.get('visual_search','')}"
         log.info(f"Stage 2: {len(script)} scenes written")
         return script
-   except Exception as e:
+  except Exception as e:
         log.error(f"Stage 2 failed: {e}")
         import itertools
         facts = [f for f in ([research.get("hook","")] + research.get("key_facts",[]) + research.get("statistics",[])) if f]
@@ -440,13 +440,13 @@ CRITICAL: Return ONLY the raw JSON array. No reasoning, no explanation, no <thin
         for i,f in enumerate(cycled):
             if not f: continue
             vt = "text_stat" if i%5==4 else ("stock_video" if i%3==1 else "ai_image")
-variants = ["aerial establishing shot","close-up detail shot","wide dramatic angle","low angle dramatic","office interior shot"]
+            variants = ["aerial establishing shot","close-up detail shot","wide dramatic angle","low angle dramatic","office interior shot"]
             variant = variants[i % len(variants)]
             s = {"scene":i+1,"voiceover":f[:60],"visual_type":vt,
                  "visual_search":f"{vprefix} {variant}","ai_prompt":f"{variant} cinematic dramatic {topic} scene, no text, no faces",
-                 "emotion":"dramatic","sfx":sfx_def,"duration_hint":4,"start_time":t}            script.append(s); t+=4
+                 "emotion":"dramatic","sfx":sfx_def,"duration_hint":4,"start_time":t}
+            script.append(s); t+=4
         return script
-
 # ═══════════════════════════════════════════════════════════
 #  STAGE 3 — VOICE
 # ═══════════════════════════════════════════════════════════
