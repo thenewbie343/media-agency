@@ -30,6 +30,13 @@ from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import quote
 
+def robust_json_parse(text):
+    """Strips markdown and forces extraction of JSON arrays or objects."""
+    clean_text = text.strip()
+    # Remove markdown code block wraps if present
+    clean_text = re.sub(r'^
+http://googleusercontent.com/immersive_entry_chip/0
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("agency")
 
