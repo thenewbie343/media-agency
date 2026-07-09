@@ -1,12 +1,16 @@
 # .github/workflows/telegram_listener.yml
+# Triggered by cron-job.org every minute
+# Checks Telegram for new messages and fires pipeline
+
 name: Telegram Listener
+
 on:
-  schedule:
-    - cron: '* * * * *'  # every 1 minute — GitHub allows this on public repos
+  workflow_dispatch:   # called by cron-job.org every minute
 
 jobs:
   listen:
     runs-on: ubuntu-latest
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -14,10 +18,10 @@ jobs:
           python-version: '3.11'
       - name: Install deps
         run: pip install requests
-      - name: Check Telegram for new /make commands
+      - name: Check Telegram
         env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_TOKEN:   ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          GH_REPO: ${{ github.repository }}
+          GH_TOKEN:         ${{ secrets.GH_TOKEN }}
+          GH_REPO:          ${{ github.repository }}
         run: python telegram_listener.py
