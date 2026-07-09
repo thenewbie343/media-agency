@@ -30,40 +30,24 @@ from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import quote
 
-import json
-import re
-
-def robust_json_parse(text):
-    """Strips markdown and forces extraction of JSON arrays or objects."""
-    if not text or not text.strip():
-        raise ValueError("The AI model returned an empty string. Nothing to parse.")
-        
-    clean_text = text.strip()
-    
-    # Print the raw text for debugging in GitHub Actions logs so we can see what the AI actually said
-    print(f"[DEBUG] Raw AI Response snippet: {repr(clean_text[:300])}")
-    
-    # Safe regex construction to avoid syntax errors and markdown parser issues
-    tick = "`" * 3
-    pattern = r"^" + tick + r"(?:json)?\s*|\s*" + tick + r"$"
-    clean_text = re.sub(pattern, "", clean_text, flags=re.IGNORECASE).strip()
-    
-    try:
-        return json.loads(clean_text)
-    except json.JSONDecodeError as e:
-        # Fallback: find the first '[' or '{' and last ']' or '}'
-        match = re.search(r'(\[.*\]|\{.*\})', clean_text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(1))
-            except json.JSONDecodeError:
-                pass
-        
-        # If it completely fails, print the full text to the logs so we can inspect it
-        print(f"[DEBUG] Full failed text: {clean_text}")
-        raise ValueError(f"Could not extract JSON. Original error: {e}")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("agency")
+
+def extract_json_array(text):
+    """Robustly extract a JSON array even if the model added reasoning text before/after."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    text = re.sub(r"```json|```", "", text)
+    start = text.find("[")
+    if start == -1:
+        raise ValueError("No JSON array found in response")
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "[": depth += 1
+        elif text[i] == "]":
+            depth -= 1
+            if depth == 0:
+                return text[start:i+1]
+    raise ValueError("Unbalanced JSON array")
 
 # ─── Secrets ────────────────────────────────────────────────
 GROQ_KEY        = os.environ.get("GROQ_KEY", "")
@@ -339,9 +323,7 @@ Rules:
 - visual_type: "stock_video" or "ai_image" or "text_stat"
 - visual_search MUST start with "{vprefix}"
 - sfx: deep_impact|whoosh|click|riser|none""", max_tokens=3000)
-        text = text.replace("```json","").replace("```","").strip()
-        start = text.find("["); end = text.rfind("]")+1
-        scenes = json.loads(text[start:end])
+scenes = json.loads(extract_json_array(text))
         t = 0.0
         for s in scenes:
             s["start_time"] = t; t += float(s.get("duration_hint",4))
@@ -433,15 +415,11 @@ BAD: "Harshad Mehta sitting in office"
 
 RULE 6 — SFX: deep_impact=dramatic reveal | whoosh=transition | click=fact | riser=build tension | none=calm
 
-Return ONLY JSON array (no markdown):
-[{{"scene":1,"voiceover":"text in {lang}","visual_type":"stock_video","visual_search":"{vprefix} keyword","ai_prompt":"cinematic description","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]"""
+CRITICAL: Return ONLY the raw JSON array. No reasoning, no explanation, no <think> tags, no markdown fences. Your entire response must be parseable by json.loads() directly.[{{"scene":1,"voiceover":"text in {lang}","visual_type":"stock_video","visual_search":"{vprefix} keyword","ai_prompt":"cinematic description","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]"""
 
     try:
         text = groq(prompt, max_tokens=4000)
-        text = text.replace("```json","").replace("```","").strip()
-        start = text.find("["); end = text.rfind("]")+1
-        if start < 0: raise ValueError("No JSON array")
-        script = json.loads(text[start:end])
+        script = json.loads(extract_json_array(text))
         if len(script) < 10:
             raise ValueError(f"Only {len(script)} scenes")
         t = 0.0
@@ -452,18 +430,21 @@ Return ONLY JSON array (no markdown):
                 s["visual_search"] = f"{vprefix} {s.get('visual_search','')}"
         log.info(f"Stage 2: {len(script)} scenes written")
         return script
-    except Exception as e:
+   except Exception as e:
         log.error(f"Stage 2 failed: {e}")
-        # Fallback from research
-        facts = [research.get("hook","")] + research.get("key_facts",[]) + research.get("statistics",[])
+        import itertools
+        facts = [f for f in ([research.get("hook","")] + research.get("key_facts",[]) + research.get("statistics",[])) if f]
+        if not facts: facts = [f"{topic} के बारे में जानकारी"]
+        cycled = list(itertools.islice(itertools.cycle(facts), target))
         t = 0.0; script = []
-        for i,f in enumerate(facts[:target]):
+        for i,f in enumerate(cycled):
             if not f: continue
             vt = "text_stat" if i%5==4 else ("stock_video" if i%3==1 else "ai_image")
+variants = ["aerial establishing shot","close-up detail shot","wide dramatic angle","low angle dramatic","office interior shot"]
+            variant = variants[i % len(variants)]
             s = {"scene":i+1,"voiceover":f[:60],"visual_type":vt,
-                 "visual_search":f"{vprefix} cinematic dramatic","ai_prompt":f"cinematic dramatic {topic} scene no text no faces",
-                 "emotion":"dramatic","sfx":sfx_def,"duration_hint":4,"start_time":t}
-            script.append(s); t+=4
+                 "visual_search":f"{vprefix} {variant}","ai_prompt":f"{variant} cinematic dramatic {topic} scene, no text, no faces",
+                 "emotion":"dramatic","sfx":sfx_def,"duration_hint":4,"start_time":t}            script.append(s); t+=4
         return script
 
 # ═══════════════════════════════════════════════════════════
@@ -567,26 +548,26 @@ SFX_QUERIES = {
 _sfx_cache = {}  # avoid re-downloading same SFX
 
 def fetch_sfx(sfx_type):
+    """Generate deterministic SFX tones instead of unpredictable Freesound search results."""
     if sfx_type == "none" or not sfx_type: return None
     if sfx_type in _sfx_cache: return _sfx_cache[sfx_type]
 
-    query = SFX_QUERIES.get(sfx_type, sfx_type)
     sfx_dir = WORKSPACE/"sfx"; sfx_dir.mkdir(exist_ok=True)
     out = str(sfx_dir/f"{sfx_type}.mp3")
 
-    try:
-        url = f"https://freesound.org/apiv2/search/text/?query={quote(query)}&token={FREESOUND_KEY}&fields=id,previews,duration&filter=duration:[0.5 TO 5]&sort=rating_desc&page_size=5"
-        r = requests.get(url, timeout=10)
-        results = r.json().get("results",[])
-        if results:
-            preview = results[0]["previews"].get("preview-lq-mp3","")
-            if preview:
-                audio = requests.get(preview, timeout=15)
-                with open(out,"wb") as f: f.write(audio.content)
-                _sfx_cache[sfx_type] = out
-                return out
-    except Exception as e:
-        log.warning(f"SFX {sfx_type} failed: {e}")
+    presets = {
+        "deep_impact": ("sine=frequency=80:duration=0.4", "volume=0.5,afade=t=out:st=0.2:d=0.2"),
+        "whoosh":      ("anoisesrc=color=pink:duration=0.3", "volume=0.25,afade=t=in:d=0.05,afade=t=out:st=0.15:d=0.15,highpass=f=800"),
+        "click":       ("sine=frequency=1400:duration=0.08", "volume=0.3"),
+        "riser":       ("sine=frequency=200:duration=0.6", "volume=0.3,afade=t=in:d=0.5"),
+    }
+    src, af = presets.get(sfx_type, presets["click"])
+    r = subprocess.run(["ffmpeg","-y","-f","lavfi","-i",src,"-af",af,out],
+        capture_output=True, timeout=10)
+    if r.returncode == 0 and os.path.exists(out):
+        _sfx_cache[sfx_type] = out
+        return out
+    return None
 
     # Fallback: generate tone
     freq = {"deep_impact":"100","whoosh":"400","click":"1200","riser":"300"}.get(sfx_type,"440")
@@ -906,6 +887,20 @@ def stage_7_assemble(script, cfg, music_path):
         capture_output=True,timeout=600)
     if r.returncode!=0: raise RuntimeError(f"Concat failed: {r.stderr.decode()[-200:]}")
 
+    # Apply genre-specific color grade
+    grade = cfg.get("color_grade","cinematic")
+    grade_filters = {
+        "teal_orange": "curves=r='0/0 0.5/0.4 1/0.95':b='0/0.1 0.5/0.5 1/0.9',eq=saturation=1.15:contrast=1.1",
+        "cool_blue":   "curves=b='0/0.1 0.5/0.6 1/1':eq=saturation=0.9:contrast=1.05",
+        "dark_noir":   "eq=saturation=0.6:contrast=1.3:brightness=-0.05",
+        "cinematic":   "eq=saturation=1.05:contrast=1.15:gamma=0.95",
+    }
+    gf = grade_filters.get(grade, grade_filters["cinematic"])
+    graded = str(WORKSPACE/"graded.mp4")
+    r = subprocess.run(["ffmpeg","-y","-i",raw,"-vf",gf,"-c:v","libx264","-c:a","copy","-preset","fast",graded],
+        capture_output=True, timeout=300)
+    if r.returncode == 0 and os.path.exists(graded):
+        raw = graded
     # Step 3: Mix background music at -18dB
     with_music=str(WORKSPACE/"with_music.mp4")
     total_dur = sum(s.get("actual_duration",4) for s in script)
