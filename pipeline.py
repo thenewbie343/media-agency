@@ -42,7 +42,8 @@ def extract_json_array(text):
         raise ValueError("No JSON array found in response")
     depth = 0
     for i in range(start, len(text)):
-        if text[i] == "[": depth += 1
+        if text[i] == "[":
+            depth += 1
         elif text[i] == "]":
             depth -= 1
             if depth == 0:
@@ -188,10 +189,6 @@ def parse_input():
     if NICHE_INPUT and NICHE_INPUT in NICHE_PRESETS:
         preset = NICHE_PRESETS[NICHE_INPUT]
         topic = RAW_INPUT or f"Latest {NICHE_INPUT} news"
-        # Strip any --genre/--lang/--duration flags that leaked in
-        for pat in [r'--genre\s+\w+', r'--lang\s+\w+', r'--duration\s+\d+']:
-            topic = re.sub(pat, '', topic, flags=re.IGNORECASE)
-        topic = re.sub(r'\s+', ' ', topic).strip()
         # Parse schedule time from end of TOPIC if present
         parts = topic.strip().split()
         sched = "18:00"
@@ -323,7 +320,7 @@ Rules:
 - visual_type: "stock_video" or "ai_image" or "text_stat"
 - visual_search MUST start with "{vprefix}"
 - sfx: deep_impact|whoosh|click|riser|none""", max_tokens=3000)
-        scenes = json.loads(extract_json_array(text))     
+        scenes = json.loads(extract_json_array(text))
         t = 0.0
         for s in scenes:
             s["start_time"] = t; t += float(s.get("duration_hint",4))
@@ -415,7 +412,8 @@ BAD: "Harshad Mehta sitting in office"
 
 RULE 6 — SFX: deep_impact=dramatic reveal | whoosh=transition | click=fact | riser=build tension | none=calm
 
-CRITICAL: Return ONLY the raw JSON array. No reasoning, no explanation, no <think> tags, no markdown fences. Your entire response must be parseable by json.loads() directly.[{{"scene":1,"voiceover":"text in {lang}","visual_type":"stock_video","visual_search":"{vprefix} keyword","ai_prompt":"cinematic description","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]"""
+CRITICAL: Return ONLY the raw JSON array. No reasoning, no explanation, no <think> tags, no markdown fences. Your entire response must be parseable by json.loads() directly.
+[{{"scene":1,"voiceover":"text in {lang}","visual_type":"stock_video","visual_search":"{vprefix} keyword","ai_prompt":"cinematic description","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]"""
 
     try:
         text = groq(prompt, max_tokens=4000)
@@ -430,23 +428,27 @@ CRITICAL: Return ONLY the raw JSON array. No reasoning, no explanation, no <thin
                 s["visual_search"] = f"{vprefix} {s.get('visual_search','')}"
         log.info(f"Stage 2: {len(script)} scenes written")
         return script
-  except Exception as e:
+    except Exception as e:
         log.error(f"Stage 2 failed: {e}")
+        # Fallback from research — cycles facts to reach target scene count
+        # and varies the visual angle so scenes don't all look identical
         import itertools
         facts = [f for f in ([research.get("hook","")] + research.get("key_facts",[]) + research.get("statistics",[])) if f]
-        if not facts: facts = [f"{topic} के बारे में जानकारी"]
+        if not facts:
+            facts = [f"{topic} के बारे में जानकारी"]
         cycled = list(itertools.islice(itertools.cycle(facts), target))
+        variants = ["aerial establishing shot","close-up detail shot","wide dramatic angle","low angle dramatic","office interior shot"]
         t = 0.0; script = []
-        for i,f in enumerate(cycled):
-            if not f: continue
-            vt = "text_stat" if i%5==4 else ("stock_video" if i%3==1 else "ai_image")
-            variants = ["aerial establishing shot","close-up detail shot","wide dramatic angle","low angle dramatic","office interior shot"]
+        for i, f in enumerate(cycled):
+            vt = "text_stat" if i % 5 == 4 else ("stock_video" if i % 3 == 1 else "ai_image")
             variant = variants[i % len(variants)]
-            s = {"scene":i+1,"voiceover":f[:60],"visual_type":vt,
-                 "visual_search":f"{vprefix} {variant}","ai_prompt":f"{variant} cinematic dramatic {topic} scene, no text, no faces",
-                 "emotion":"dramatic","sfx":sfx_def,"duration_hint":4,"start_time":t}
-            script.append(s); t+=4
+            s = {"scene": i+1, "voiceover": f[:60], "visual_type": vt,
+                 "visual_search": f"{vprefix} {variant}",
+                 "ai_prompt": f"{variant} cinematic dramatic {topic} scene, no text, no faces",
+                 "emotion": "dramatic", "sfx": sfx_def, "duration_hint": 4, "start_time": t}
+            script.append(s); t += 4
         return script
+
 # ═══════════════════════════════════════════════════════════
 #  STAGE 3 — VOICE
 # ═══════════════════════════════════════════════════════════
@@ -545,10 +547,14 @@ SFX_QUERIES = {
     "none":        None,
 }
 
-_sfx_cache = {}  # avoid re-downloading same SFX
+_sfx_cache = {}  # avoid re-generating same SFX
 
 def fetch_sfx(sfx_type):
-    """Generate deterministic SFX tones instead of unpredictable Freesound search results."""
+    """
+    Generates deterministic SFX tones instead of Freesound free-text search.
+    Freesound text search is unpredictable (e.g. "riser" can return a wind/
+    whistle clip) — synthesized tones guarantee the correct, expected sound.
+    """
     if sfx_type == "none" or not sfx_type: return None
     if sfx_type in _sfx_cache: return _sfx_cache[sfx_type]
 
@@ -556,10 +562,10 @@ def fetch_sfx(sfx_type):
     out = str(sfx_dir/f"{sfx_type}.mp3")
 
     presets = {
-        "deep_impact": ("sine=frequency=80:duration=0.4", "volume=0.5,afade=t=out:st=0.2:d=0.2"),
-        "whoosh":      ("anoisesrc=color=pink:duration=0.3", "volume=0.25,afade=t=in:d=0.05,afade=t=out:st=0.15:d=0.15,highpass=f=800"),
-        "click":       ("sine=frequency=1400:duration=0.08", "volume=0.3"),
-        "riser":       ("sine=frequency=200:duration=0.6", "volume=0.3,afade=t=in:d=0.5"),
+        "deep_impact": ("sine=frequency=80:duration=0.4:sample_rate=44100", "volume=0.5,afade=t=out:st=0.2:d=0.2"),
+        "whoosh":      ("anoisesrc=color=pink:duration=0.3:sample_rate=44100", "volume=0.25,afade=t=in:d=0.05,afade=t=out:st=0.15:d=0.15,highpass=f=800"),
+        "click":       ("sine=frequency=1400:duration=0.08:sample_rate=44100", "volume=0.3"),
+        "riser":       ("sine=frequency=200:duration=0.6:sample_rate=44100", "volume=0.3,afade=t=in:d=0.5"),
     }
     src, af = presets.get(sfx_type, presets["click"])
     r = subprocess.run(["ffmpeg","-y","-f","lavfi","-i",src,"-af",af,out],
@@ -568,14 +574,6 @@ def fetch_sfx(sfx_type):
         _sfx_cache[sfx_type] = out
         return out
     return None
-
-    # Fallback: generate tone
-    freq = {"deep_impact":"100","whoosh":"400","click":"1200","riser":"300"}.get(sfx_type,"440")
-    subprocess.run(["ffmpeg","-y","-f","lavfi",
-        "-i",f"sine=frequency={freq}:duration=0.5:sample_rate=44100",
-        "-af","volume=0.3",out], capture_output=True, timeout=10)
-    _sfx_cache[sfx_type] = out
-    return out
 
 # ═══════════════════════════════════════════════════════════
 #  STAGE 6 — VISUALS
@@ -817,7 +815,7 @@ def build_caption_drawtext(script):
             dt = (f"drawtext=text='{safe}':"
                   f"fontsize=28:fontcolor={color}:"
                   f"x=(w-text_w)/2:y=h*0.75:"
-                  f"fontfile=/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf:" 
+                  f"fontname=DejaVu-Sans-Bold:"
                   f"borderw=4:bordercolor=black:"
                   f"enable='between(t,{cs:.3f},{ce:.3f})'")
             filters.append(dt)
@@ -847,16 +845,16 @@ def stage_7_assemble(script, cfg, music_path):
         sfx_file = fetch_sfx(sfx_t) if sfx_t and sfx_t!="none" else None
 
         if audio and sfx_file:
-            # Mix voice + SFX — use .m4a container to match aac codec
+            # Mix voice + SFX
             mixed_audio = str(asm/f"audio_{n:03d}.m4a")
-            mix_result = subprocess.run(["ffmpeg","-y",
+            mix_r = subprocess.run(["ffmpeg","-y",
                 "-i",os.path.abspath(audio),
                 "-i",os.path.abspath(sfx_file),
                 "-filter_complex","[0:a]volume=1.0[v];[1:a]volume=0.4[s];[v][s]amix=inputs=2:duration=first",
                 "-c:a","aac",mixed_audio],capture_output=True,timeout=30)
-            if mix_result.returncode != 0 or not os.path.exists(mixed_audio):
+            if mix_r.returncode != 0 or not os.path.exists(mixed_audio):
                 log.warning(f"  SFX mix failed for scene {n}, using voice only")
-                mixed_audio = audio  # fallback to plain voice
+                mixed_audio = audio
             cmd=["ffmpeg","-y","-i",os.path.abspath(video),"-i",mixed_audio,
                  "-t",str(dur),"-c:v","libx264","-c:a","aac",
                  "-map","0:v:0","-map","1:a:0","-shortest","-preset","fast",out]
@@ -887,7 +885,7 @@ def stage_7_assemble(script, cfg, music_path):
         capture_output=True,timeout=600)
     if r.returncode!=0: raise RuntimeError(f"Concat failed: {r.stderr.decode()[-200:]}")
 
-    # Apply genre-specific color grade
+    # Step 2.5: Apply genre/niche-specific color grade
     grade = cfg.get("color_grade","cinematic")
     grade_filters = {
         "teal_orange": "curves=r='0/0 0.5/0.4 1/0.95':b='0/0.1 0.5/0.5 1/0.9',eq=saturation=1.15:contrast=1.1",
@@ -897,10 +895,14 @@ def stage_7_assemble(script, cfg, music_path):
     }
     gf = grade_filters.get(grade, grade_filters["cinematic"])
     graded = str(WORKSPACE/"graded.mp4")
-    r = subprocess.run(["ffmpeg","-y","-i",raw,"-vf",gf,"-c:v","libx264","-c:a","copy","-preset","fast",graded],
+    r_grade = subprocess.run(["ffmpeg","-y","-i",raw,"-vf",gf,
+        "-c:v","libx264","-c:a","copy","-preset","fast",graded],
         capture_output=True, timeout=300)
-    if r.returncode == 0 and os.path.exists(graded):
+    if r_grade.returncode == 0 and os.path.exists(graded):
         raw = graded
+    else:
+        log.warning(f"Color grade failed: {r_grade.stderr.decode()[-150:]}")
+
     # Step 3: Mix background music at -18dB
     with_music=str(WORKSPACE/"with_music.mp4")
     total_dur = sum(s.get("actual_duration",4) for s in script)
@@ -1070,7 +1072,6 @@ def run_pipeline():
         log.error(f"CRASH: {e}\n{traceback.format_exc()}")
         tg(f"💥 Crashed: {str(e)[:250]}\nCheck GitHub Actions logs.")
         raise
-
 
 # ═══════════════════════════════════════════════════════════
 #  COLAB CLI — Wan2.1 video generation on free T4 GPU
