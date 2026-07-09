@@ -323,7 +323,7 @@ Rules:
 - visual_type: "stock_video" or "ai_image" or "text_stat"
 - visual_search MUST start with "{vprefix}"
 - sfx: deep_impact|whoosh|click|riser|none""", max_tokens=3000)
-scenes = json.loads(extract_json_array(text))
+        scenes = json.loads(extract_json_array(text))     
         t = 0.0
         for s in scenes:
             s["start_time"] = t; t += float(s.get("duration_hint",4))
