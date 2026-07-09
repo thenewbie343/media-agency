@@ -172,6 +172,10 @@ def parse_input():
     if NICHE_INPUT and NICHE_INPUT in NICHE_PRESETS:
         preset = NICHE_PRESETS[NICHE_INPUT]
         topic = RAW_INPUT or f"Latest {NICHE_INPUT} news"
+        # Strip any --genre/--lang/--duration flags that leaked in
+        for pat in [r'--genre\s+\w+', r'--lang\s+\w+', r'--duration\s+\d+']:
+            topic = re.sub(pat, '', topic, flags=re.IGNORECASE)
+        topic = re.sub(r'\s+', ' ', topic).strip()
         # Parse schedule time from end of TOPIC if present
         parts = topic.strip().split()
         sched = "18:00"
@@ -830,13 +834,16 @@ def stage_7_assemble(script, cfg, music_path):
         sfx_file = fetch_sfx(sfx_t) if sfx_t and sfx_t!="none" else None
 
         if audio and sfx_file:
-            # Mix voice + SFX
-            mixed_audio = str(asm/f"audio_{n:03d}.mp3")
-            subprocess.run(["ffmpeg","-y",
+            # Mix voice + SFX — use .m4a container to match aac codec
+            mixed_audio = str(asm/f"audio_{n:03d}.m4a")
+            mix_result = subprocess.run(["ffmpeg","-y",
                 "-i",os.path.abspath(audio),
                 "-i",os.path.abspath(sfx_file),
                 "-filter_complex","[0:a]volume=1.0[v];[1:a]volume=0.4[s];[v][s]amix=inputs=2:duration=first",
                 "-c:a","aac",mixed_audio],capture_output=True,timeout=30)
+            if mix_result.returncode != 0 or not os.path.exists(mixed_audio):
+                log.warning(f"  SFX mix failed for scene {n}, using voice only")
+                mixed_audio = audio  # fallback to plain voice
             cmd=["ffmpeg","-y","-i",os.path.abspath(video),"-i",mixed_audio,
                  "-t",str(dur),"-c:v","libx264","-c:a","aac",
                  "-map","0:v:0","-map","1:a:0","-shortest","-preset","fast",out]
