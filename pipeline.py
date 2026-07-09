@@ -35,7 +35,13 @@ import re
 
 def robust_json_parse(text):
     """Strips markdown and forces extraction of JSON arrays or objects."""
+    if not text or not text.strip():
+        raise ValueError("The AI model returned an empty string. Nothing to parse.")
+        
     clean_text = text.strip()
+    
+    # Print the raw text for debugging in GitHub Actions logs so we can see what the AI actually said
+    print(f"[DEBUG] Raw AI Response snippet: {repr(clean_text[:300])}")
     
     # Safe regex construction to avoid syntax errors and markdown parser issues
     tick = "`" * 3
@@ -44,7 +50,7 @@ def robust_json_parse(text):
     
     try:
         return json.loads(clean_text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
         # Fallback: find the first '[' or '{' and last ']' or '}'
         match = re.search(r'(\[.*\]|\{.*\})', clean_text, re.DOTALL)
         if match:
@@ -52,7 +58,10 @@ def robust_json_parse(text):
                 return json.loads(match.group(1))
             except json.JSONDecodeError:
                 pass
-        raise ValueError("Could not extract a valid JSON array or object from the model's response.")
+        
+        # If it completely fails, print the full text to the logs so we can inspect it
+        print(f"[DEBUG] Full failed text: {clean_text}")
+        raise ValueError(f"Could not extract JSON. Original error: {e}")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("agency")
 
