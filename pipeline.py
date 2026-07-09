@@ -1037,8 +1037,6 @@ def run_pipeline():
         tg(f"💥 Crashed: {str(e)[:250]}\nCheck GitHub Actions logs.")
         raise
 
-if __name__=="__main__":
-    run_pipeline()
 
 # ═══════════════════════════════════════════════════════════
 #  COLAB CLI — Wan2.1 video generation on free T4 GPU
