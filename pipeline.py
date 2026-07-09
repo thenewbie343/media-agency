@@ -1,28 +1,26 @@
 """
 =============================================================
-  ZERO-COST AI MEDIA AGENCY — pipeline.py v3.0
-  THE PROFESSIONAL EDIT
+  ULTIMATE HINDI CHANNEL — pipeline.py v5.0 FINAL
 =============================================================
-COMMAND FORMAT:
-  /make [topic] [time]
-  /make [topic] --genre documentary --lang hindi --duration 8 [time]
-  /make [topic] --genre shorts --lang english --duration 1 [time]
+TWO MODES:
+  Mode 1 (Daily Auto): Reads topics.json → 3 videos/day
+                        Finance | Tech | Crime in Hindi
+  Mode 2 (Manual):     /make command or GitHub workflow
+                        Any genre/lang/duration
 
-GENRES: documentary | shorts | cartoon | study | ad | typography
-LANG:   english | hindi | spanish | french | german | arabic
-DURATION: 1-15 (minutes). If not given, auto-decided by topic.
-
-WHAT'S NEW IN v3.0:
-  - Word-by-word kinetic captions (1-3 words, center screen)
-  - Color-coded captions (key words = neon yellow)
-  - 5-layer audio: voice + ambient + score + sfx
-  - Pattern interrupt hook (first 3 seconds)
-  - AI hallucination prevention (skip AI for flags/monuments/faces)
-  - Negative prompts for Pollinations
-  - Film grain + cinematic LUT overlay
-  - Smart genre/language/duration auto-detection
-  - Multiple voice options per language
-  - SFX on every caption pop
+WHAT'S IN v5.0:
+  - Niche engine: finance/tech/crime auto-settings
+  - Script injection: if you provide script it uses it
+  - 3-layer audio: voice + music + SFX
+  - Freesound SFX per scene emotion
+  - freepd.com/incompetech background music (CC licensed)
+  - Rebuilt captions: drawtext, lower-third, 2-3 words
+  - Key word yellow highlighting in captions
+  - Topic-locked Pexels (no more Dubai waterpark)
+  - Film grain + LUT per genre
+  - Gemini key rotation (2 keys)
+  - Working Groq models (June 2026)
+  - Full fallback chain at every stage
 =============================================================
 """
 
@@ -36,1131 +34,953 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("agency")
 
 # ─── Secrets ────────────────────────────────────────────────
-GROQ_KEY       = os.environ["GROQ_KEY"]
-GEMINI_KEY     = os.environ["GEMINI_KEY"]
-PEXELS_KEY     = os.environ["PEXELS_KEY"]
-PIXABAY_KEY    = os.environ["PIXABAY_KEY"]
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-TELEGRAM_CHAT  = os.environ["TELEGRAM_CHAT_ID"]
-RAW_INPUT      = os.environ.get("TOPIC", "Black Holes 18:00")
-SCHEDULE_TIME  = os.environ.get("SCHEDULE_TIME", "18:00")
+GROQ_KEY        = os.environ.get("GROQ_KEY", "")
+GEMINI_KEY      = os.environ.get("GEMINI_KEY", "")
+GEMINI_KEY_2    = os.environ.get("GEMINI_KEY_2", "")
+PEXELS_KEY      = os.environ.get("PEXELS_KEY", "")
+PIXABAY_KEY     = os.environ.get("PIXABAY_KEY", "")
+FREESOUND_KEY   = os.environ.get("FREESOUND_KEY", "")
+TELEGRAM_TOKEN  = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT   = os.environ.get("TELEGRAM_CHAT_ID", "")
+RAW_INPUT       = os.environ.get("TOPIC", "")
+NICHE_INPUT     = os.environ.get("NICHE", "")      # finance|tech|crime (daily mode)
+SCRIPT_INPUT    = os.environ.get("SCRIPT", "")     # optional pre-written script
 
-# ─── Parse command ──────────────────────────────────────────
-def parse_command(raw):
-    """
-    Parses: topic [--genre X] [--lang X] [--duration X] HH:MM
-    Returns dict with all fields.
-    """
-    genre    = None
-    lang     = None
-    duration = None
+GROQ_MODELS = [
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.6-27b",
+    "moonshotai/kimi-k2-instruct",
+]
 
-    g = re.search(r'--genre\s+(\w+)', raw, re.IGNORECASE)
-    l = re.search(r'--lang\s+(\w+)', raw, re.IGNORECASE)
-    d = re.search(r'--duration\s+(\d+)', raw, re.IGNORECASE)
+# ─── Niche presets ──────────────────────────────────────────
+NICHE_PRESETS = {
+    "finance": {
+        "genre": "documentary",
+        "lang": "hindi",
+        "default_duration": 8,
+        "voice": "hi-IN-MadhurNeural",
+        "style": "Professional Hindi finance narrator. Serious, data-driven, authoritative like CNBC Awaaz. Build suspense around money facts.",
+        "hook_type": "shocking money fact or financial disaster",
+        "music_mood": "serious corporate dramatic",
+        "visual_prefix": "finance money India business",
+        "sfx_default": "deep_impact",
+        "color_grade": "teal_orange",
+        "scenes_per_min": 12,
+    },
+    "tech": {
+        "genre": "study",
+        "lang": "hindi",
+        "default_duration": 7,
+        "voice": "hi-IN-MadhurNeural",
+        "style": "Simple Hindi tech explainer. Friendly, clear, like Tech Burner in Hindi. Make complex tech feel easy and fun.",
+        "hook_type": "surprising fact about technology people use daily",
+        "music_mood": "calm lo-fi focus",
+        "visual_prefix": "technology digital modern",
+        "sfx_default": "click",
+        "color_grade": "cool_blue",
+        "scenes_per_min": 12,
+    },
+    "crime": {
+        "genre": "documentary",
+        "lang": "hindi",
+        "default_duration": 10,
+        "voice": "hi-IN-MadhurNeural",
+        "style": "Gripping Hindi true crime narrator. Dark, suspenseful, building tension like CrimeTak. Every line must make the viewer afraid to blink.",
+        "hook_type": "shocking crime fact or terrifying moment that happened",
+        "music_mood": "dark suspense thriller",
+        "visual_prefix": "crime mystery dark dramatic",
+        "sfx_default": "riser",
+        "color_grade": "dark_noir",
+        "scenes_per_min": 15,
+    },
+}
 
-    if g: genre = g.group(1).lower(); raw = raw.replace(g.group(0), '')
-    if l: lang  = l.group(1).lower(); raw = raw.replace(l.group(0), '')
-    if d: duration = int(d.group(1)); raw = raw.replace(d.group(0), '')
+# ─── Genre presets (manual mode) ─────────────────────────────
+GENRE_PRESETS = {
+    "documentary": {"style":"BBC/Netflix documentary. Cinematic, authoritative.","scenes_per_min":12,"default_dur":5},
+    "shorts":      {"style":"Viral YouTube Shorts. Ultra-fast, max energy.","scenes_per_min":20,"default_dur":1},
+    "cartoon":     {"style":"Fun animated YouTube. Energetic, playful, uses Whoa!","scenes_per_min":15,"default_dur":4},
+    "study":       {"style":"Clear educational explainer. Simple, structured.","scenes_per_min":12,"default_dur":8},
+    "ad":          {"style":"30-second brand ad. Hook in 3s. Problem→Solution→CTA.","scenes_per_min":20,"default_dur":1},
+    "typography":  {"style":"Ultra-short punchy phrases. Max 5 words per line.","scenes_per_min":15,"default_dur":2},
+}
 
-    # Last token that looks like HH:MM is the time
-    parts = raw.strip().split()
-    sched = "18:00"
-    if parts and re.match(r'^\d{1,2}:\d{2}$', parts[-1]):
-        sched = parts[-1]
-        parts = parts[:-1]
-
-    topic = " ".join(parts).strip()
-    return {
-        "topic": topic,
-        "genre": genre,
-        "lang": lang,
-        "duration_min": duration,
-        "schedule": sched
-    }
-
-CMD        = parse_command(RAW_INPUT)
-TOPIC      = CMD["topic"]
-GENRE      = CMD["genre"]       # None = auto-detect
-LANGUAGE   = CMD["lang"]        # None = auto-detect
-DURATION   = CMD["duration_min"]  # None = auto-detect
-SCHEDULE_TIME = CMD["schedule"]
+VOICE_MAP = {
+    "hindi":   ["hi-IN-MadhurNeural",      "hi-IN-SwaraNeural"],
+    "english": ["en-GB-RyanNeural",         "en-US-ChristopherNeural"],
+    "spanish": ["es-ES-AlvaroNeural",       "es-MX-JorgeNeural"],
+    "french":  ["fr-FR-HenriNeural",        "fr-FR-DeniseNeural"],
+    "german":  ["de-DE-ConradNeural",       "de-DE-KatjaNeural"],
+}
 
 WORKSPACE = Path(f"workspace_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 WORKSPACE.mkdir(exist_ok=True)
 
-# ─── Voice map per language ──────────────────────────────────
-VOICE_MAP = {
-    "english":  ["en-GB-RyanNeural", "en-US-ChristopherNeural", "en-US-DavisNeural"],
-    "hindi":    ["hi-IN-MadhurNeural", "hi-IN-SwaraNeural"],
-    "spanish":  ["es-ES-AlvaroNeural", "es-MX-JorgeNeural"],
-    "french":   ["fr-FR-HenriNeural", "fr-FR-DeniseNeural"],
-    "german":   ["de-DE-ConradNeural", "de-DE-KatjaNeural"],
-    "arabic":   ["ar-SA-HamedNeural", "ar-EG-SalmaNeural"],
-}
-
-# ─── Genre config ────────────────────────────────────────────
-GENRE_CONFIG = {
-    "documentary": {
-        "style": "BBC/Netflix documentary narrator. Cinematic, authoritative, dramatic storytelling.",
-        "scene_target": 30,
-        "default_duration_min": 5,
-        "music": "dark cinematic orchestral dramatic",
-        "ambient": True,
-    },
-    "shorts": {
-        "style": "Viral YouTube Shorts. Ultra-fast, shocking, max energy. Every line must make you want to watch more.",
-        "scene_target": 20,
-        "default_duration_min": 1,
-        "music": "energetic trap beat",
-        "ambient": False,
-    },
-    "cartoon": {
-        "style": "Fun animated YouTube channel. Energetic, simple, playful. Uses 'Whoa!' 'Did you know?' 'Mind blown!'",
-        "scene_target": 25,
-        "default_duration_min": 4,
-        "music": "playful upbeat cartoon",
-        "ambient": False,
-    },
-    "study": {
-        "style": "Clear educational explainer. Simple language, structured, helpful and thorough.",
-        "scene_target": 28,
-        "default_duration_min": 8,
-        "music": "calm lo-fi focus",
-        "ambient": False,
-    },
-    "ad": {
-        "style": "30-second brand advertisement. Hook in 3 seconds. Problem → Solution → CTA.",
-        "scene_target": 12,
-        "default_duration_min": 1,
-        "music": "upbeat corporate motivational",
-        "ambient": False,
-    },
-    "typography": {
-        "style": "Ultra-short punchy phrases. Max 5 words per line. Impact font energy.",
-        "scene_target": 20,
-        "default_duration_min": 1,
-        "music": "heavy bass cinematic",
-        "ambient": False,
-    },
-}
-
-# ─── Telegram ───────────────────────────────────────────────
+# ─── Helpers ──────────────────────────────────────────────────
 def tg(msg):
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT, "text": f"🎬 {msg}"},
-            timeout=10
-        )
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={"chat_id":TELEGRAM_CHAT,"text":f"🎬 {msg}"}, timeout=10)
     except: pass
 
 def _save(data, name):
-    with open(WORKSPACE / name, "w") as f:
-        json.dump(data, f, indent=2)
+    with open(WORKSPACE/name,"w",encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+_gem_idx = 0
+def gemini(prompt, model="gemini-2.5-flash"):
+    global _gem_idx
+    import google.generativeai as genai
+    keys = [k for k in [GEMINI_KEY, GEMINI_KEY_2] if k]
+    if not keys: raise ValueError("No Gemini keys")
+    for _ in range(len(keys)):
+        try:
+            genai.configure(api_key=keys[_gem_idx % len(keys)])
+            return genai.GenerativeModel(model).generate_content(prompt).text
+        except Exception as e:
+            if "429" in str(e) or "quota" in str(e).lower():
+                log.warning(f"Gemini key {_gem_idx} quota hit, rotating...")
+                _gem_idx += 1; time.sleep(2)
+            else: raise
+    raise RuntimeError("All Gemini keys exhausted")
+
+def groq(prompt, max_tokens=4000):
+    from groq import Groq
+    client = Groq(api_key=GROQ_KEY)
+    for model in GROQ_MODELS:
+        try:
+            r = client.chat.completions.create(
+                model=model,
+                messages=[{"role":"user","content":prompt}],
+                temperature=0.8, max_tokens=max_tokens)
+            return r.choices[0].message.content.strip()
+        except Exception as e:
+            log.warning(f"Groq {model}: {e}")
+            time.sleep(2)
+    raise RuntimeError("All Groq models failed")
 
 # ═══════════════════════════════════════════════════════════
-#  STAGE 0 — AUTO DETECT genre/language/duration from topic
+#  PARSE INPUT — handles both daily auto and manual modes
 # ═══════════════════════════════════════════════════════════
-def stage_0_autodetect(topic, genre, lang, duration):
-    log.info("Stage 0: Auto-detecting genre/language/duration...")
+def parse_input():
+    """
+    Returns unified config dict regardless of input mode.
+    Daily auto: NICHE + TOPIC + optional SCRIPT env vars
+    Manual:     RAW_INPUT with optional --genre --lang --duration flags
+    """
+    # Daily auto mode (from daily_scheduler.yml)
+    if NICHE_INPUT and NICHE_INPUT in NICHE_PRESETS:
+        preset = NICHE_PRESETS[NICHE_INPUT]
+        topic = RAW_INPUT or f"Latest {NICHE_INPUT} news"
+        # Parse schedule time from end of TOPIC if present
+        parts = topic.strip().split()
+        sched = "18:00"
+        if parts and re.match(r'^\d{1,2}:\d{2}$', parts[-1]):
+            sched = parts[-1]; topic = " ".join(parts[:-1])
+        return {
+            "mode": "auto",
+            "niche": NICHE_INPUT,
+            "topic": topic.strip(),
+            "genre": preset["genre"],
+            "lang": preset["lang"],
+            "duration_min": preset["default_duration"],
+            "schedule": sched,
+            "style": preset["style"],
+            "hook_type": preset["hook_type"],
+            "music_mood": preset["music_mood"],
+            "visual_prefix": preset["visual_prefix"],
+            "sfx_default": preset["sfx_default"],
+            "color_grade": preset["color_grade"],
+            "scenes_per_min": preset["scenes_per_min"],
+            "voice": preset["voice"],
+            "provided_script": SCRIPT_INPUT or None,
+        }
 
-    if genre and lang and duration:
-        log.info(f"  All manual: genre={genre} lang={lang} duration={duration}min")
-        return genre, lang, duration
-
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_KEY)
-        model = genai.GenerativeModel("gemini-2.5-flash")
-
-        prompt = f"""Analyze this video topic and decide the best settings.
-
-Topic: "{topic}"
-Already specified: genre={genre}, language={lang}, duration={duration}
-
-Return ONLY JSON:
-{{
-  "genre": "documentary",
-  "language": "english",
-  "duration_min": 5,
-  "reason": "one line explanation"
-}}
-
-Rules:
-- genre: one of [documentary, shorts, cartoon, study, ad, typography]
-- language: one of [english, hindi, spanish, french, german, arabic]
-- duration_min: 1 to 15 (shorts=1, documentary=5-8, study=8-12)
-- If already specified above, keep that value exactly
-- Detect language from topic text if it contains non-English words
-- History/science topics = documentary
-- City/travel topics = documentary or shorts
-- Kids topics = cartoon
-- How-to topics = study"""
-
-        r = model.generate_content(prompt)
-        text = r.text.strip().replace("```json","").replace("```","").strip()
-        result = json.loads(text)
-
-        g = genre    or result.get("genre", "documentary")
-        l = lang     or result.get("language", "english")
-        d = duration or result.get("duration_min", 5)
-
-        log.info(f"  Auto-detected: genre={g} lang={l} duration={d}min reason={result.get('reason','')}")
-        tg(f"🎯 Genre: {g} | Language: {l} | Duration: {d} min")
-        return g, l, d
-
-    except Exception as e:
-        log.warning(f"Auto-detect failed: {e}, using defaults")
-        g = genre    or "documentary"
-        l = lang     or "english"
-        d = duration or 5
-        return g, l, d
+    # Manual mode (Telegram or GitHub workflow)
+    raw = RAW_INPUT.strip()
+    genre = lang = duration = None
+    for pat,key in [(r'--genre\s+(\w+)','g'),(r'--lang\s+(\w+)','l'),(r'--duration\s+(\d+)','d')]:
+        m = re.search(pat, raw, re.I)
+        if m:
+            v = m.group(1).lower()
+            if key=='g': genre=v
+            elif key=='l': lang=v
+            else: duration=int(v)
+            raw = raw[:m.start()]+raw[m.end():]
+    parts = raw.strip().split()
+    sched = "18:00"
+    if parts and re.match(r'^\d{1,2}:\d{2}$', parts[-1]):
+        sched=parts[-1]; parts=parts[:-1]
+    topic = " ".join(parts).strip() or "Interesting Topic"
+    genre = genre or "documentary"
+    lang  = lang  or "hindi"
+    dur   = duration or 5
+    gp    = GENRE_PRESETS.get(genre, GENRE_PRESETS["documentary"])
+    return {
+        "mode": "manual",
+        "niche": None,
+        "topic": topic,
+        "genre": genre,
+        "lang": lang,
+        "duration_min": dur,
+        "schedule": sched,
+        "style": gp["style"],
+        "hook_type": "shocking or surprising fact",
+        "music_mood": "cinematic dramatic",
+        "visual_prefix": topic,
+        "sfx_default": "whoosh",
+        "color_grade": "cinematic",
+        "scenes_per_min": gp["scenes_per_min"],
+        "voice": VOICE_MAP.get(lang, VOICE_MAP["hindi"])[0],
+        "provided_script": None,
+    }
 
 # ═══════════════════════════════════════════════════════════
 #  STAGE 1 — RESEARCH
 # ═══════════════════════════════════════════════════════════
-def stage_1_research(topic, lang):
-    log.info("Stage 1: Research...")
-    tg(f"📚 Researching '{topic}' in {lang}...")
-
-    lang_instruction = f"Write all content in {lang} language." if lang != "english" else ""
-
+def stage_1_research(cfg):
+    topic = cfg["topic"]
+    lang  = cfg["lang"]
+    log.info(f"Stage 1: Research — {topic}")
+    tg(f"📚 Researching: {topic}")
+    lang_note = f"Write ALL content in {lang} language." if lang != "english" else ""
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_KEY)
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        prompt = f"""Research the topic: "{topic}"
-{lang_instruction}
-
-Return ONLY valid JSON, no markdown:
-{{
-  "headline": "one shocking sentence in {lang}",
-  "hook": "the single most surprising or shocking fact - must make viewer stop scrolling",
-  "hook_question": "a mysterious question that makes viewer want to keep watching",
-  "key_facts": ["fact1", "fact2", "fact3", "fact4", "fact5", "fact6", "fact7", "fact8", "fact9", "fact10"],
-  "statistics": ["stat1 with number", "stat2 with number", "stat3 with number", "stat4 with number"],
-  "timeline": ["earliest event", "event2", "event3", "event4", "event5", "recent event"],
-  "surprising_facts": ["wow fact1", "wow fact2", "wow fact3", "wow fact4"],
-  "visual_keywords": ["keyword1 for stock footage search", "keyword2", "keyword3", "keyword4", "keyword5"]
-}}"""
-        r = model.generate_content(prompt)
-        text = r.text.strip().replace("```json","").replace("```","").strip()
-        return json.loads(text)
+        text = gemini(f"""Research: "{topic}"
+{lang_note}
+Return ONLY valid JSON (no markdown):
+{{"hook":"single most shocking fact about this topic in {lang}",
+  "hook_question":"mystery question that creates curiosity in {lang}",
+  "key_facts":["fact1","fact2","fact3","fact4","fact5","fact6","fact7","fact8"],
+  "statistics":["stat with number 1","stat with number 2","stat with number 3"],
+  "timeline":["earliest event","event2","event3","recent event"],
+  "visual_themes":["visual keyword 1","visual keyword 2","visual keyword 3"]
+}}""")
+        text = text.strip().replace("```json","").replace("```","").strip()
+        r = json.loads(text)
+        log.info(f"Stage 1 done. Hook: {r.get('hook','')[:60]}")
+        return r
     except Exception as e:
-        log.warning(f"Research Gemini failed: {e}")
-
+        log.warning(f"Stage 1 Gemini failed: {e}")
+    # Fallback
     try:
         from bs4 import BeautifulSoup
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(f"https://html.duckduckgo.com/html/?q={quote(topic)}", headers=headers, timeout=15)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        snippets = [r.get_text() for r in soup.select(".result__snippet")][:10]
-        return {
-            "headline": topic,
-            "hook": snippets[0] if snippets else f"The truth about {topic}",
-            "hook_question": f"What do you really know about {topic}?",
-            "key_facts": snippets,
-            "statistics": [],
-            "timeline": [],
-            "surprising_facts": snippets[:4],
-            "visual_keywords": [topic]
-        }
+        resp = requests.get(f"https://html.duckduckgo.com/html/?q={quote(topic)}",
+            headers={"User-Agent":"Mozilla/5.0"}, timeout=15)
+        snips = [s.get_text() for s in BeautifulSoup(resp.text,"html.parser").select(".result__snippet")][:8]
+        return {"hook":snips[0] if snips else f"The truth about {topic}",
+                "hook_question":f"What really happened with {topic}?",
+                "key_facts":snips,"statistics":[],"timeline":[],"visual_themes":[topic]}
+    except:
+        return {"hook":f"Everything you know about {topic} is wrong.","hook_question":f"The real story of {topic}?",
+                "key_facts":[f"Incredible truth about {topic}"],"statistics":[],"timeline":[],"visual_themes":[topic]}
+
+# ═══════════════════════════════════════════════════════════
+#  STAGE 2 — SCRIPT
+#  If user provided script → parse it into scenes
+#  Otherwise → generate with Groq
+# ═══════════════════════════════════════════════════════════
+def parse_provided_script(script_text, cfg):
+    """Convert user-provided script text into scene JSON format."""
+    log.info("Stage 2: Parsing provided script...")
+    topic   = cfg["topic"]
+    sfx_def = cfg.get("sfx_default","whoosh")
+    vprefix = cfg.get("visual_prefix", topic)
+    try:
+        # Try to get Groq to parse it into scenes
+        text = groq(f"""Parse this script into video scenes.
+Script:
+{script_text[:3000]}
+
+Topic: {topic}
+Language: {cfg['lang']}
+
+Return ONLY JSON array (no markdown):
+[{{"scene":1,"voiceover":"exact words to say","visual_type":"stock_video","visual_search":"{vprefix} relevant keyword","ai_prompt":"cinematic image description","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]
+
+Rules:
+- Split at natural pause/sentence boundaries
+- Max 15 words per voiceover
+- visual_type: "stock_video" or "ai_image" or "text_stat"
+- visual_search MUST start with "{vprefix}"
+- sfx: deep_impact|whoosh|click|riser|none""", max_tokens=3000)
+        text = text.replace("```json","").replace("```","").strip()
+        start = text.find("["); end = text.rfind("]")+1
+        scenes = json.loads(text[start:end])
+        t = 0.0
+        for s in scenes:
+            s["start_time"] = t; t += float(s.get("duration_hint",4))
+            if vprefix.lower() not in s.get("visual_search","").lower():
+                s["visual_search"] = f"{vprefix} {s.get('visual_search','')}"
+        log.info(f"Stage 2: Parsed {len(scenes)} scenes from provided script")
+        return scenes
     except Exception as e:
-        log.error(f"Research all failed: {e}")
-        return {
-            "headline": topic,
-            "hook": f"Everything you know about {topic} is wrong.",
-            "hook_question": f"What really happened with {topic}?",
-            "key_facts": [f"Key fact about {topic}"],
-            "statistics": [],
-            "timeline": [],
-            "surprising_facts": [],
-            "visual_keywords": [topic]
-        }
+        log.warning(f"Script parse failed: {e}")
+        # Fallback: split by sentences
+        sentences = [s.strip() for s in re.split(r'[।\.\!\?]+', script_text) if len(s.strip()) > 10]
+        t = 0.0
+        scenes = []
+        for i, sent in enumerate(sentences[:40]):
+            vt = "text_stat" if i % 5 == 4 else "stock_video" if i % 3 == 1 else "ai_image"
+            s = {"scene":i+1,"voiceover":sent[:80],"visual_type":vt,
+                 "visual_search":f"{vprefix} cinematic","ai_prompt":f"cinematic {topic} scene",
+                 "emotion":"dramatic","sfx":sfx_def,"duration_hint":4,"start_time":t}
+            scenes.append(s); t += 4
+        return scenes
 
-# ═══════════════════════════════════════════════════════════
-#  STAGE 2 — SCRIPT (PROFESSIONAL VIRAL STYLE)
-# ═══════════════════════════════════════════════════════════
-def stage_2_script(research, genre, lang, duration_min):
-    log.info("Stage 2: Writing professional script...")
-    tg(f"✍️ Writing {genre} script ({duration_min} min)...")
+def stage_2_script(research, cfg):
+    topic       = cfg["topic"]
+    lang        = cfg["lang"]
+    style       = cfg["style"]
+    hook_type   = cfg["hook_type"]
+    dur         = cfg["duration_min"]
+    scenes_pm   = cfg["scenes_per_min"]
+    vprefix     = cfg.get("visual_prefix", topic)
+    sfx_def     = cfg.get("sfx_default","whoosh")
+    niche       = cfg.get("niche","")
 
-    cfg = GENRE_CONFIG.get(genre, GENRE_CONFIG["documentary"])
-    style = cfg["style"]
+    # If user provided a script, use it
+    if cfg.get("provided_script"):
+        return parse_provided_script(cfg["provided_script"], cfg)
 
-    # Calculate target scenes based on duration
-    # Good pacing = 1 scene every 3-5 seconds
-    # duration_min * 60 seconds / 4 seconds per scene
-    target_scenes = max(cfg["scene_target"], int(duration_min * 60 / 4))
-    lang_instruction = f"Write ALL voiceover text in {lang} language." if lang != "english" else ""
+    log.info(f"Stage 2: Writing script for {topic}")
+    tg(f"✍️ Writing script...")
 
-    prompt = f"""You are a world-class viral YouTube video editor and scriptwriter.
+    target = max(15, int(dur * scenes_pm))
+    lang_note = f"ALL voiceover in {lang}." if lang != "english" else ""
+
+    hook      = research.get("hook","")
+    hook_q    = research.get("hook_question","")
+    facts_str = "\n".join(f"- {f}" for f in research.get("key_facts",[])[:7])
+    stats_str = "\n".join(f"- {s}" for s in research.get("statistics",[])[:3])
+
+    niche_note = ""
+    if niche == "finance":
+        niche_note = "Include real numbers, percentages, losses/gains. Mention specific amounts in rupees. Make viewers worried about their money."
+    elif niche == "tech":
+        niche_note = "Use simple analogies. Every technical term must be explained immediately. Make it feel like talking to a friend."
+    elif niche == "crime":
+        niche_note = "Build tension slowly. Use dramatic pauses. Reveal information bit by bit. Make the viewer feel like they are watching a thriller."
+
+    prompt = f"""You are a world-class viral Hindi YouTube scriptwriter.
 Style: {style}
-{lang_instruction}
+{lang_note}
+{niche_note}
 
-Research data:
-{json.dumps(research, indent=2)}
+Topic: "{topic}"
+Hook fact: {hook}
+Hook question: {hook_q}
+Key facts:
+{facts_str}
+Stats:
+{stats_str}
 
-TARGET: {target_scenes} scenes for a {duration_min} minute video.
+Write {target} scenes. STRICT RULES:
 
-=== CRITICAL RULES — THESE ARE NON-NEGOTIABLE ===
+RULE 1 — HOOK: Scene 1 = shocking opening. NEVER start with "आज हम", "नमस्ते", "दोस्तों", "In this video". Start MID-ACTION.
+GOOD: "2008 में एक रात में 20,000 लोगों की नौकरी चली गई।"
+BAD: "आज हम बात करेंगे..."
 
-RULE 1 — HOOK (Scene 1 ONLY):
-- Start with ONE shocking question or impossible fact
-- NEVER start with "Astonishingly" or "In this video" or "Today we explore"
-- GOOD: "What if I told you this ancient city had running water 4000 years before Rome?"
-- GOOD: "In 1984, a single night killed 20,000 people. And the world said nothing."
-- BAD: "X is the birthplace of four major world religions"
+RULE 2 — SHORT: Max 12 words per scene voiceover.
 
-RULE 2 — VOICEOVER LENGTH:
-- Maximum 12 words per scene voiceover
-- Each line = ONE single idea only
-- Short. Punchy. Dramatic pauses built in.
+RULE 3 — VISUAL MIX (rotate, never 3 same in row):
+"stock_video" — real footage from Pexels
+"ai_image" — AI generates cinematic image
+"text_stat" — bold yellow text on dark background (for numbers/statistics)
 
-RULE 3 — VISUAL VARIETY (rotate through these types):
-- "ai_image": AI generates a cinematic image (for concepts, places, emotions)
-- "stock_video": search for real footage (for action, crowds, nature)
-- "text_stat": white bold text on dark background (for statistics and shocking numbers)
-- "text_question": center-screen question text (use 2-3 times to re-engage viewer)
+RULE 4 — SEARCH TERMS: visual_search MUST start with "{vprefix}"
+GOOD: "{vprefix} money crash India" or "{vprefix} dramatic night city"
+BAD: "money crash" or "dramatic city"
 
-RULE 4 — SCENE VARIETY:
-Mix visual_type in this rough pattern:
-ai_image, stock_video, ai_image, text_stat, stock_video, ai_image, text_question, stock_video...
-Never use the same type 3 times in a row.
+RULE 5 — AI PROMPTS: No faces, no text, no flags, no specific monuments.
+GOOD: "dark cinematic office building night dramatic lighting aerial"
+BAD: "Harshad Mehta sitting in office"
 
-RULE 5 — VISUAL PROMPTS (for ai_image only):
-- Be extremely specific and cinematic
-- Include lighting, mood, camera angle, style
-- AVOID: faces, flags, text, signs, logos, monuments with text
-- GOOD: "aerial drone shot ancient brick city grid streets 2500 BC golden hour dramatic"
-- BAD: "Indus Valley civilization"
+RULE 6 — SFX: deep_impact=dramatic reveal | whoosh=transition | click=fact | riser=build tension | none=calm
 
-RULE 6 — STOCK SEARCH (for stock_video only):
-- Use simple 4-5 word search terms
-- Use terms that definitely exist in stock libraries
-- GOOD: "city aerial drone night", "crowd celebration fireworks", "ancient ruins sunset"
-- BAD: "Aryabhata calculating mathematics 600 AD"
-
-Return ONLY a valid JSON array, no markdown, no explanation:
-[
-  {{
-    "scene": 1,
-    "voiceover": "max 12 words in {lang}",
-    "visual_type": "ai_image",
-    "visual_prompt": "only for ai_image: detailed cinematic prompt",
-    "visual_search": "only for stock_video: 4-5 word search term",
-    "emotion": "dramatic",
-    "sfx": "deep_impact",
-    "duration_hint": 4
-  }}
-]
-
-sfx options: deep_impact | whoosh | click | riser | none
-emotion options: dramatic | mysterious | inspiring | shocking | calm | energetic"""
-
-    groq_models = [
-        "llama-3.3-70b-versatile",
-        "deepseek-r1-distill-llama-70b",
-        "llama-3.1-8b-instant",
-    ]
-
-    for model_name in groq_models:
-        try:
-            from groq import Groq
-            client = Groq(api_key=GROQ_KEY)
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.85,
-                max_tokens=6000,
-            )
-            text = response.choices[0].message.content.strip()
-            text = text.replace("```json","").replace("```","").strip()
-            start = text.find("[")
-            end = text.rfind("]") + 1
-            script = json.loads(text[start:end])
-
-            if len(script) < 12:
-                log.warning(f"Only {len(script)} scenes from {model_name}, retrying...")
-                continue
-
-            # Assign start times
-            t = 0.0
-            for s in script:
-                s["start_time"] = t
-                t += float(s.get("duration_hint", 4))
-
-            log.info(f"Stage 2: {len(script)} scenes with {model_name}")
-            return script
-
-        except Exception as e:
-            log.warning(f"Script {model_name} failed: {e}")
-            time.sleep(2)
-
-    # Fallback
-    facts = research.get("key_facts", [topic])
-    script = []
-    t = 0.0
-    for i, fact in enumerate(facts[:20]):
-        scene = {
-            "scene": i+1,
-            "voiceover": fact[:60],
-            "visual_type": "ai_image" if i % 3 != 2 else "text_stat",
-            "visual_prompt": f"cinematic dramatic scene about {topic}",
-            "visual_search": topic,
-            "emotion": "dramatic",
-            "sfx": "whoosh",
-            "duration_hint": 4,
-            "start_time": t
-        }
-        script.append(scene)
-        t += 4
-    return script
-
-# ═══════════════════════════════════════════════════════════
-#  STAGE 3 — B-ROLL UPGRADE
-# ═══════════════════════════════════════════════════════════
-def stage_3_broll_upgrade(script):
-    log.info("Stage 3: Upgrading visual prompts...")
-    tg("🎬 Enhancing visuals...")
-
-    # Scenes that need AI image — upgrade their prompts
-    ai_scenes = [s for s in script if s.get("visual_type") == "ai_image"]
-    stock_scenes = [s for s in script if s.get("visual_type") == "stock_video"]
-
-    if not ai_scenes and not stock_scenes:
-        return script
+Return ONLY JSON array (no markdown):
+[{{"scene":1,"voiceover":"text in {lang}","visual_type":"stock_video","visual_search":"{vprefix} keyword","ai_prompt":"cinematic description","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]"""
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_KEY)
-        model = genai.GenerativeModel("gemini-2.5-flash")
-
-        # Batch upgrade
-        items = []
-        for s in ai_scenes:
-            items.append(f"Scene {s['scene']} [ai]: voiceover='{s['voiceover']}' prompt='{s.get('visual_prompt','')}'")
-        for s in stock_scenes:
-            items.append(f"Scene {s['scene']} [stock]: voiceover='{s['voiceover']}' search='{s.get('visual_search','')}'")
-
-        prompt = f"""Improve these video scene visuals.
-
-{chr(10).join(items)}
-
-For [ai] scenes: Write a better Pollinations image prompt.
-- Cinematic, specific, dramatic
-- Include: lighting style, camera angle, time of day, mood
-- NEVER include: faces, text, signs, flags, specific named monuments
-- Max 15 words
-
-For [stock] scenes: Write a better Pexels search term.
-- Simple 4-5 words that will find real stock footage
-- Think: what would a cameraman actually film?
-
-Return ONLY JSON array, one entry per scene in same order:
-[{{"scene": 1, "improved": "the improved prompt or search term"}}]"""
-
-        r = model.generate_content(prompt)
-        text = r.text.strip().replace("```json","").replace("```","").strip()
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        upgrades = json.loads(text[start:end])
-
-        upgrade_map = {u["scene"]: u["improved"] for u in upgrades}
-
+        text = groq(prompt, max_tokens=4000)
+        text = text.replace("```json","").replace("```","").strip()
+        start = text.find("["); end = text.rfind("]")+1
+        if start < 0: raise ValueError("No JSON array")
+        script = json.loads(text[start:end])
+        if len(script) < 10:
+            raise ValueError(f"Only {len(script)} scenes")
+        t = 0.0
         for s in script:
-            if s["scene"] in upgrade_map:
-                improved = upgrade_map[s["scene"]]
-                if s.get("visual_type") == "ai_image":
-                    s["visual_prompt"] = improved
-                elif s.get("visual_type") == "stock_video":
-                    s["visual_search"] = improved
-
+            s["start_time"] = t; t += float(s.get("duration_hint",4))
+            # Enforce topic prefix in search
+            if vprefix.lower() not in s.get("visual_search","").lower():
+                s["visual_search"] = f"{vprefix} {s.get('visual_search','')}"
+        log.info(f"Stage 2: {len(script)} scenes written")
+        return script
     except Exception as e:
-        log.warning(f"B-roll upgrade failed: {e}")
-
-    return script
+        log.error(f"Stage 2 failed: {e}")
+        # Fallback from research
+        facts = [research.get("hook","")] + research.get("key_facts",[]) + research.get("statistics",[])
+        t = 0.0; script = []
+        for i,f in enumerate(facts[:target]):
+            if not f: continue
+            vt = "text_stat" if i%5==4 else ("stock_video" if i%3==1 else "ai_image")
+            s = {"scene":i+1,"voiceover":f[:60],"visual_type":vt,
+                 "visual_search":f"{vprefix} cinematic dramatic","ai_prompt":f"cinematic dramatic {topic} scene no text no faces",
+                 "emotion":"dramatic","sfx":sfx_def,"duration_hint":4,"start_time":t}
+            script.append(s); t+=4
+        return script
 
 # ═══════════════════════════════════════════════════════════
-#  STAGE 4 — VOICE
+#  STAGE 3 — VOICE
 # ═══════════════════════════════════════════════════════════
-async def _edge_tts_save(text, path, voice):
+async def _edge_tts(text, path, voice):
     import edge_tts
     await edge_tts.Communicate(text, voice).save(path)
 
-def stage_4_voice(script, lang):
-    log.info("Stage 4: Generating voice...")
-    tg(f"🎙️ Generating {lang} voice for {len(script)} scenes...")
-
-    audio_dir = WORKSPACE / "audio"
-    audio_dir.mkdir(exist_ok=True)
-
-    voices = VOICE_MAP.get(lang, VOICE_MAP["english"])
-    primary_voice = voices[0]
-    fallback_voice = voices[1] if len(voices) > 1 else "en-US-ChristopherNeural"
-
+def stage_3_voice(script, cfg):
+    lang  = cfg["lang"]
+    voice = cfg.get("voice", VOICE_MAP.get(lang, VOICE_MAP["hindi"])[0])
+    fallback = VOICE_MAP.get(lang, VOICE_MAP["hindi"])
+    log.info(f"Stage 3: Voice ({voice})...")
+    tg(f"🎙️ Generating voice...")
+    audio_dir = WORKSPACE/"audio"; audio_dir.mkdir(exist_ok=True)
     for scene in script:
-        n = scene["scene"]
-        text = scene.get("voiceover", "").strip()
-
-        # text_stat and text_question can optionally have no voiceover
-        if not text or scene.get("visual_type") == "typography":
-            scene["audio_file"] = None
-            continue
-
-        out = str(audio_dir / f"scene_{n:03d}.mp3")
-
-        # Primary: Edge-TTS with chosen language voice
-        try:
-            asyncio.run(_edge_tts_save(text, out, primary_voice))
-            scene["audio_file"] = out
-            continue
-        except Exception as e:
-            log.warning(f"  Scene {n}: {primary_voice} failed: {e}")
-
-        # Fallback 1: second voice of same language
-        try:
-            asyncio.run(_edge_tts_save(text, out, fallback_voice))
-            scene["audio_file"] = out
-            continue
-        except: pass
-
-        # Fallback 2: gTTS
-        try:
-            from gtts import gTTS
-            lang_code = {"english":"en","hindi":"hi","spanish":"es","french":"fr","german":"de","arabic":"ar"}.get(lang,"en")
-            gTTS(text=text, lang=lang_code, slow=False).save(out)
-            scene["audio_file"] = out
-        except Exception as e:
-            log.error(f"  Scene {n}: All voice failed: {e}")
-            scene["audio_file"] = None
-
-    return script
-
-# ═══════════════════════════════════════════════════════════
-#  STAGE 5 — VISUALS
-#  - AI hallucination prevention
-#  - 5 animation types cycling
-#  - text_stat = bold white text on dark BG
-#  - text_question = centered question with glow
-#  - Film grain overlay
-# ═══════════════════════════════════════════════════════════
-
-# Keywords that Pollinations ALWAYS gets wrong
-# For these, skip AI and go straight to Pexels/Pixabay
-HALLUCINATION_KEYWORDS = [
-    "flag", "flags", "taj mahal", "eiffel tower", "statue of liberty",
-    "monument", "text", "sign", "banner", "newspaper", "book",
-    "face", "portrait", "person standing", "scientist", "mathematician",
-    "sage", "guru", "wizard", "historical figure", "emperor", "king",
-    "crowd holding", "protest", "soldiers marching", "battle scene",
-    "map of", "chart", "graph", "diagram", "infographic",
-    "logo", "symbol", "chakra", "wheel", "written"
-]
-
-def should_skip_ai(prompt, search=""):
-    combined = (prompt + " " + search).lower()
-    return any(kw in combined for kw in HALLUCINATION_KEYWORDS)
-
-def get_audio_duration(path):
-    try:
-        r = subprocess.run(
-            ["ffprobe","-v","error","-show_entries","format=duration",
-             "-of","default=noprint_wrappers=1:nokey=1", path],
-            capture_output=True, text=True, timeout=30
-        )
-        return float(r.stdout.strip())
-    except:
-        return 4.0
-
-# Animation types — cycle for variety
-ANIMATIONS = ["zoom_in","pan_right","zoom_out","pan_left","pan_up"]
-
-def ken_burns(anim, duration, w=1920, h=1080):
-    fps = 25
-    fr = int(duration * fps)
-    opts = {
-        "zoom_in":   f"zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps={fps}",
-        "zoom_out":  f"zoompan=z='if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps={fps}",
-        "pan_right": f"zoompan=z='1.3':x='min(iw*0.3,x+1.2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps={fps}",
-        "pan_left":  f"zoompan=z='1.3':x='max(0,iw*0.3-on*1.2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps={fps}",
-        "pan_up":    f"zoompan=z='1.3':x='iw/2-(iw/zoom/2)':y='max(0,ih*0.3-on*1.0)':d={fr}:s={w}x{h}:fps={fps}",
-    }
-    return opts.get(anim, opts["zoom_in"])
-
-def img_to_video(img_path, out_path, duration, anim="zoom_in"):
-    vf = ken_burns(anim, duration)
-    # Add subtle film grain overlay
-    grain_filter = f"{vf},noise=alls=3:allf=t+u"
-    cmd = ["ffmpeg","-y","-loop","1","-i", img_path,
-           "-vf", grain_filter,
-           "-t", str(duration),"-c:v","libx264",
-           "-pix_fmt","yuv420p","-preset","fast", out_path]
-    r = subprocess.run(cmd, capture_output=True, timeout=180)
-    return r.returncode == 0
-
-def make_text_stat(text, out_path, duration, color="#FFD700"):
-    """Bold stat text on dark cinematic background."""
-    safe = text.replace("'","\\'").replace(":","\\:").replace("%","\\%").replace('"','\\"')
-    words = safe.split()
-    # Wrap at 20 chars
-    lines, cur = [], []
-    for w in words:
-        cur.append(w)
-        if len(" ".join(cur)) > 20:
-            lines.append(" ".join(cur))
-            cur = []
-    if cur: lines.append(" ".join(cur))
-
-    # Build drawtext chain
-    dt_parts = []
-    for i, line in enumerate(lines[:3]):
-        y = f"(h/2)-{(len(lines)//2 - i)*90}"
-        dt_parts.append(
-            f"drawtext=text='{line}':fontsize=80:fontcolor={color}:"
-            f"x=(w-text_w)/2:y={y}:fontname=DejaVu-Sans-Bold:"
-            f"shadowcolor=black:shadowx=3:shadowy=3"
-        )
-
-    vf = ",".join(dt_parts) if dt_parts else f"drawtext=text='{safe[:30]}':fontsize=80:fontcolor={color}:x=(w-text_w)/2:y=(h-text_h)/2"
-
-    cmd = ["ffmpeg","-y","-f","lavfi",
-           "-i",f"color=c=0x0a0a0a:size=1920x1080:duration={duration}:rate=25",
-           "-vf", vf + ",noise=alls=5:allf=t+u",
-           "-c:v","libx264","-pix_fmt","yuv420p", out_path]
-    r = subprocess.run(cmd, capture_output=True, timeout=60)
-    return r.returncode == 0
-
-def make_text_question(text, out_path, duration):
-    """Glowing centered question text."""
-    safe = text.replace("'","\\'").replace(":","\\:").replace("%","\\%")
-    # Split long question
-    words = safe.split()
-    lines, cur = [], []
-    for w in words:
-        cur.append(w)
-        if len(" ".join(cur)) > 22:
-            lines.append(" ".join(cur))
-            cur = []
-    if cur: lines.append(" ".join(cur))
-
-    dt_parts = []
-    for i, line in enumerate(lines[:2]):
-        y = f"(h/2)-{(len(lines)//2 - i)*80}"
-        dt_parts.append(
-            f"drawtext=text='{line}':fontsize=70:fontcolor=white:"
-            f"x=(w-text_w)/2:y={y}:fontname=DejaVu-Sans-Bold:"
-            f"shadowcolor=0x00FFFF:shadowx=0:shadowy=0:borderw=2:bordercolor=0x00BFFF"
-        )
-
-    vf = ",".join(dt_parts) if dt_parts else f"drawtext=text='{safe[:30]}':fontsize=70:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2"
-
-    cmd = ["ffmpeg","-y","-f","lavfi",
-           "-i",f"color=c=0x050510:size=1920x1080:duration={duration}:rate=25",
-           "-vf", vf,
-           "-c:v","libx264","-pix_fmt","yuv420p", out_path]
-    r = subprocess.run(cmd, capture_output=True, timeout=60)
-    return r.returncode == 0
-
-def fetch_pollinations(prompt, out_path, seed=None):
-    """Pollinations with negative prompt to reduce hallucinations."""
-    try:
-        s = seed or random.randint(1, 99999)
-        neg = "text watermark signature blurry deformed ugly duplicate mirrored distorted flag letters words faces"
-        url = (f"https://image.pollinations.ai/prompt/{quote(prompt)}"
-               f"?width=1920&height=1080&nologo=true&seed={s}"
-               f"&negative={quote(neg)}&model=flux")
-        r = requests.get(url, timeout=90)
-        if r.status_code == 200 and len(r.content) > 8000:
-            with open(out_path,"wb") as f: f.write(r.content)
-            return True
-    except Exception as e:
-        log.warning(f"  Pollinations: {e}")
-    return False
-
-def fetch_pexels_video(search, out_path, duration):
-    try:
-        headers = {"Authorization": PEXELS_KEY}
-        r = requests.get("https://api.pexels.com/videos/search",
-            headers=headers,
-            params={"query": search,"per_page":5,"orientation":"landscape"},
-            timeout=15)
-        videos = r.json().get("videos",[])
-        if not videos: return False
-        files = sorted(videos[0].get("video_files",[]), key=lambda x:x.get("width",0), reverse=True)
-        if not files: return False
-        raw = out_path.replace(".mp4","_raw.mp4")
-        v = requests.get(files[0]["link"], stream=True, timeout=60)
-        with open(raw,"wb") as f:
-            for chunk in v.iter_content(8192): f.write(chunk)
-        cmd = ["ffmpeg","-y","-i",raw,"-t",str(duration),
-               "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
-               "-c:v","libx264","-an","-preset","fast", out_path]
-        return subprocess.run(cmd, capture_output=True, timeout=60).returncode == 0
-    except Exception as e:
-        log.warning(f"  Pexels video: {e}")
-    return False
-
-def fetch_pexels_image(search, out_path):
-    try:
-        headers = {"Authorization": PEXELS_KEY}
-        r = requests.get("https://api.pexels.com/v1/search",
-            headers=headers,
-            params={"query":search,"per_page":5,"orientation":"landscape"},
-            timeout=15)
-        photos = r.json().get("photos",[])
-        if not photos: return False
-        url = photos[random.randint(0,min(2,len(photos)-1))]["src"]["original"]
-        img = requests.get(url, timeout=30)
-        with open(out_path,"wb") as f: f.write(img.content)
-        return True
-    except Exception as e:
-        log.warning(f"  Pexels image: {e}")
-    return False
-
-def fetch_pixabay_image(search, out_path):
-    try:
-        r = requests.get("https://pixabay.com/api/",
-            params={"key":PIXABAY_KEY,"q":search,"image_type":"photo",
-                    "orientation":"horizontal","per_page":5,"safesearch":"true"},
-            timeout=15)
-        hits = r.json().get("hits",[])
-        if not hits: return False
-        url = hits[random.randint(0,min(2,len(hits)-1))]["largeImageURL"]
-        img = requests.get(url, timeout=30)
-        with open(out_path,"wb") as f: f.write(img.content)
-        return True
-    except Exception as e:
-        log.warning(f"  Pixabay: {e}")
-    return False
-
-def fetch_pixabay_video(search, out_path, duration):
-    try:
-        r = requests.get("https://pixabay.com/api/videos/",
-            params={"key":PIXABAY_KEY,"q":search,"video_type":"film","per_page":5},
-            timeout=15)
-        hits = r.json().get("hits",[])
-        if not hits: return False
-        url = hits[0]["videos"]["large"]["url"]
-        raw = out_path.replace(".mp4","_raw2.mp4")
-        v = requests.get(url, stream=True, timeout=60)
-        with open(raw,"wb") as f:
-            for chunk in v.iter_content(8192): f.write(chunk)
-        cmd = ["ffmpeg","-y","-i",raw,"-t",str(duration),
-               "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
-               "-c:v","libx264","-an","-preset","fast", out_path]
-        return subprocess.run(cmd, capture_output=True, timeout=60).returncode == 0
-    except Exception as e:
-        log.warning(f"  Pixabay video: {e}")
-    return False
-
-def solid_bg(out_path, duration, color="0x0a0a0a"):
-    cmd = ["ffmpeg","-y","-f","lavfi",
-           "-i",f"color=c={color}:size=1920x1080:duration={duration}:rate=25",
-           "-c:v","libx264","-pix_fmt","yuv420p", out_path]
-    return subprocess.run(cmd, capture_output=True, timeout=30).returncode == 0
-
-def stage_5_visuals(script):
-    log.info("Stage 5: Generating visuals...")
-    tg(f"🎨 Creating {len(script)} visuals...")
-
-    vis_dir = WORKSPACE / "visuals"
-    vis_dir.mkdir(exist_ok=True)
-
-    for i, scene in enumerate(script):
-        n = scene["scene"]
-        vtype = scene.get("visual_type","ai_image")
-        prompt = scene.get("visual_prompt","cinematic dramatic scene")
-        search = scene.get("visual_search", TOPIC)
-        out = str(vis_dir / f"scene_{n:03d}.mp4")
-        img = str(vis_dir / f"scene_{n:03d}.jpg")
-        anim = ANIMATIONS[i % len(ANIMATIONS)]
-
-        if scene.get("audio_file"):
-            duration = get_audio_duration(scene["audio_file"])
-        else:
-            duration = float(scene.get("duration_hint", 4))
-        scene["actual_duration"] = duration
-
-        success = False
-
-        # ── Text stat ────────────────────────────────────────
-        if vtype == "text_stat":
-            if make_text_stat(scene["voiceover"], out, duration):
-                scene["video_file"] = out
-                log.info(f"  Scene {n}: text_stat ✓")
-                continue
-
-        # ── Text question ────────────────────────────────────
-        elif vtype == "text_question":
-            if make_text_question(scene["voiceover"], out, duration):
-                scene["video_file"] = out
-                log.info(f"  Scene {n}: text_question ✓")
-                continue
-
-        # ── Stock video ──────────────────────────────────────
-        elif vtype == "stock_video":
-            log.info(f"  Scene {n}: stock_video '{search}'")
-            if fetch_pexels_video(search, out, duration):
-                scene["video_file"] = out
-                log.info(f"  Scene {n}: Pexels video ✓")
-                success = True
-            if not success and fetch_pixabay_video(search, out, duration):
-                scene["video_file"] = out
-                log.info(f"  Scene {n}: Pixabay video ✓")
-                success = True
-
-        # ── AI image ─────────────────────────────────────────
-        else:  # ai_image
-            # Check if this topic might hallucinate badly
-            if should_skip_ai(prompt, search):
-                log.info(f"  Scene {n}: Skipping AI (hallucination risk) → stock")
-                if fetch_pexels_video(search, out, duration):
-                    scene["video_file"] = out
-                    success = True
-                if not success and fetch_pexels_image(search, img):
-                    if img_to_video(img, out, duration, anim):
-                        scene["video_file"] = out
-                        success = True
-            else:
-                log.info(f"  Scene {n}: Pollinations '{prompt[:50]}'")
-                if fetch_pollinations(prompt, img, seed=n*13):
-                    if img_to_video(img, out, duration, anim):
-                        scene["video_file"] = out
-                        log.info(f"  Scene {n}: Pollinations+{anim} ✓")
-                        success = True
-
-        # ── Universal fallbacks (all types) ──────────────────
-        if not success:
-            log.info(f"  Scene {n}: Trying Pexels video fallback...")
-            if fetch_pexels_video(search or TOPIC, out, duration):
-                scene["video_file"] = out
-                success = True
-
-        if not success:
-            log.info(f"  Scene {n}: Trying Pexels image...")
-            if fetch_pexels_image(search or TOPIC, img):
-                if img_to_video(img, out, duration, anim):
-                    scene["video_file"] = out
-                    success = True
-
-        if not success:
-            log.info(f"  Scene {n}: Trying Pixabay image...")
-            if fetch_pixabay_image(search or TOPIC, img):
-                if img_to_video(img, out, duration, anim):
-                    scene["video_file"] = out
-                    success = True
-
-        if not success:
-            log.warning(f"  Scene {n}: All layers failed → solid bg")
-            solid_bg(out, duration)
-            scene["video_file"] = out
-
-    return script
-
-# ═══════════════════════════════════════════════════════════
-#  STAGE 6 — ASSEMBLY
-#  - Word-by-word kinetic captions (1-3 words at a time)
-#  - Center screen, not bottom
-#  - Yellow highlight for key words
-#  - SFX click on every caption pop
-#  - Film grain unified look
-# ═══════════════════════════════════════════════════════════
-
-def _srt(s):
-    h,m = int(s//3600), int((s%3600)//60)
-    sec,ms = int(s%60), int((s%1)*1000)
-    return f"{h:02d}:{m:02d}:{sec:02d},{ms:03d}"
-
-def build_kinetic_srt(script):
-    """
-    Word-by-word SRT: 1-3 words per entry, centered.
-    Key words (nouns, numbers, proper nouns) get yellow color via ASS override.
-    """
-    entries = []
-    # Simple heuristic: words with capital letters or numbers = key word
-    def is_key_word(w):
-        clean = re.sub(r'[^a-zA-Z0-9]','',w)
-        return bool(re.search(r'\d', clean)) or (clean and clean[0].isupper() and len(clean) > 2)
-
-    for scene in script:
+        n    = scene["scene"]
         text = scene.get("voiceover","").strip()
+        if not text or scene.get("visual_type")=="text_stat":
+            scene["audio_file"]=None; continue
+        out = str(audio_dir/f"scene_{n:03d}.mp3")
+        done = False
+        for v in fallback:
+            try:
+                asyncio.run(_edge_tts(text, out, v))
+                scene["audio_file"]=out; done=True; break
+            except: pass
+        if not done:
+            try:
+                from gtts import gTTS
+                lc={"hindi":"hi","english":"en","spanish":"es","french":"fr","german":"de"}.get(lang,"hi")
+                gTTS(text=text,lang=lc).save(out)
+                scene["audio_file"]=out
+            except:
+                log.error(f"Scene {n}: all voice failed")
+                scene["audio_file"]=None
+    return script
+
+# ═══════════════════════════════════════════════════════════
+#  STAGE 4 — MUSIC (freepd.com + incompetech — CC licensed)
+# ═══════════════════════════════════════════════════════════
+def stage_4_music(cfg):
+    mood = cfg.get("music_mood","cinematic dramatic")
+    log.info(f"Stage 4: Music ({mood})...")
+
+    music_map = {
+        "serious corporate dramatic":  "https://freepd.com/music/Sci-Fi%20Intelligence.mp3",
+        "dark suspense thriller":      "https://freepd.com/music/Dark%20Mystery.mp3",
+        "calm lo-fi focus":            "https://freepd.com/music/Acoustic%20Meditation.mp3",
+        "cinematic dramatic":          "https://freepd.com/music/Inspiring%20Cinematic.mp3",
+        "energetic trap beat":         "https://freepd.com/music/Heavy%20Interlude.mp3",
+        "playful upbeat cartoon":      "https://freepd.com/music/Fun%20Day.mp3",
+        "dark noir":                   "https://freepd.com/music/Dark%20Mystery.mp3",
+        "cool blue":                   "https://freepd.com/music/Blue%20Skies.mp3",
+    }
+    # Find best match
+    url = None
+    for key in music_map:
+        if any(w in mood for w in key.split()):
+            url = music_map[key]; break
+    url = url or music_map["cinematic dramatic"]
+
+    music_path = str(WORKSPACE/"music.mp3")
+    try:
+        r = requests.get(url, timeout=30)
+        if r.status_code == 200 and len(r.content) > 1000:
+            with open(music_path,"wb") as f: f.write(r.content)
+            log.info(f"Stage 4: Music downloaded from freepd.com")
+            return music_path
+    except Exception as e:
+        log.warning(f"Stage 4 freepd failed: {e}")
+
+    # Fallback: incompetech
+    try:
+        # Use a known working CC track
+        r = requests.get("https://incompetech.filmmusic.io/song/3989-impact-prelude/download?type=mp3", timeout=30)
+        if r.status_code == 200:
+            with open(music_path,"wb") as f: f.write(r.content)
+            log.info("Stage 4: Music from incompetech")
+            return music_path
+    except Exception as e:
+        log.warning(f"Stage 4 incompetech failed: {e}")
+
+    # Last resort: generate silence
+    subprocess.run(["ffmpeg","-y","-f","lavfi","-i","anullsrc=r=44100:cl=stereo",
+        "-t","300","-c:a","aac",music_path], capture_output=True, timeout=30)
+    return music_path
+
+# ═══════════════════════════════════════════════════════════
+#  STAGE 5 — SFX (Freesound preview URLs — no OAuth needed)
+# ═══════════════════════════════════════════════════════════
+SFX_QUERIES = {
+    "deep_impact": "cinematic impact boom",
+    "whoosh":      "swoosh transition whoosh",
+    "click":       "digital click notification",
+    "riser":       "tension riser build suspense",
+    "none":        None,
+}
+
+_sfx_cache = {}  # avoid re-downloading same SFX
+
+def fetch_sfx(sfx_type):
+    if sfx_type == "none" or not sfx_type: return None
+    if sfx_type in _sfx_cache: return _sfx_cache[sfx_type]
+
+    query = SFX_QUERIES.get(sfx_type, sfx_type)
+    sfx_dir = WORKSPACE/"sfx"; sfx_dir.mkdir(exist_ok=True)
+    out = str(sfx_dir/f"{sfx_type}.mp3")
+
+    try:
+        url = f"https://freesound.org/apiv2/search/text/?query={quote(query)}&token={FREESOUND_KEY}&fields=id,previews,duration&filter=duration:[0.5 TO 5]&sort=rating_desc&page_size=5"
+        r = requests.get(url, timeout=10)
+        results = r.json().get("results",[])
+        if results:
+            preview = results[0]["previews"].get("preview-lq-mp3","")
+            if preview:
+                audio = requests.get(preview, timeout=15)
+                with open(out,"wb") as f: f.write(audio.content)
+                _sfx_cache[sfx_type] = out
+                return out
+    except Exception as e:
+        log.warning(f"SFX {sfx_type} failed: {e}")
+
+    # Fallback: generate tone
+    freq = {"deep_impact":"100","whoosh":"400","click":"1200","riser":"300"}.get(sfx_type,"440")
+    subprocess.run(["ffmpeg","-y","-f","lavfi",
+        "-i",f"sine=frequency={freq}:duration=0.5:sample_rate=44100",
+        "-af","volume=0.3",out], capture_output=True, timeout=10)
+    _sfx_cache[sfx_type] = out
+    return out
+
+# ═══════════════════════════════════════════════════════════
+#  STAGE 6 — VISUALS
+# ═══════════════════════════════════════════════════════════
+HALLUCINATION_WORDS = ["flag","flags","taj mahal","monument","text on","sign ","banner",
+    "face ","portrait","person standing","scientist","sage ","wizard","emperor",
+    "soldiers marching","map of ","chart ","graph ","logo ","chakra","written "]
+
+def skip_ai(prompt):
+    p = prompt.lower()
+    return any(w in p for w in HALLUCINATION_WORDS)
+
+def get_dur(path):
+    try:
+        r = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration",
+            "-of","default=noprint_wrappers=1:nokey=1",path],
+            capture_output=True, text=True, timeout=20)
+        return float(r.stdout.strip())
+    except: return 4.0
+
+ANIMS = ["zoom_in","pan_right","zoom_out","pan_left","pan_up"]
+
+def ken_burns(anim, dur, w=1920, h=1080):
+    fr = int(dur*25)
+    opts = {
+        "zoom_in":   f"zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
+        "zoom_out":  f"zoompan=z='if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
+        "pan_right": f"zoompan=z='1.3':x='min(iw*0.3,on*1.5)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
+        "pan_left":  f"zoompan=z='1.3':x='max(0,iw*0.3-on*1.5)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
+        "pan_up":    f"zoompan=z='1.3':x='iw/2-(iw/zoom/2)':y='max(0,ih*0.3-on*1.0)':d={fr}:s={w}x{h}:fps=25",
+    }
+    return opts.get(anim,opts["zoom_in"])
+
+def img_to_vid(img, out, dur, anim="zoom_in", grain=True):
+    vf = ken_burns(anim, dur)
+    if grain: vf += ",noise=alls=4:allf=t+u"
+    r = subprocess.run(["ffmpeg","-y","-loop","1","-i",img,"-vf",vf,
+        "-t",str(dur),"-c:v","libx264","-pix_fmt","yuv420p","-preset","fast",out],
+        capture_output=True, timeout=180)
+    return r.returncode==0
+
+def make_text_stat(text, out, dur, lang="hindi"):
+    # Yellow text on very dark background
+    safe = re.sub(r"[':\"\\%]","",text)[:60]
+    words = safe.split()
+    lines,cur=[],[]
+    for w in words:
+        cur.append(w)
+        if len(" ".join(cur))>18: lines.append(" ".join(cur)); cur=[]
+    if cur: lines.append(" ".join(cur))
+    dt=[]
+    for i,line in enumerate(lines[:3]):
+        y=f"(h/2)-{(len(lines)//2-i)*90}"
+        dt.append(f"drawtext=text='{line}':fontsize=76:fontcolor=#FFD700:x=(w-text_w)/2:y={y}:fontname=DejaVu-Sans-Bold:shadowcolor=black:shadowx=4:shadowy=4")
+    vf=",".join(dt) if dt else f"drawtext=text='{safe[:20]}':fontsize=76:fontcolor=#FFD700:x=(w-text_w)/2:y=(h-text_h)/2"
+    r=subprocess.run(["ffmpeg","-y","-f","lavfi",
+        "-i",f"color=c=0x080808:size=1920x1080:duration={dur}:rate=25",
+        "-vf",vf+",noise=alls=6:allf=t+u","-c:v","libx264","-pix_fmt","yuv420p",out],
+        capture_output=True,timeout=60)
+    return r.returncode==0
+
+def fetch_pollinations(prompt, out, seed=None):
+    try:
+        s = seed or random.randint(1,99999)
+        neg="text watermark faces flags modern buildings cars phones computers deformed"
+        url=(f"https://image.pollinations.ai/prompt/{quote(prompt)}"
+             f"?width=1920&height=1080&nologo=true&seed={s}&negative={quote(neg)}&model=flux")
+        r=requests.get(url,timeout=90)
+        if r.status_code==200 and len(r.content)>8000:
+            with open(out,"wb") as f: f.write(r.content)
+            return True
+    except Exception as e: log.warning(f"Pollinations: {e}")
+    return False
+
+def fetch_pexels_video(search, out, dur):
+    try:
+        h={"Authorization":PEXELS_KEY}
+        r=requests.get("https://api.pexels.com/videos/search",headers=h,
+            params={"query":search,"per_page":10,"orientation":"landscape"},timeout=15)
+        vids=r.json().get("videos",[])
+        if not vids: return False
+        vid=random.choice(vids[:5])
+        files=sorted(vid.get("video_files",[]),key=lambda x:x.get("width",0),reverse=True)
+        if not files: return False
+        raw=out.replace(".mp4","_raw.mp4")
+        v=requests.get(files[0]["link"],stream=True,timeout=60)
+        with open(raw,"wb") as f:
+            for chunk in v.iter_content(8192): f.write(chunk)
+        r2=subprocess.run(["ffmpeg","-y","-i",raw,"-t",str(dur),
+            "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+            "-c:v","libx264","-an","-preset","fast",out],capture_output=True,timeout=60)
+        return r2.returncode==0
+    except Exception as e: log.warning(f"Pexels video: {e}"); return False
+
+def fetch_pexels_image(search, out):
+    try:
+        h={"Authorization":PEXELS_KEY}
+        r=requests.get("https://api.pexels.com/v1/search",headers=h,
+            params={"query":search,"per_page":10,"orientation":"landscape"},timeout=15)
+        photos=r.json().get("photos",[])
+        if not photos: return False
+        url=random.choice(photos[:5])["src"]["original"]
+        img=requests.get(url,timeout=30)
+        with open(out,"wb") as f: f.write(img.content)
+        return True
+    except Exception as e: log.warning(f"Pexels image: {e}"); return False
+
+def fetch_pixabay(search, out, dur=None):
+    try:
+        if dur:  # video
+            r=requests.get("https://pixabay.com/api/videos/",
+                params={"key":PIXABAY_KEY,"q":search,"video_type":"film","per_page":10},timeout=15)
+            hits=r.json().get("hits",[])
+            if not hits: return False
+            url=random.choice(hits[:5])["videos"]["large"]["url"]
+            raw=out.replace(".mp4","_raw2.mp4")
+            v=requests.get(url,stream=True,timeout=60)
+            with open(raw,"wb") as f:
+                for chunk in v.iter_content(8192): f.write(chunk)
+            r2=subprocess.run(["ffmpeg","-y","-i",raw,"-t",str(dur),
+                "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+                "-c:v","libx264","-an","-preset","fast",out],capture_output=True,timeout=60)
+            return r2.returncode==0
+        else:  # image
+            r=requests.get("https://pixabay.com/api/",
+                params={"key":PIXABAY_KEY,"q":search,"image_type":"photo",
+                        "orientation":"horizontal","per_page":10,"safesearch":"true"},timeout=15)
+            hits=r.json().get("hits",[])
+            if not hits: return False
+            url=random.choice(hits[:5])["largeImageURL"]
+            img=requests.get(url,timeout=30)
+            with open(out,"wb") as f: f.write(img.content); return True
+    except Exception as e: log.warning(f"Pixabay: {e}"); return False
+
+def solid_bg(out, dur):
+    subprocess.run(["ffmpeg","-y","-f","lavfi",
+        "-i",f"color=c=0x080808:size=1920x1080:duration={dur}:rate=25",
+        "-c:v","libx264","-pix_fmt","yuv420p",out],
+        capture_output=True,timeout=30)
+
+def stage_6_visuals(script, cfg):
+    topic   = cfg["topic"]
+    vprefix = cfg.get("visual_prefix", topic)
+    log.info(f"Stage 6: Visuals for {len(script)} scenes...")
+    tg(f"🎨 Creating visuals...")
+    vis=WORKSPACE/"visuals"; vis.mkdir(exist_ok=True)
+
+    for i,scene in enumerate(script):
+        n     = scene["scene"]
+        vtype = scene.get("visual_type","ai_image")
+        prompt= scene.get("ai_prompt",f"cinematic dramatic {topic} scene no faces no text")
+        search= scene.get("visual_search",f"{vprefix} cinematic")
+        out   = str(vis/f"scene_{n:03d}.mp4")
+        img   = str(vis/f"scene_{n:03d}.jpg")
+        anim  = ANIMS[i%len(ANIMS)]
+
+        dur = get_dur(scene["audio_file"]) if scene.get("audio_file") else float(scene.get("duration_hint",4))
+        scene["actual_duration"]=dur
+        success=False
+
+        if vtype=="text_stat":
+            if make_text_stat(scene["voiceover"],out,dur,cfg["lang"]):
+                scene["video_file"]=out; log.info(f"  {n}: text_stat ✓"); continue
+
+        elif vtype=="stock_video":
+            log.info(f"  {n}: stock '{search}'")
+            if fetch_pexels_video(search,out,dur): scene["video_file"]=out; success=True
+            if not success and fetch_pixabay(search,out,dur): scene["video_file"]=out; success=True
+
+        else:  # ai_image
+            if skip_ai(prompt):
+                log.info(f"  {n}: skip AI (hallucination risk)")
+            else:
+                if fetch_pollinations(prompt,img,seed=n*17+i):
+                    if img_to_vid(img,out,dur,anim): scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations+{anim} ✓")
+
+        # Universal fallbacks
+        if not success:
+            if fetch_pexels_video(search,out,dur): scene["video_file"]=out; success=True
+        if not success:
+            if fetch_pexels_image(search,img):
+                if img_to_vid(img,out,dur,anim): scene["video_file"]=out; success=True
+        if not success:
+            if fetch_pixabay(search,img):
+                if img_to_vid(img,out,dur,anim): scene["video_file"]=out; success=True
+        if not success:
+            solid_bg(out,dur); scene["video_file"]=out; log.warning(f"  {n}: fallback solid bg")
+
+    return script
+
+# ═══════════════════════════════════════════════════════════
+#  STAGE 7 — ASSEMBLY
+#  - Merges video+voice per scene
+#  - Mixes in music at -18dB
+#  - Mixes in SFX at -12dB per scene
+#  - Rebuilt caption engine (drawtext, lower-third, word-by-word)
+# ═══════════════════════════════════════════════════════════
+def _srt(s):
+    h,m=int(s//3600),int((s%3600)//60)
+    return f"{h:02d}:{m:02d}:{int(s%60):02d},{int((s%1)*1000):03d}"
+
+def build_caption_drawtext(script):
+    """
+    Build FFmpeg drawtext filter string.
+    2-3 words at a time, lower-third position, word-by-word timing.
+    Key words (numbers, capitalized) in yellow. Rest in white.
+    """
+    filters = []
+    
+    for scene in script:
+        text  = scene.get("voiceover","").strip()
+        dur   = scene.get("actual_duration",4.0)
+        start = scene.get("start_time",0.0)
         if not text: continue
-        dur = scene.get("actual_duration", 4.0)
-        start = scene.get("start_time", 0.0)
+        
         words = text.split()
-        if not words: continue
+        chunks, cur = [], []
+        for w in words:
+            cur.append(w)
+            if len(cur)>=3: chunks.append(" ".join(cur)); cur=[]
+        if cur: chunks.append(" ".join(cur))
+        
+        tpc = dur/max(len(chunks),1)
+        
+        for j,chunk in enumerate(chunks):
+            cs = start + j*tpc
+            ce = cs + tpc - 0.05
+            
+            # Detect key words (numbers, caps) for yellow
+            has_key = bool(re.search(r'\d', chunk)) or any(
+                w[0].isupper() and len(w)>2 for w in chunk.split() if w
+            )
+            color = "#FFD700" if has_key else "white"
+            
+            safe = re.sub(r"[':\"\\%\[\]{}|]","",chunk)
+            
+            # Lower third: 75% down the screen
+            # Size 28, bold, black outline
+            dt = (f"drawtext=text='{safe}':"
+                  f"fontsize=28:fontcolor={color}:"
+                  f"x=(w-text_w)/2:y=h*0.75:"
+                  f"fontname=DejaVu-Sans-Bold:"
+                  f"borderw=4:bordercolor=black:"
+                  f"enable='between(t,{cs:.3f},{ce:.3f})'")
+            filters.append(dt)
+    
+    return ",".join(filters) if filters else "null"
 
-        # Group into 2-3 word chunks
-        chunks = []
-        i = 0
-        while i < len(words):
-            chunk_words = words[i:i+3]
-            chunk = " ".join(chunk_words)
-            chunks.append(chunk)
-            i += 3
-
-        time_per = dur / len(chunks)
-        for j, chunk in enumerate(chunks):
-            cs = start + j * time_per
-            ce = cs + time_per - 0.05
-            entries.append((cs, ce, chunk))
-
-    return entries
-
-def make_sfx_click(out_path, duration=0.1):
-    """Generate a subtle digital click sound."""
-    cmd = ["ffmpeg","-y","-f","lavfi",
-           "-i",f"sine=frequency=1200:duration={duration}:sample_rate=44100",
-           "-af","volume=0.15,afade=t=out:st=0:d={duration}",
-           out_path]
-    subprocess.run(cmd, capture_output=True, timeout=10)
-
-def stage_6_assemble(script, genre):
-    log.info("Stage 6: Assembling professional video...")
+def stage_7_assemble(script, cfg, music_path):
+    log.info("Stage 7: Assembling...")
     tg("🎞️ Final assembly...")
+    asm=WORKSPACE/"assembly"; asm.mkdir(exist_ok=True)
 
-    asm = WORKSPACE / "assembly"
-    asm.mkdir(exist_ok=True)
-
-    # Step 1: Merge each scene's video + audio
-    scene_files = []
-    current_time = 0.0
+    # Step 1: Merge video+voice per scene, add SFX
+    scene_files=[]
+    cur_time=0.0
 
     for scene in script:
-        n = scene["scene"]
+        n     = scene["scene"]
         video = scene.get("video_file")
         audio = scene.get("audio_file")
-        dur = scene.get("actual_duration", 4.0)
-        scene["start_time"] = current_time
+        dur   = scene.get("actual_duration",4.0)
+        sfx_t = scene.get("sfx","none")
+        scene["start_time"]=cur_time
 
-        if not video:
-            log.warning(f"  Scene {n}: no video, skipping")
-            continue
+        if not video: continue
 
-        out = str(asm / f"merged_{n:03d}.mp4")
+        out = str(asm/f"merged_{n:03d}.mp4")
+        sfx_file = fetch_sfx(sfx_t) if sfx_t and sfx_t!="none" else None
 
-        if audio:
-            cmd = ["ffmpeg","-y",
-                   "-i", os.path.abspath(video),
-                   "-i", os.path.abspath(audio),
-                   "-t", str(dur),
-                   "-c:v","libx264","-c:a","aac",
-                   "-map","0:v:0","-map","1:a:0",
-                   "-shortest","-preset","fast", out]
+        if audio and sfx_file:
+            # Mix voice + SFX
+            mixed_audio = str(asm/f"audio_{n:03d}.mp3")
+            subprocess.run(["ffmpeg","-y",
+                "-i",os.path.abspath(audio),
+                "-i",os.path.abspath(sfx_file),
+                "-filter_complex","[0:a]volume=1.0[v];[1:a]volume=0.4[s];[v][s]amix=inputs=2:duration=first",
+                "-c:a","aac",mixed_audio],capture_output=True,timeout=30)
+            cmd=["ffmpeg","-y","-i",os.path.abspath(video),"-i",mixed_audio,
+                 "-t",str(dur),"-c:v","libx264","-c:a","aac",
+                 "-map","0:v:0","-map","1:a:0","-shortest","-preset","fast",out]
+        elif audio:
+            cmd=["ffmpeg","-y","-i",os.path.abspath(video),"-i",os.path.abspath(audio),
+                 "-t",str(dur),"-c:v","libx264","-c:a","aac",
+                 "-map","0:v:0","-map","1:a:0","-shortest","-preset","fast",out]
         else:
-            cmd = ["ffmpeg","-y",
-                   "-i", os.path.abspath(video),
-                   "-t", str(dur),
-                   "-c:v","libx264","-preset","fast","-an", out]
+            cmd=["ffmpeg","-y","-i",os.path.abspath(video),
+                 "-t",str(dur),"-c:v","libx264","-preset","fast","-an",out]
 
-        r = subprocess.run(cmd, capture_output=True, timeout=180)
-        if r.returncode == 0 and os.path.exists(out):
-            scene_files.append(out)
-            current_time += dur
+        r=subprocess.run(cmd,capture_output=True,timeout=180)
+        if r.returncode==0 and os.path.exists(out):
+            scene_files.append(out); cur_time+=dur
         else:
-            log.warning(f"  Scene {n} merge failed: {r.stderr.decode()[-100:]}")
+            log.warning(f"Scene {n} merge failed: {r.stderr.decode()[-80:]}")
 
-    if not scene_files:
-        raise RuntimeError("No scenes assembled!")
+    if not scene_files: raise RuntimeError("No scenes assembled!")
 
-    # Step 2: Concat
-    concat_f = str(asm / "concat.txt")
-    with open(concat_f,"w") as f:
-        for sf in scene_files:
-            f.write(f"file '{os.path.abspath(sf)}'\n")
+    # Step 2: Concat all scenes
+    cfile=str(asm/"concat.txt")
+    with open(cfile,"w") as f:
+        for sf in scene_files: f.write(f"file '{os.path.abspath(sf)}'\n")
 
-    raw = str(WORKSPACE / "raw_output.mp4")
-    r = subprocess.run(
-        ["ffmpeg","-y","-f","concat","-safe","0","-i",concat_f,
-         "-c:v","libx264","-c:a","aac","-movflags","+faststart","-preset","fast", raw],
-        capture_output=True, timeout=600
-    )
-    if r.returncode != 0:
-        raise RuntimeError(f"Concat failed: {r.stderr.decode()[-300:]}")
+    raw=str(WORKSPACE/"raw.mp4")
+    r=subprocess.run(["ffmpeg","-y","-f","concat","-safe","0","-i",cfile,
+        "-c:v","libx264","-c:a","aac","-movflags","+faststart","-preset","fast",raw],
+        capture_output=True,timeout=600)
+    if r.returncode!=0: raise RuntimeError(f"Concat failed: {r.stderr.decode()[-200:]}")
 
-    # Step 3: Build kinetic word-by-word SRT
-    srt_entries = build_kinetic_srt(script)
-    srt_path = str(asm / "kinetic.srt")
-    with open(srt_path,"w", encoding="utf-8") as f:
-        for i,(cs,ce,text) in enumerate(srt_entries, 1):
-            f.write(f"{i}\n{_srt(cs)} --> {_srt(ce)}\n{text}\n\n")
-
-    # Step 4: Burn captions — CENTER SCREEN, bold, large
-    # Alignment=10 = center of screen (ASS alignment)
-    caption_style = (
-        "FontSize=36,FontName=DejaVu Sans Bold,"
-        "PrimaryColour=&H00FFFFFF,"   # white
-        "OutlineColour=&H00000000,"   # black outline
-        "Outline=4,Shadow=2,"
-        "Alignment=10,"               # CENTER of screen
-        "MarginV=0"
-    )
-
-    final = str(WORKSPACE / "final_video.mp4")
-    sub_filter = f"subtitles={srt_path}:force_style='{caption_style}'"
-
-    r = subprocess.run(
-        ["ffmpeg","-y","-i",raw,
-         "-vf", sub_filter,
-         "-c:v","libx264","-c:a","copy","-preset","fast", final],
-        capture_output=True, timeout=600
-    )
-    if r.returncode != 0:
-        log.warning("Caption burn failed, using raw")
-        shutil.copy(raw, final)
-
-    sz = os.path.getsize(final)/1024/1024
+    # Step 3: Mix background music at -18dB
+    with_music=str(WORKSPACE/"with_music.mp4")
     total_dur = sum(s.get("actual_duration",4) for s in script)
-    log.info(f"Stage 6: Done → {final} ({sz:.1f}MB, {total_dur:.0f}s)")
+    if music_path and os.path.exists(music_path):
+        subprocess.run(["ffmpeg","-y","-i",raw,"-stream_loop","-1","-i",music_path,
+            "-filter_complex",f"[1:a]volume=0.12,atrim=0:{total_dur}[m];[0:a][m]amix=inputs=2:duration=first[a]",
+            "-map","0:v","-map","[a]","-c:v","copy","-c:a","aac","-shortest",with_music],
+            capture_output=True,timeout=600)
+        if os.path.exists(with_music): shutil.copy(with_music, raw)
+
+    # Step 4: Add captions (drawtext — lower third, 2-3 words, synced)
+    final=str(WORKSPACE/"final_video.mp4")
+    caption_filter = build_caption_drawtext(script)
+
+    if caption_filter != "null":
+        r=subprocess.run(["ffmpeg","-y","-i",raw,
+            "-vf",caption_filter,
+            "-c:v","libx264","-c:a","copy","-preset","fast",final],
+            capture_output=True,timeout=600)
+        if r.returncode!=0:
+            log.warning(f"Caption failed: {r.stderr.decode()[-200:]}. Using raw.")
+            shutil.copy(raw,final)
+    else:
+        shutil.copy(raw,final)
+
+    sz=os.path.getsize(final)/1024/1024
+    log.info(f"Stage 7: {final} ({sz:.1f}MB, {total_dur:.0f}s)")
     return final
 
 # ═══════════════════════════════════════════════════════════
-#  STAGE 7 — QC
+#  STAGE 8 — QC
 # ═══════════════════════════════════════════════════════════
-def stage_7_qc(video_path, script, genre):
-    log.info("Stage 7: QC check...")
-    tg("🔍 Quality checking...")
-
+def stage_8_qc(video_path, script, cfg):
+    log.info("Stage 8: QC...")
+    tg("🔍 QC check...")
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_KEY)
-        model = genai.GenerativeModel("gemini-2.5-flash")
-
-        total_dur = sum(s.get("actual_duration",4) for s in script)
-        avg_cut = total_dur / max(len(script),1)
-        hook = script[0].get("voiceover","") if script else ""
-        scenes_text = "\n".join([
-            f"Scene {s['scene']} ({s.get('actual_duration',4):.1f}s) [{s.get('visual_type','ai_image')}]: {s['voiceover']}"
-            for s in script[:15]
-        ])
-
-        r = model.generate_content(f"""Rate this {genre} YouTube video:
-
-Hook (first line): "{hook}"
-Total scenes: {len(script)}
-Total duration: {total_dur:.0f}s
-Avg cut: {avg_cut:.1f}s (target: 3-5s)
-Language: {LANGUAGE}
-
-First 15 scenes:
-{scenes_text}
-
-Score 0-10 each. Return ONLY JSON:
-{{
-  "score": 8,
-  "hook_score": 9,
-  "pacing_score": 8,
-  "visual_variety_score": 7,
-  "verdict": "approved",
-  "reason": "brief reason",
-  "improvement": "one specific fix"
-}}
-
-verdict: "approved"(>=7), "drafts"(5-6), "retry"(<5)""")
-
-        text = r.text.strip().replace("```json","").replace("```","").strip()
-        result = json.loads(text)
-        log.info(f"Stage 7: {result['score']}/10 — {result['verdict'].upper()}")
-        return result
+        total=sum(s.get("actual_duration",4) for s in script)
+        avg=total/max(len(script),1)
+        hook=script[0].get("voiceover","") if script else ""
+        text=gemini(f"""Rate this {cfg['genre']} YouTube video in {cfg['lang']} about "{cfg['topic']}":
+Hook: "{hook}"
+Scenes: {len(script)}, Duration: {total:.0f}s, Avg cut: {avg:.1f}s
+Niche: {cfg.get('niche','general')}
+Return ONLY JSON:
+{{"score":8,"hook_score":9,"pacing_score":8,"verdict":"approved","reason":"brief","improvement":"one fix"}}
+verdict: "approved"(>=7),"drafts"(5-6),"retry"(<5)""")
+        text=text.strip().replace("```json","").replace("```","").strip()
+        r=json.loads(text)
+        log.info(f"Stage 8: {r['score']}/10 — {r['verdict']}")
+        return r
     except Exception as e:
         log.warning(f"QC failed: {e}")
         return {"score":7,"verdict":"approved","reason":"QC unavailable"}
 
 # ═══════════════════════════════════════════════════════════
-#  STAGE 8 — PUBLISH
+#  STAGE 9 — PUBLISH
 # ═══════════════════════════════════════════════════════════
-def generate_metadata(topic, script, genre, lang):
-    try:
-        from groq import Groq
-        client = Groq(api_key=GROQ_KEY)
-        hook = script[0].get("voiceover","") if script else ""
-        lang_note = f"Title and description in {lang} language." if lang != "english" else ""
-        r = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role":"user","content":f"""Write YouTube metadata for a {genre} video.
-Topic: "{topic}"
-Hook line: "{hook}"
-{lang_note}
-
-Return ONLY JSON:
-{{
-  "title": "viral title under 60 chars with power word or number",
-  "description": "3 engaging paragraphs with keywords",
-  "tags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8","tag9","tag10"],
-  "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5"
-}}"""}],
-            max_tokens=600,
-        )
-        text = r.choices[0].message.content.strip().replace("```json","").replace("```","").strip()
-        return json.loads(text)
-    except Exception as e:
-        log.warning(f"Metadata failed: {e}")
-        return {
-            "title": f"The Shocking Truth About {topic}",
-            "description": f"Everything about {topic} explained.",
-            "tags": [topic, genre, "facts", "viral", "documentary"],
-            "hashtags": f"#{topic.replace(' ','')} #{genre} #viral #facts"
-        }
-
-def stage_8_publish(video_path, script, genre, lang):
-    log.info("Stage 8: Publishing...")
+def stage_9_publish(video_path, script, cfg):
+    log.info("Stage 9: Publishing...")
     tg("📤 Uploading to YouTube...")
+    topic = cfg["topic"]
+    lang  = cfg["lang"]
+    niche = cfg.get("niche","")
+    genre = cfg["genre"]
 
-    meta = generate_metadata(TOPIC, script, genre, lang)
-    log.info(f"  Title: {meta['title']}")
+    # Generate metadata
+    try:
+        hook = script[0].get("voiceover","") if script else ""
+        niche_tag = f"#{niche}Hindi #Hindi{niche.capitalize()}" if niche else ""
+        meta_text = groq(f"""YouTube metadata for {lang} {genre} video.
+Topic: "{topic}"
+Niche: {niche}
+Hook: "{hook}"
+Return ONLY JSON:
+{{"title":"viral {lang} title under 60 chars with power word",
+  "description":"3 engaging paragraphs in {lang} with keywords. Add income disclaimer if finance.",
+  "tags":["{topic}","hindi","{niche}","viral","facts"],
+  "hashtags":"#{topic.replace(' ','')} #hindi #{niche} #viral"
+}}""", max_tokens=400)
+        meta_text=meta_text.replace("```json","").replace("```","").strip()
+        meta=json.loads(meta_text)
+    except:
+        meta={"title":f"{topic} — पूरी सच्चाई",
+              "description":f"{topic} के बारे में पूरी जानकारी।",
+              "tags":[topic,"hindi",niche or "facts"],"hashtags":f"#{topic.replace(' ','')} #hindi"}
 
-    now = datetime.now(timezone.utc)
-    h, m = map(int, SCHEDULE_TIME.split(":"))
-    pub = now.replace(hour=h, minute=m, second=0, microsecond=0)
-    pub_str = pub.isoformat().replace("+00:00","Z")
+    log.info(f"Title: {meta['title']}")
+    now=datetime.now(timezone.utc)
+    h,m=map(int,cfg["schedule"].split(":"))
+    pub=now.replace(hour=h,minute=m,second=0,microsecond=0).isoformat().replace("+00:00","Z")
 
     try:
         from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
-
-        token_data = os.environ.get("YOUTUBE_TOKEN_JSON","")
-        if not token_data:
-            raise ValueError("YOUTUBE_TOKEN_JSON is empty")
-
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
-            tmp.write(token_data)
-            token_path = tmp.name
-
-        creds = Credentials.from_authorized_user_file(token_path)
-        yt = build("youtube","v3", credentials=creds)
-
-        body = {
-            "snippet": {
-                "title": meta["title"],
-                "description": meta["description"] + "\n\n" + meta.get("hashtags",""),
-                "tags": meta["tags"],
-                "categoryId": "28",
-                "defaultLanguage": {"english":"en","hindi":"hi","spanish":"es",
-                                    "french":"fr","german":"de","arabic":"ar"}.get(lang,"en")
-            },
-            "status": {
-                "privacyStatus": "private",
-                "publishAt": pub_str,
-                "selfDeclaredMadeForKids": False
-            }
-        }
-
-        media = MediaFileUpload(video_path, mimetype="video/mp4", resumable=True, chunksize=5*1024*1024)
-        req = yt.videos().insert(part="snippet,status", body=body, media_body=media)
-
-        response = None
-        while response is None:
-            status, response = req.next_chunk()
-            if status:
-                log.info(f"  Upload: {int(status.progress()*100)}%")
-
-        url = f"https://youtube.com/watch?v={response['id']}"
-        log.info(f"Stage 8: {url}")
+        token_data=os.environ.get("YOUTUBE_TOKEN_JSON","")
+        if not token_data: raise ValueError("YOUTUBE_TOKEN_JSON empty")
+        with tempfile.NamedTemporaryFile(mode='w',suffix='.json',delete=False) as tmp:
+            tmp.write(token_data); token_path=tmp.name
+        creds=Credentials.from_authorized_user_file(token_path)
+        yt=build("youtube","v3",credentials=creds)
+        body={"snippet":{"title":meta["title"],
+              "description":meta["description"]+"\n\n"+meta.get("hashtags",""),
+              "tags":meta.get("tags",[topic]),"categoryId":"28"},
+              "status":{"privacyStatus":"private","publishAt":pub,"selfDeclaredMadeForKids":False}}
+        media=MediaFileUpload(video_path,mimetype="video/mp4",resumable=True,chunksize=5*1024*1024)
+        req=yt.videos().insert(part="snippet,status",body=body,media_body=media)
+        resp=None
+        while resp is None:
+            st,resp=req.next_chunk()
+            if st: log.info(f"Upload {int(st.progress()*100)}%")
+        url=f"https://youtube.com/watch?v={resp['id']}"
+        log.info(f"Stage 9: {url}")
         return url
-
     except Exception as e:
         log.error(f"Upload failed: {e}")
         return f"Upload failed: {e}"
@@ -1169,76 +989,372 @@ def stage_8_publish(video_path, script, genre, lang):
 #  MAIN
 # ═══════════════════════════════════════════════════════════
 def run_pipeline():
-    start = time.time()
-    log.info(f"🚀 Pipeline v3.0 | Topic: '{TOPIC}' | Genre: {GENRE} | Lang: {LANGUAGE} | Duration: {DURATION}min")
-    tg(f"🚀 Starting pipeline v3.0\nTopic: {TOPIC}\nSchedule: {SCHEDULE_TIME} UTC")
+    start=time.time()
+    cfg=parse_input()
+
+    log.info(f"🚀 v5.0 | {cfg['topic']} | niche={cfg.get('niche','')} | genre={cfg['genre']} | lang={cfg['lang']} | {cfg['duration_min']}min")
+    tg(f"🚀 Starting v5.0\n📌 {cfg['topic']}\n🎬 {cfg['genre']} | {cfg['lang']} | {cfg['duration_min']}min\n⏰ Upload: {cfg['schedule']} UTC")
 
     try:
-        # Stage 0: Auto-detect settings
-        genre, lang, dur = stage_0_autodetect(TOPIC, GENRE, LANGUAGE, DURATION)
-        _save({"genre":genre,"lang":lang,"duration":dur}, "settings.json")
+        research=stage_1_research(cfg)
+        _save(research,"research.json")
 
-        # Stage 1: Research
-        research = stage_1_research(TOPIC, lang)
+        script=stage_2_script(research,cfg)
+        _save(script,"script.json")
+        tg(f"✍️ {len(script)} scenes written")
+
+        script=stage_3_voice(script,cfg)
+
+        music_path=stage_4_music(cfg)
+
+        script=stage_6_visuals(script,cfg)
+        _save(script,"script_final.json")
+
+        final_video=stage_7_assemble(script,cfg,music_path)
+
+        qc=stage_8_qc(final_video,script,cfg)
+        _save(qc,"qc.json")
+
+        verdict=qc.get("verdict","approved")
+        score=qc.get("score",7)
+
+        if verdict=="retry":
+            tg(f"❌ QC {score}/10 — Rejected\n{qc.get('reason','')}")
+            return
+        if verdict=="drafts":
+            tg(f"⚠️ QC {score}/10 — Drafts\n{qc.get('reason','')}")
+            return
+
+        url=stage_9_publish(final_video,script,cfg)
+        elapsed=int(time.time()-start)
+        total=sum(s.get("actual_duration",4) for s in script)
+
+        tg(f"✅ DONE!\n\n📺 {url}\n⏰ {cfg['schedule']} UTC\n🏆 QC: {score}/10\n🎬 {len(script)} scenes | {total:.0f}s\n✂️ Avg {total/max(len(script),1):.1f}s/cut\n⚡ {elapsed}s total")
+
+    except Exception as e:
+        import traceback
+        log.error(f"CRASH: {e}\n{traceback.format_exc()}")
+        tg(f"💥 Crashed: {str(e)[:250]}\nCheck GitHub Actions logs.")
+        raise
+
+if __name__=="__main__":
+    run_pipeline()
+
+# ═══════════════════════════════════════════════════════════
+#  COLAB CLI — Wan2.1 video generation on free T4 GPU
+#  Added in v5.1
+#
+#  How it works:
+#  1. pipeline.py collects all ai_image scenes that need
+#     cartoon/animated video
+#  2. Writes scene_prompts.json with their prompts
+#  3. GitHub Actions installs colab CLI
+#  4. colab run --gpu T4 wan21_generator.py
+#  5. Downloads generated clips back
+#  6. pipeline.py uses them instead of Pollinations images
+#
+#  Requires: COLAB_TOKEN secret in GitHub
+#  Get it: colab auth token (run once locally, copy output)
+# ═══════════════════════════════════════════════════════════
+
+def stage_wan21_colab(scenes_needing_video, topic):
+    """
+    Runs Wan2.1 on Colab T4 GPU via CLI.
+    Returns dict: {scene_number: local_video_path}
+    """
+    if not scenes_needing_video:
+        return {}
+
+    colab_token = os.environ.get("COLAB_TOKEN", "")
+    if not colab_token:
+        log.warning("COLAB_TOKEN not set — skipping Wan2.1, using Pollinations instead")
+        return {}
+
+    log.info(f"Wan2.1 via Colab CLI: {len(scenes_needing_video)} scenes")
+    tg(f"🎨 Wan2.1 GPU generation: {len(scenes_needing_video)} animated clips...")
+
+    # Write prompts file
+    prompts_file = str(WORKSPACE / "scene_prompts.json")
+    with open(prompts_file, "w") as f:
+        json.dump(scenes_needing_video, f, indent=2)
+
+    clips_dir = WORKSPACE / "wan_clips"
+    clips_dir.mkdir(exist_ok=True)
+
+    try:
+        # Install Colab CLI (if not already installed)
+        subprocess.run(["pip", "install", "-q", "google-colab-cli"],
+            capture_output=True, timeout=60)
+
+        # Authenticate
+        env = os.environ.copy()
+        env["COLAB_TOKEN"] = colab_token
+
+        # Provision T4 GPU, run generator, download clips, stop
+        # Using colab run which handles full lifecycle automatically
+        result = subprocess.run([
+            "colab", "run", "--gpu", "T4",
+            "--upload", f"{prompts_file}:/content/scene_prompts.json",
+            "--upload", "wan21_generator.py:/content/wan21_generator.py",
+            "--download", "/content/clips/:./wan_clips/",
+            "--download", "/content/wan21_results.json:./wan21_results.json",
+            "wan21_generator.py"
+        ], capture_output=True, text=True, timeout=1800, env=env)  # 30 min max
+
+        log.info(f"Colab exit code: {result.returncode}")
+        if result.stdout: log.info(f"Colab output: {result.stdout[-500:]}")
+        if result.stderr: log.warning(f"Colab stderr: {result.stderr[-300:]}")
+
+        # Read results
+        results_file = WORKSPACE / "wan21_results.json"
+        if results_file.exists():
+            with open(results_file) as f:
+                results = json.load(f)
+            clip_map = {}
+            for r in results:
+                if r.get("success"):
+                    local_path = str(clips_dir / f"scene_{r['scene']:03d}.mp4")
+                    if os.path.exists(local_path):
+                        clip_map[r["scene"]] = local_path
+                        log.info(f"  Scene {r['scene']}: Wan2.1 clip ✓")
+            log.info(f"Wan2.1: {len(clip_map)}/{len(scenes_needing_video)} clips generated")
+            tg(f"✅ Wan2.1: {len(clip_map)} animated clips ready")
+            return clip_map
+        else:
+            log.error("wan21_results.json not found — Colab run may have failed")
+            return {}
+
+    except subprocess.TimeoutExpired:
+        log.error("Wan2.1 Colab run timed out (30 min limit)")
+        return {}
+    except Exception as e:
+        log.error(f"Wan2.1 Colab failed: {e}")
+        return {}
+
+# ═══════════════════════════════════════════════════════════
+#  KLING API — cinematic video generation
+#  Added in v5.1
+#
+#  Official Kling API via klingapi.com
+#  Free API key on signup — but needs credits for production
+#  Free tier: 66 credits/day = 2 clips/day at 360p
+#
+#  For production: use klingapi.com prepaid ($9.80 minimum)
+#  OR use the free 2 clips/day for hero shots only
+#
+#  Get API key: klingapi.com/docs → sign up → copy API key
+#  Add as KLING_API_KEY secret in GitHub
+# ═══════════════════════════════════════════════════════════
+
+def generate_kling_clip(prompt, duration=5, mode="std", scene_num=0):
+    """
+    Generate one video clip via Kling API.
+    Returns local file path or None.
+    Uses klingapi.com (official Kling developer API).
+    """
+    kling_key = os.environ.get("KLING_API_KEY", "")
+    if not kling_key:
+        return None
+
+    out_path = str(WORKSPACE / "visuals" / f"kling_{scene_num:03d}.mp4")
+
+    try:
+        BASE = "https://api.klingapi.com"
+
+        # Submit generation task
+        resp = requests.post(f"{BASE}/v1/videos/text2video",
+            headers={"Authorization": f"Bearer {kling_key}",
+                     "Content-Type": "application/json"},
+            json={"model": "kling-v2.6-pro" if mode=="pro" else "kling-v2.6",
+                  "prompt": prompt,
+                  "negative_prompt": "blurry, ugly, text, watermark, faces, deformed",
+                  "duration": duration,
+                  "aspect_ratio": "16:9",
+                  "mode": mode},
+            timeout=30)
+
+        if resp.status_code != 200:
+            log.warning(f"Kling submit failed: {resp.status_code} {resp.text[:200]}")
+            return None
+
+        task_id = resp.json().get("task_id")
+        if not task_id:
+            log.warning(f"Kling: no task_id in response")
+            return None
+
+        log.info(f"  Kling task {task_id} submitted, polling...")
+
+        # Poll for result (max 5 minutes)
+        for attempt in range(60):
+            time.sleep(5)
+            poll = requests.get(f"{BASE}/v1/videos/text2video/{task_id}",
+                headers={"Authorization": f"Bearer {kling_key}"},
+                timeout=15)
+
+            if poll.status_code != 200:
+                continue
+
+            data   = poll.json()
+            status = data.get("status", "")
+
+            if status == "completed":
+                video_url = data.get("video_url", "") or data.get("url","")
+                if video_url:
+                    r = requests.get(video_url, stream=True, timeout=60)
+                    with open(out_path, "wb") as f:
+                        for chunk in r.iter_content(8192): f.write(chunk)
+                    log.info(f"  Kling scene {scene_num}: ✓ ({os.path.getsize(out_path)//1024}KB)")
+                    return out_path
+                break
+            elif status in ("failed", "error"):
+                log.warning(f"  Kling task failed: {data.get('error','')}")
+                break
+            else:
+                log.info(f"  Kling {task_id}: {status} (attempt {attempt+1}/60)")
+
+    except Exception as e:
+        log.warning(f"  Kling scene {scene_num}: {e}")
+
+    return None
+
+def stage_kling_visuals(script, cfg, max_clips=2):
+    """
+    Uses Kling for the most important scenes (hero shots).
+    Free tier: 2 clips/day max (66 credits, 30 credits per 5s clip).
+    Only used for documentary/cinematic genres.
+    Skips if KLING_API_KEY not set.
+    """
+    kling_key = os.environ.get("KLING_API_KEY", "")
+    if not kling_key:
+        log.info("KLING_API_KEY not set — skipping Kling")
+        return script
+
+    genre = cfg.get("genre","documentary")
+    if genre not in ["documentary","shorts"]:
+        log.info(f"Kling: skipping for genre={genre}")
+        return script
+
+    log.info(f"Kling: generating up to {max_clips} cinematic hero shots...")
+    tg(f"🎬 Kling AI: generating {max_clips} cinematic clips...")
+
+    # Pick most important scenes (first 2 stock_video or ai_image scenes)
+    candidates = [s for s in script
+                  if s.get("visual_type") in ("stock_video","ai_image")
+                  and not s.get("video_file")][:max_clips]
+
+    for scene in candidates:
+        n      = scene["scene"]
+        prompt = scene.get("ai_prompt", scene.get("visual_search","cinematic scene"))
+        # Make prompt more cinematic for Kling
+        kling_prompt = f"{prompt}, cinematic 4K, dramatic lighting, smooth motion, professional filmmaking"
+        clip = generate_kling_clip(kling_prompt, duration=5, mode="std", scene_num=n)
+        if clip:
+            scene["video_file"] = clip
+            scene["visual_source"] = "kling"
+            log.info(f"  Scene {n}: Kling clip applied")
+
+    return script
+
+
+# ═══════════════════════════════════════════════════════════
+#  UPDATED run_pipeline() — includes Wan2.1 + Kling
+# ═══════════════════════════════════════════════════════════
+
+def run_pipeline_v51():
+    """
+    v5.1 pipeline — adds Colab CLI Wan2.1 + Kling API
+    Replaces run_pipeline() when both optional integrations active.
+    """
+    start = time.time()
+    cfg   = parse_input()
+    genre = cfg["genre"]
+
+    log.info(f"🚀 v5.1 | {cfg['topic']} | {genre} | {cfg['lang']} | {cfg['duration_min']}min")
+    tg(f"🚀 v5.1\n📌 {cfg['topic']}\n🎬 {genre} | {cfg['lang']} | {cfg['duration_min']}min\n⏰ {cfg['schedule']} UTC")
+
+    try:
+        # Stages 1-3: Research, Script, Voice
+        research = stage_1_research(cfg)
         _save(research, "research.json")
-        tg(f"📚 Research done: {len(research.get('key_facts',[]))} facts found")
 
-        # Stage 2: Script
-        script = stage_2_script(research, genre, lang, dur)
+        script = stage_2_script(research, cfg)
         _save(script, "script.json")
-        tg(f"✍️ Script: {len(script)} scenes | Avg {dur*60/max(len(script),1):.1f}s/scene")
+        tg(f"✍️ {len(script)} scenes")
 
-        # Stage 3: B-roll upgrade
-        script = stage_3_broll_upgrade(script)
-        _save(script, "script_upgraded.json")
+        script = stage_3_voice(script, cfg)
+        music_path = stage_4_music(cfg)
 
-        # Stage 4: Voice
-        voices = VOICE_MAP.get(lang, VOICE_MAP["english"])
-        script = stage_4_voice(script, lang)
-        tg(f"🎙️ Voice done: {voices[0]}")
+        # Stage 5: Route scenes to correct visual engine
+        # ─── Wan2.1 for cartoon/animated genres ──────────
+        wan_scenes = []
+        if genre in ("cartoon",) and os.environ.get("COLAB_TOKEN"):
+            wan_scenes = [s for s in script
+                          if s.get("visual_type") == "ai_image"
+                          and not skip_ai(s.get("ai_prompt",""))]
+            log.info(f"Routing {len(wan_scenes)} scenes to Wan2.1")
 
-        # Stage 5: Visuals
-        script = stage_5_visuals(script)
+        wan_clips = {}
+        if wan_scenes:
+            wan_clips = stage_wan21_colab(wan_scenes, cfg["topic"])
+
+        # Apply Wan2.1 clips to script
+        for scene in script:
+            if scene["scene"] in wan_clips:
+                scene["video_file"] = wan_clips[scene["scene"]]
+                scene["visual_source"] = "wan2.1"
+                # Still need duration from audio
+                if scene.get("audio_file"):
+                    scene["actual_duration"] = get_dur(scene["audio_file"])
+                else:
+                    scene["actual_duration"] = float(scene.get("duration_hint",4))
+
+        # ─── Kling for documentary hero shots ────────────
+        if genre in ("documentary","shorts") and os.environ.get("KLING_API_KEY"):
+            script = stage_kling_visuals(script, cfg, max_clips=2)
+
+        # ─── Standard visual pipeline for remaining scenes ─
+        script = stage_6_visuals(script, cfg)
         _save(script, "script_final.json")
 
-        # Stage 6: Assembly
-        final_video = stage_6_assemble(script, genre)
+        # Stages 7-9: Assembly, QC, Publish
+        final_video = stage_7_assemble(script, cfg, music_path)
 
-        # Stage 7: QC
-        qc = stage_7_qc(final_video, script, genre)
-        _save(qc, "qc_result.json")
+        qc = stage_8_qc(final_video, script, cfg)
+        _save(qc, "qc.json")
 
         verdict = qc.get("verdict","approved")
-        score = qc.get("score",7)
+        score   = qc.get("score",7)
 
         if verdict == "retry":
-            tg(f"❌ QC: {score}/10 — Rejected\n{qc.get('reason','')}\nFix: {qc.get('improvement','')}")
-            return
-
+            tg(f"❌ QC {score}/10 — Rejected\n{qc.get('reason','')}"); return
         if verdict == "drafts":
-            tg(f"⚠️ QC: {score}/10 — Saved to Drafts\n{qc.get('reason','')}\nReview before publishing.")
-            return
+            tg(f"⚠️ QC {score}/10 — Drafts\n{qc.get('reason','')}"); return
 
-        # Stage 8: Publish
-        url = stage_8_publish(final_video, script, genre, lang)
-        elapsed = int(time.time() - start)
-        total_dur = sum(s.get("actual_duration",4) for s in script)
+        url     = stage_9_publish(final_video, script, cfg)
+        elapsed = int(time.time()-start)
+        total   = sum(s.get("actual_duration",4) for s in script)
+        wan_ct  = sum(1 for s in script if s.get("visual_source")=="wan2.1")
+        kling_ct= sum(1 for s in script if s.get("visual_source")=="kling")
 
         tg(
             f"✅ DONE!\n\n"
             f"📺 {url}\n"
-            f"⏰ Goes live: {SCHEDULE_TIME} UTC\n"
-            f"🏆 QC Score: {score}/10\n"
-            f"🎬 {len(script)} scenes | {total_dur:.0f}s video\n"
-            f"✂️ Avg cut: {total_dur/max(len(script),1):.1f}s\n"
-            f"🌍 Language: {lang} | Genre: {genre}\n"
-            f"⚡ Time: {elapsed}s"
+            f"⏰ {cfg['schedule']} UTC\n"
+            f"🏆 QC: {score}/10\n"
+            f"🎬 {len(script)} scenes | {total:.0f}s\n"
+            f"✂️ Avg {total/max(len(script),1):.1f}s/cut\n"
+            f"🎥 Wan2.1: {wan_ct} clips | Kling: {kling_ct} clips\n"
+            f"🌍 {cfg['lang']} | {cfg['genre']}\n"
+            f"⚡ {elapsed}s total"
         )
 
     except Exception as e:
-        log.error(f"Pipeline crashed: {e}")
-        tg(f"💥 Crashed: {str(e)[:300]}\nCheck GitHub Actions logs.")
+        import traceback
+        log.error(f"CRASH: {e}\n{traceback.format_exc()}")
+        tg(f"💥 Crashed: {str(e)[:250]}")
         raise
 
+
+# Override main entry point to use v5.1
 if __name__ == "__main__":
-    run_pipeline()
+    run_pipeline_v51()
