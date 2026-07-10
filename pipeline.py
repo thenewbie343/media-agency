@@ -885,7 +885,24 @@ def stage_7_assemble(script, cfg, music_path):
         capture_output=True,timeout=600)
     if r.returncode!=0: raise RuntimeError(f"Concat failed: {r.stderr.decode()[-200:]}")
 
-    # Step 2.5: Apply genre/niche-specific color grade
+    # Step 2.5: Mix background music into the audio track FIRST
+    # (audio-only operation — fast, uses -c:v copy, no video re-encode)
+    total_dur = sum(s.get("actual_duration",4) for s in script)
+    with_music=str(WORKSPACE/"with_music.mp4")
+    if music_path and os.path.exists(music_path):
+        r_mus = subprocess.run(["ffmpeg","-y","-i",raw,"-stream_loop","-1","-i",music_path,
+            "-filter_complex",f"[1:a]volume=0.12,atrim=0:{total_dur}[m];[0:a][m]amix=inputs=2:duration=first[a]",
+            "-map","0:v","-map","[a]","-c:v","copy","-c:a","aac","-shortest",with_music],
+            capture_output=True,timeout=300)
+        if r_mus.returncode==0 and os.path.exists(with_music):
+            raw = with_music
+        else:
+            log.warning(f"Music mix failed: {r_mus.stderr.decode()[-150:]}")
+
+    # Step 3: SINGLE video re-encode combining color grade + captions.
+    # Doing these together (instead of 2 separate full-video passes)
+    # roughly halves total render time — critical on GitHub's free
+    # CPU-only runners where an 8-min 1080p re-encode is already slow.
     grade = cfg.get("color_grade","cinematic")
     grade_filters = {
         "teal_orange": "curves=r='0/0 0.5/0.4 1/0.95':b='0/0.1 0.5/0.5 1/0.9',eq=saturation=1.15:contrast=1.1",
@@ -894,39 +911,28 @@ def stage_7_assemble(script, cfg, music_path):
         "cinematic":   "eq=saturation=1.05:contrast=1.15:gamma=0.95",
     }
     gf = grade_filters.get(grade, grade_filters["cinematic"])
-    graded = str(WORKSPACE/"graded.mp4")
-    r_grade = subprocess.run(["ffmpeg","-y","-i",raw,"-vf",gf,
-        "-c:v","libx264","-c:a","copy","-preset","fast",graded],
-        capture_output=True, timeout=300)
-    if r_grade.returncode == 0 and os.path.exists(graded):
-        raw = graded
-    else:
-        log.warning(f"Color grade failed: {r_grade.stderr.decode()[-150:]}")
-
-    # Step 3: Mix background music at -18dB
-    with_music=str(WORKSPACE/"with_music.mp4")
-    total_dur = sum(s.get("actual_duration",4) for s in script)
-    if music_path and os.path.exists(music_path):
-        subprocess.run(["ffmpeg","-y","-i",raw,"-stream_loop","-1","-i",music_path,
-            "-filter_complex",f"[1:a]volume=0.12,atrim=0:{total_dur}[m];[0:a][m]amix=inputs=2:duration=first[a]",
-            "-map","0:v","-map","[a]","-c:v","copy","-c:a","aac","-shortest",with_music],
-            capture_output=True,timeout=600)
-        if os.path.exists(with_music): shutil.copy(with_music, raw)
-
-    # Step 4: Add captions (drawtext — lower third, 2-3 words, synced)
-    final=str(WORKSPACE/"final_video.mp4")
     caption_filter = build_caption_drawtext(script)
 
-    if caption_filter != "null":
-        r=subprocess.run(["ffmpeg","-y","-i",raw,
-            "-vf",caption_filter,
-            "-c:v","libx264","-c:a","copy","-preset","fast",final],
-            capture_output=True,timeout=600)
-        if r.returncode!=0:
-            log.warning(f"Caption failed: {r.stderr.decode()[-200:]}. Using raw.")
+    final=str(WORKSPACE/"final_video.mp4")
+    combined_vf = gf if caption_filter=="null" else f"{gf},{caption_filter}"
+
+    # Use ultrafast preset — this is a CPU-bound free runner, not a quality
+    # bottleneck; ultrafast still looks fine for YouTube upload and cuts
+    # encode time dramatically vs "fast" preset on 2-core hosted runners.
+    r=subprocess.run(["ffmpeg","-y","-i",raw,
+        "-vf",combined_vf,
+        "-c:v","libx264","-preset","ultrafast","-crf","23",
+        "-c:a","aac",final],
+        capture_output=True,timeout=1200)
+    if r.returncode!=0:
+        log.warning(f"Combined grade+caption failed: {r.stderr.decode()[-250:]}. Trying captions only.")
+        r2=subprocess.run(["ffmpeg","-y","-i",raw,
+            "-vf",caption_filter if caption_filter!="null" else "null",
+            "-c:v","libx264","-preset","ultrafast","-c:a","aac",final],
+            capture_output=True,timeout=900)
+        if r2.returncode!=0:
+            log.warning("Captions also failed. Using uncolored/uncaptioned raw.")
             shutil.copy(raw,final)
-    else:
-        shutil.copy(raw,final)
 
     sz=os.path.getsize(final)/1024/1024
     log.info(f"Stage 7: {final} ({sz:.1f}MB, {total_dur:.0f}s)")
