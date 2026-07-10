@@ -199,6 +199,72 @@ def groq(prompt, max_tokens=4000):
 # ═══════════════════════════════════════════════════════════
 #  PARSE INPUT — handles both daily auto and manual modes
 # ═══════════════════════════════════════════════════════════
+def sanitize_visual_term(term, vprefix, niche="", is_prompt=False):
+    """
+    Safety net run AFTER the LLM response, regardless of whether it obeyed
+    the English-only instruction. Strips Devanagari script (Pexels/Pixabay/
+    Pollinations cannot use it — this was the root cause of near-zero stock
+    results) and falls back to a safe generic term if nothing usable remains.
+    """
+    if not term:
+        term = vprefix
+    # Strip Devanagari unicode block (U+0900–U+097F) entirely
+    cleaned = re.sub(r'[\u0900-\u097F]+', ' ', term)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+    # If nothing meaningful survived, use a safe generic fallback
+    if len(cleaned) < 3:
+        generic_pool = {
+            "finance": ["bank building interior", "stock market chart", "worried person office", "indian currency notes"],
+            "tech":    ["modern office technology", "smartphone screen closeup", "data center servers", "digital network graphic"],
+            "crime":   ["dark city street night", "police investigation scene", "courtroom dramatic", "newspaper headline dramatic"],
+        }
+        pool = generic_pool.get(niche, ["cinematic dramatic scene", "modern city aerial", "dramatic lighting interior"])
+        cleaned = random.choice(pool)
+
+    if is_prompt:
+        cleaned += ", no text, no logos, no brand names, no faces"
+
+    return cleaned
+
+def extract_json_object(text):
+    """Same robust extraction as extract_json_array, but for a single {...} object."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    text = re.sub(r"```json|```", "", text)
+    start = text.find("{")
+    if start == -1:
+        raise ValueError("No JSON object found in response")
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{": depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i+1]
+    raise ValueError("Unbalanced JSON object")
+
+def extract_english_prefix(topic, genre="documentary"):
+    """
+    Pulls out any English/ASCII words from the topic (e.g. 'Paytm', 'RBI',
+    'ISRO') to use as a safe stock-search prefix. If the topic is entirely
+    in Hindi/Devanagari with no English words, falls back to a generic
+    genre-based term instead of ever passing Devanagari to Pexels/Pixabay/
+    Pollinations, which cannot use it and previously caused every search
+    to return zero results.
+    """
+    english_words = re.findall(r'[A-Za-z][A-Za-z0-9]*', topic)
+    if english_words:
+        return " ".join(english_words[:4])
+    fallback = {
+        "documentary": "news report cinematic",
+        "study": "technology explainer",
+        "cartoon": "colorful illustration",
+        "shorts": "dramatic breaking news",
+        "ad": "modern product",
+        "typography": "abstract background",
+    }
+    return fallback.get(genre, "cinematic dramatic scene")
+
 def parse_input():
     """
     Returns unified config dict regardless of input mode.
@@ -264,7 +330,7 @@ def parse_input():
         "style": gp["style"],
         "hook_type": "shocking or surprising fact",
         "music_mood": "cinematic dramatic",
-        "visual_prefix": topic,
+        "visual_prefix": extract_english_prefix(topic, genre),
         "sfx_default": "whoosh",
         "color_grade": "cinematic",
         "scenes_per_min": gp["scenes_per_min"],
@@ -436,12 +502,12 @@ Write EXACTLY {batch_n} scenes, numbered {start_num} to {start_num + batch_n - 1
 STRICT RULES:
 - Max 12 words per scene voiceover
 - visual_type: rotate "stock_video","ai_image","text_stat" — never 3 same in row
-- visual_search MUST start with "{vprefix}"
-- ai_prompt: cinematic, no faces, no text, no flags, no monuments
+- visual_search MUST BE 100% IN ENGLISH ONLY, even though voiceover is in {lang}. Use simple generic nouns a stock photo site understands (e.g. "bank building", "indian currency", "worried man office", "smartphone screen"). NEVER put Hindi/Devanagari text in visual_search. NEVER use specific brand/company names in visual_search — use generic category words instead (e.g. "mobile payment app" not "Paytm").
+- ai_prompt MUST ALSO BE IN ENGLISH ONLY. Cinematic description, no faces, no text, no flags, no monuments, no specific brand names or logos (use generic descriptions like "fintech office" instead of company names — brand names get blocked by the image generator's safety filter).
 - sfx: deep_impact=reveal | whoosh=transition | click=fact | riser=tension | none=calm
 
 CRITICAL: Return ONLY a raw JSON array of exactly {batch_n} objects. No reasoning, no explanation, no markdown fences.
-[{{"scene":{start_num},"voiceover":"text in {lang}","visual_type":"stock_video","visual_search":"{vprefix} keyword","ai_prompt":"cinematic description","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]"""
+[{{"scene":{start_num},"voiceover":"text in {lang}","visual_type":"stock_video","visual_search":"English keyword only","ai_prompt":"English cinematic description only","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]"""
 
         try:
             text = groq(prompt, max_tokens=2500)
@@ -450,14 +516,23 @@ CRITICAL: Return ONLY a raw JSON array of exactly {batch_n} objects. No reasonin
                 raise ValueError("Empty batch returned")
             for j, s in enumerate(batch):
                 s["scene"] = start_num + j  # guarantee correct sequential numbering
+                # Safety net: strip any Hindi/Devanagari that leaked through
+                # despite instructions, and fall back to a safe generic
+                # English term so Pexels/Pollinations never receive Hindi text
+                s["visual_search"] = sanitize_visual_term(s.get("visual_search",""), vprefix, niche)
+                s["ai_prompt"] = sanitize_visual_term(s.get("ai_prompt",""), vprefix, niche, is_prompt=True)
             full_script.extend(batch)
             last_line = batch[-1].get("voiceover","")
             log.info(f"  Batch OK: +{len(batch)} scenes ({len(full_script)}/{target} total)")
             stalled = 0
+            # Respect Groq's free-tier TPM limit — without this delay,
+            # rapid back-to-back batch calls trigger 429 rate-limit errors
+            # on longer videos (96+ scenes = 10+ batch calls in a row)
+            time.sleep(4)
         except Exception as e:
             log.warning(f"  Batch failed: {e}")
             stalled += 1
-            time.sleep(2)
+            time.sleep(8)  # back off longer on failure, likely a rate limit
 
     if len(full_script) >= 10:
         t = 0.0
@@ -491,7 +566,10 @@ CRITICAL: Return ONLY a raw JSON array of exactly {batch_n} objects. No reasonin
 # ═══════════════════════════════════════════════════════════
 async def _edge_tts(text, path, voice):
     import edge_tts
-    await edge_tts.Communicate(text, voice).save(path)
+    # Slightly faster rate makes Edge-TTS sound noticeably less flat/robotic.
+    # This is a real engine limitation — true emotional prosody isn't
+    # available on the free tier — but +8% rate helps a lot in practice.
+    await edge_tts.Communicate(text, voice, rate="+8%").save(path)
 
 def stage_3_voice(script, cfg):
     lang  = cfg["lang"]
@@ -500,7 +578,8 @@ def stage_3_voice(script, cfg):
     log.info(f"Stage 3: Voice ({voice})...")
     tg(f"🎙️ Generating voice...")
     audio_dir = WORKSPACE/"audio"; audio_dir.mkdir(exist_ok=True)
-    for scene in script:
+    failed_scenes = 0
+    for idx, scene in enumerate(script):
         n    = scene["scene"]
         text = scene.get("voiceover","").strip()
         if not text or scene.get("visual_type")=="text_stat":
@@ -508,19 +587,39 @@ def stage_3_voice(script, cfg):
         out = str(audio_dir/f"scene_{n:03d}.mp3")
         done = False
         for v in fallback:
-            try:
-                asyncio.run(_edge_tts(text, out, v))
-                scene["audio_file"]=out; done=True; break
-            except: pass
+            # Retry twice per voice before moving to the next fallback —
+            # Edge-TTS silently drops requests when hit too fast on long
+            # (90+ scene) videos, which is what caused dozens of scenes
+            # to end up with audio_file=None and broke the whole timeline.
+            for attempt in range(2):
+                try:
+                    asyncio.run(_edge_tts(text, out, v))
+                    if os.path.exists(out) and os.path.getsize(out) > 500:
+                        scene["audio_file"]=out; done=True
+                    break
+                except Exception as e:
+                    log.warning(f"  Scene {n} {v} attempt {attempt+1}: {e}")
+                    time.sleep(1.5)
+            if done: break
         if not done:
             try:
                 from gtts import gTTS
                 lc={"hindi":"hi","english":"en","spanish":"es","french":"fr","german":"de"}.get(lang,"hi")
                 gTTS(text=text,lang=lc).save(out)
-                scene["audio_file"]=out
-            except:
-                log.error(f"Scene {n}: all voice failed")
-                scene["audio_file"]=None
+                if os.path.exists(out) and os.path.getsize(out) > 500:
+                    scene["audio_file"]=out
+                    done=True
+            except Exception as e:
+                log.error(f"  Scene {n}: gTTS also failed: {e}")
+        if not done:
+            failed_scenes += 1
+            scene["audio_file"]=None
+        # Small pause every few scenes so we never hammer Edge-TTS
+        # continuously across 90+ back-to-back requests
+        if idx % 5 == 4:
+            time.sleep(1)
+    if failed_scenes:
+        log.warning(f"Stage 3: {failed_scenes}/{len(script)} scenes have NO audio (all retries exhausted)")
     return script
 
 # ═══════════════════════════════════════════════════════════
@@ -547,30 +646,52 @@ def stage_4_music(cfg):
             url = music_map[key]; break
     url = url or music_map["cinematic dramatic"]
 
+    def is_valid_audio(path):
+        """Verify the downloaded file is actually decodable audio, not an
+        HTML error page or truncated download (a 200 status code with a
+        'not found' HTML body was silently accepted before, causing the
+        'Invalid argument' crash later in ffmpeg during the final mix)."""
+        try:
+            r = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration",
+                "-of","default=noprint_wrappers=1:nokey=1", path],
+                capture_output=True, text=True, timeout=15)
+            return r.returncode == 0 and r.stdout.strip() != ""
+        except Exception:
+            return False
+
     music_path = str(WORKSPACE/"music.mp3")
     try:
         r = requests.get(url, timeout=30)
         if r.status_code == 200 and len(r.content) > 1000:
             with open(music_path,"wb") as f: f.write(r.content)
-            log.info(f"Stage 4: Music downloaded from freepd.com")
-            return music_path
+            if is_valid_audio(music_path):
+                log.info(f"Stage 4: Music downloaded from freepd.com")
+                return music_path
+            else:
+                log.warning("Stage 4: freepd.com download was not valid audio (likely an error page)")
     except Exception as e:
         log.warning(f"Stage 4 freepd failed: {e}")
 
     # Fallback: incompetech
     try:
-        # Use a known working CC track
         r = requests.get("https://incompetech.filmmusic.io/song/3989-impact-prelude/download?type=mp3", timeout=30)
         if r.status_code == 200:
             with open(music_path,"wb") as f: f.write(r.content)
-            log.info("Stage 4: Music from incompetech")
-            return music_path
+            if is_valid_audio(music_path):
+                log.info("Stage 4: Music from incompetech")
+                return music_path
+            else:
+                log.warning("Stage 4: incompetech download was not valid audio")
     except Exception as e:
         log.warning(f"Stage 4 incompetech failed: {e}")
 
-    # Last resort: generate silence
+    # Last resort: generate silence — use .m4a since we encode as aac
+    # (writing aac data into a .mp3-named file caused ffmpeg to reject
+    # it later with "Invalid argument" during the music mix step)
+    music_path = str(WORKSPACE/"music.m4a")
     subprocess.run(["ffmpeg","-y","-f","lavfi","-i","anullsrc=r=44100:cl=stereo",
         "-t","300","-c:a","aac",music_path], capture_output=True, timeout=30)
+    log.warning("Stage 4: Using silent track — no background music this run")
     return music_path
 
 # ═══════════════════════════════════════════════════════════
@@ -1045,15 +1166,15 @@ def stage_9_publish(video_path, script, cfg):
 Topic: "{topic}"
 Niche: {niche}
 Hook: "{hook}"
-Return ONLY JSON:
+Return ONLY JSON, no reasoning, no markdown fences, no explanation:
 {{"title":"viral {lang} title under 60 chars with power word",
   "description":"3 engaging paragraphs in {lang} with keywords. Add income disclaimer if finance.",
   "tags":["{topic}","hindi","{niche}","viral","facts"],
   "hashtags":"#{topic.replace(' ','')} #hindi #{niche} #viral"
 }}""", max_tokens=400)
-        meta_text=meta_text.replace("```json","").replace("```","").strip()
-        meta=json.loads(meta_text)
-    except:
+        meta = json.loads(extract_json_object(meta_text))
+    except Exception as e:
+        log.warning(f"Metadata generation failed, using fallback: {e}")
         meta={"title":f"{topic} — पूरी सच्चाई",
               "description":f"{topic} के बारे में पूरी जानकारी।",
               "tags":[topic,"hindi",niche or "facts"],"hashtags":f"#{topic.replace(' ','')} #hindi"}
