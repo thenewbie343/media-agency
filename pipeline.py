@@ -48,7 +48,27 @@ def extract_json_array(text):
             depth -= 1
             if depth == 0:
                 return text[start:i+1]
-    raise ValueError("Unbalanced JSON array")
+    # Array never closed (response got cut off mid-object due to token
+    # limit). Salvage whichever complete {...} objects exist instead of
+    # discarding the entire batch.
+    return _salvage_truncated_array(text[start:])
+
+def _salvage_truncated_array(fragment):
+    objects = []
+    depth = 0
+    obj_start = None
+    for i, ch in enumerate(fragment):
+        if ch == "{":
+            if depth == 0: obj_start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and obj_start is not None:
+                objects.append(fragment[obj_start:i+1])
+                obj_start = None
+    if not objects:
+        raise ValueError("Truncated response contained no complete objects")
+    return "[" + ",".join(objects) + "]"
 
 # ─── Secrets ────────────────────────────────────────────────
 GROQ_KEY        = os.environ.get("GROQ_KEY", "")
@@ -376,7 +396,27 @@ def stage_2_script(research, cfg):
     elif niche == "crime":
         niche_note = "Build tension slowly. Use dramatic pauses. Reveal information bit by bit. Make the viewer feel like they are watching a thriller."
 
-    prompt = f"""You are a world-class viral Hindi YouTube scriptwriter.
+    # ── BATCHED GENERATION ──────────────────────────────────────
+    # Requesting 90+ scenes of Hindi text in ONE completion reliably
+    # gets truncated mid-array (Hindi/Devanagari uses far more tokens
+    # per character than English), which is why "Unbalanced JSON array"
+    # kept happening regardless of API key. Fix: generate in small
+    # batches that always fit comfortably within the token budget.
+    BATCH_SIZE = 10
+    full_script = []
+    last_line = ""
+    stalled = 0
+
+    while len(full_script) < target and stalled < 3:
+        remaining = target - len(full_script)
+        batch_n = min(BATCH_SIZE, remaining)
+        start_num = len(full_script) + 1
+
+        continuity = (f'The previous scene ended with: "{last_line}". Continue the story naturally from here — do not repeat it.'
+                      if last_line else
+                      'This is the OPENING of the video. Scene 1 must be a shocking hook.')
+
+        prompt = f"""You are a world-class viral Hindi YouTube scriptwriter.
 Style: {style}
 {lang_note}
 {niche_note}
@@ -389,65 +429,62 @@ Key facts:
 Stats:
 {stats_str}
 
-Write {target} scenes. STRICT RULES:
+{continuity}
 
-RULE 1 — HOOK: Scene 1 = shocking opening. NEVER start with "आज हम", "नमस्ते", "दोस्तों", "In this video". Start MID-ACTION.
-GOOD: "2008 में एक रात में 20,000 लोगों की नौकरी चली गई।"
-BAD: "आज हम बात करेंगे..."
+Write EXACTLY {batch_n} scenes, numbered {start_num} to {start_num + batch_n - 1}.
 
-RULE 2 — SHORT: Max 12 words per scene voiceover.
+STRICT RULES:
+- Max 12 words per scene voiceover
+- visual_type: rotate "stock_video","ai_image","text_stat" — never 3 same in row
+- visual_search MUST start with "{vprefix}"
+- ai_prompt: cinematic, no faces, no text, no flags, no monuments
+- sfx: deep_impact=reveal | whoosh=transition | click=fact | riser=tension | none=calm
 
-RULE 3 — VISUAL MIX (rotate, never 3 same in row):
-"stock_video" — real footage from Pexels
-"ai_image" — AI generates cinematic image
-"text_stat" — bold yellow text on dark background (for numbers/statistics)
+CRITICAL: Return ONLY a raw JSON array of exactly {batch_n} objects. No reasoning, no explanation, no markdown fences.
+[{{"scene":{start_num},"voiceover":"text in {lang}","visual_type":"stock_video","visual_search":"{vprefix} keyword","ai_prompt":"cinematic description","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]"""
 
-RULE 4 — SEARCH TERMS: visual_search MUST start with "{vprefix}"
-GOOD: "{vprefix} money crash India" or "{vprefix} dramatic night city"
-BAD: "money crash" or "dramatic city"
+        try:
+            text = groq(prompt, max_tokens=2500)
+            batch = json.loads(extract_json_array(text))
+            if not batch:
+                raise ValueError("Empty batch returned")
+            for j, s in enumerate(batch):
+                s["scene"] = start_num + j  # guarantee correct sequential numbering
+            full_script.extend(batch)
+            last_line = batch[-1].get("voiceover","")
+            log.info(f"  Batch OK: +{len(batch)} scenes ({len(full_script)}/{target} total)")
+            stalled = 0
+        except Exception as e:
+            log.warning(f"  Batch failed: {e}")
+            stalled += 1
+            time.sleep(2)
 
-RULE 5 — AI PROMPTS: No faces, no text, no flags, no specific monuments.
-GOOD: "dark cinematic office building night dramatic lighting aerial"
-BAD: "Harshad Mehta sitting in office"
-
-RULE 6 — SFX: deep_impact=dramatic reveal | whoosh=transition | click=fact | riser=build tension | none=calm
-
-CRITICAL: Return ONLY the raw JSON array. No reasoning, no explanation, no <think> tags, no markdown fences. Your entire response must be parseable by json.loads() directly.
-[{{"scene":1,"voiceover":"text in {lang}","visual_type":"stock_video","visual_search":"{vprefix} keyword","ai_prompt":"cinematic description","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]"""
-
-    try:
-        text = groq(prompt, max_tokens=4000)
-        script = json.loads(extract_json_array(text))
-        if len(script) < 10:
-            raise ValueError(f"Only {len(script)} scenes")
+    if len(full_script) >= 10:
         t = 0.0
-        for s in script:
+        for s in full_script:
             s["start_time"] = t; t += float(s.get("duration_hint",4))
-            # Enforce topic prefix in search
             if vprefix.lower() not in s.get("visual_search","").lower():
                 s["visual_search"] = f"{vprefix} {s.get('visual_search','')}"
-        log.info(f"Stage 2: {len(script)} scenes written")
-        return script
-    except Exception as e:
-        log.error(f"Stage 2 failed: {e}")
-        # Fallback from research — cycles facts to reach target scene count
-        # and varies the visual angle so scenes don't all look identical
-        import itertools
-        facts = [f for f in ([research.get("hook","")] + research.get("key_facts",[]) + research.get("statistics",[])) if f]
-        if not facts:
-            facts = [f"{topic} के बारे में जानकारी"]
-        cycled = list(itertools.islice(itertools.cycle(facts), target))
-        variants = ["aerial establishing shot","close-up detail shot","wide dramatic angle","low angle dramatic","office interior shot"]
-        t = 0.0; script = []
-        for i, f in enumerate(cycled):
-            vt = "text_stat" if i % 5 == 4 else ("stock_video" if i % 3 == 1 else "ai_image")
-            variant = variants[i % len(variants)]
-            s = {"scene": i+1, "voiceover": f[:60], "visual_type": vt,
-                 "visual_search": f"{vprefix} {variant}",
-                 "ai_prompt": f"{variant} cinematic dramatic {topic} scene, no text, no faces",
-                 "emotion": "dramatic", "sfx": sfx_def, "duration_hint": 4, "start_time": t}
-            script.append(s); t += 4
-        return script
+        log.info(f"Stage 2: {len(full_script)} scenes written (batched, target was {target})")
+        return full_script
+
+    log.error(f"Stage 2: batching produced only {len(full_script)} scenes — using cycling fallback")
+    import itertools
+    facts = [f for f in ([research.get("hook","")] + research.get("key_facts",[]) + research.get("statistics",[])) if f]
+    if not facts:
+        facts = [f"{topic} के बारे में जानकारी"]
+    cycled = list(itertools.islice(itertools.cycle(facts), target))
+    variants = ["aerial establishing shot","close-up detail shot","wide dramatic angle","low angle dramatic","office interior shot"]
+    t = 0.0; script = []
+    for i, f in enumerate(cycled):
+        vt = "text_stat" if i % 5 == 4 else ("stock_video" if i % 3 == 1 else "ai_image")
+        variant = variants[i % len(variants)]
+        s = {"scene": i+1, "voiceover": f[:60], "visual_type": vt,
+             "visual_search": f"{vprefix} {variant}",
+             "ai_prompt": f"{variant} cinematic dramatic {topic} scene, no text, no faces",
+             "emotion": "dramatic", "sfx": sfx_def, "duration_hint": 4, "start_time": t}
+        script.append(s); t += 4
+    return script
 
 # ═══════════════════════════════════════════════════════════
 #  STAGE 3 — VOICE
@@ -624,11 +661,12 @@ def make_text_stat(text, out, dur, lang="hindi"):
         cur.append(w)
         if len(" ".join(cur))>18: lines.append(" ".join(cur)); cur=[]
     if cur: lines.append(" ".join(cur))
+    font = "/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf" if lang=="hindi" else "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
     dt=[]
     for i,line in enumerate(lines[:3]):
         y=f"(h/2)-{(len(lines)//2-i)*90}"
-        dt.append(f"drawtext=text='{line}':fontsize=76:fontcolor=#FFD700:x=(w-text_w)/2:y={y}:fontname=DejaVu-Sans-Bold:shadowcolor=black:shadowx=4:shadowy=4")
-    vf=",".join(dt) if dt else f"drawtext=text='{safe[:20]}':fontsize=76:fontcolor=#FFD700:x=(w-text_w)/2:y=(h-text_h)/2"
+        dt.append(f"drawtext=text='{line}':fontsize=76:fontcolor=#FFD700:x=(w-text_w)/2:y={y}:fontfile={font}:shadowcolor=black:shadowx=4:shadowy=4")
+    vf=",".join(dt) if dt else f"drawtext=text='{safe[:20]}':fontsize=76:fontcolor=#FFD700:x=(w-text_w)/2:y=(h-text_h)/2:fontfile={font}"
     r=subprocess.run(["ffmpeg","-y","-f","lavfi",
         "-i",f"color=c=0x080808:size=1920x1080:duration={dur}:rate=25",
         "-vf",vf+",noise=alls=6:allf=t+u","-c:v","libx264","-pix_fmt","yuv420p",out],
@@ -815,7 +853,7 @@ def build_caption_drawtext(script):
             dt = (f"drawtext=text='{safe}':"
                   f"fontsize=28:fontcolor={color}:"
                   f"x=(w-text_w)/2:y=h*0.75:"
-                  f"fontname=DejaVu-Sans-Bold:"
+                  f"fontfile=/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf:"
                   f"borderw=4:bordercolor=black:"
                   f"enable='between(t,{cs:.3f},{ce:.3f})'")
             filters.append(dt)
@@ -855,35 +893,60 @@ def stage_7_assemble(script, cfg, music_path):
             if mix_r.returncode != 0 or not os.path.exists(mixed_audio):
                 log.warning(f"  SFX mix failed for scene {n}, using voice only")
                 mixed_audio = audio
+            # Video clips are already correctly encoded at generation time
+            # (Ken Burns, Pexels trim, text_stat, solid_bg all output
+            # matching 1920x1080 h264/25fps). Re-encoding here was wasting
+            # huge amounts of CPU time on GitHub's 2-core runners and
+            # caused the 600s timeout crash on longer videos.
+            # -c:v copy just re-packages the frames — no re-encode needed.
             cmd=["ffmpeg","-y","-i",os.path.abspath(video),"-i",mixed_audio,
-                 "-t",str(dur),"-c:v","libx264","-c:a","aac",
-                 "-map","0:v:0","-map","1:a:0","-shortest","-preset","fast",out]
+                 "-c:v","copy","-c:a","aac",
+                 "-map","0:v:0","-map","1:a:0","-shortest",out]
         elif audio:
             cmd=["ffmpeg","-y","-i",os.path.abspath(video),"-i",os.path.abspath(audio),
-                 "-t",str(dur),"-c:v","libx264","-c:a","aac",
-                 "-map","0:v:0","-map","1:a:0","-shortest","-preset","fast",out]
+                 "-c:v","copy","-c:a","aac",
+                 "-map","0:v:0","-map","1:a:0","-shortest",out]
         else:
             cmd=["ffmpeg","-y","-i",os.path.abspath(video),
-                 "-t",str(dur),"-c:v","libx264","-preset","fast","-an",out]
+                 "-c:v","copy","-an",out]
 
-        r=subprocess.run(cmd,capture_output=True,timeout=180)
+        r=subprocess.run(cmd,capture_output=True,timeout=60)
         if r.returncode==0 and os.path.exists(out):
             scene_files.append(out); cur_time+=dur
         else:
-            log.warning(f"Scene {n} merge failed: {r.stderr.decode()[-80:]}")
+            # Stream copy failed (rare codec mismatch) — fall back to
+            # a real encode for just this one scene rather than failing.
+            log.warning(f"Scene {n} copy-merge failed, retrying with encode: {r.stderr.decode()[-80:]}")
+            cmd2=["ffmpeg","-y","-i",os.path.abspath(video)] + \
+                 (["-i",os.path.abspath(audio if not (audio and sfx_file) else mixed_audio)] if audio else []) + \
+                 (["-map","0:v:0","-map","1:a:0","-shortest"] if audio else ["-an"]) + \
+                 ["-c:v","libx264","-preset","ultrafast","-c:a","aac",out]
+            r2=subprocess.run(cmd2,capture_output=True,timeout=120)
+            if r2.returncode==0 and os.path.exists(out):
+                scene_files.append(out); cur_time+=dur
+            else:
+                log.warning(f"Scene {n} fully failed, skipping: {r2.stderr.decode()[-80:]}")
 
     if not scene_files: raise RuntimeError("No scenes assembled!")
 
-    # Step 2: Concat all scenes
+    # Step 2: Concat all scenes — try fast stream copy first (all clips
+    # share the same codec/resolution/fps, so this should just work and
+    # takes seconds instead of many minutes). Only fall back to a real
+    # re-encode if copy-mode concat fails for some reason.
     cfile=str(asm/"concat.txt")
     with open(cfile,"w") as f:
         for sf in scene_files: f.write(f"file '{os.path.abspath(sf)}'\n")
 
     raw=str(WORKSPACE/"raw.mp4")
     r=subprocess.run(["ffmpeg","-y","-f","concat","-safe","0","-i",cfile,
-        "-c:v","libx264","-c:a","aac","-movflags","+faststart","-preset","fast",raw],
-        capture_output=True,timeout=600)
-    if r.returncode!=0: raise RuntimeError(f"Concat failed: {r.stderr.decode()[-200:]}")
+        "-c","copy","-movflags","+faststart",raw],
+        capture_output=True,timeout=120)
+    if r.returncode!=0:
+        log.warning(f"Copy-mode concat failed, re-encoding instead: {r.stderr.decode()[-150:]}")
+        r2=subprocess.run(["ffmpeg","-y","-f","concat","-safe","0","-i",cfile,
+            "-c:v","libx264","-preset","ultrafast","-c:a","aac","-movflags","+faststart",raw],
+            capture_output=True,timeout=900)
+        if r2.returncode!=0: raise RuntimeError(f"Concat failed: {r2.stderr.decode()[-200:]}")
 
     # Step 2.5: Mix background music into the audio track FIRST
     # (audio-only operation — fast, uses -c:v copy, no video re-encode)
