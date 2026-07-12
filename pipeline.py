@@ -227,6 +227,77 @@ def sanitize_visual_term(term, vprefix, niche="", is_prompt=False):
 
     return cleaned
 
+# ═══════════════════════════════════════════════════════════
+#  REAL ASSET POOLS — premium fonts, LUTs, overlays, SFX
+#  Upload your actual files to these folders in the repo:
+#    assets/fonts/caption/*.ttf     ← Roman-script fonts for captions
+#    assets/fonts/heading/*.ttf     ← bold display fonts (optional use)
+#    assets/luts/<color_grade>/*.cube   e.g. assets/luts/cinematic/*.cube
+#    assets/overlays/*.png          ← transparent bg-removed fire/particles
+#    assets/sfx/deep_impact/*.mp3
+#    assets/sfx/whoosh/*.mp3
+#    assets/sfx/click/*.mp3
+#    assets/sfx/riser/*.mp3
+# If a folder is missing or empty, the pipeline automatically falls
+# back to the built-in system fonts / synthesized tones / plain color
+# grade — nothing breaks if you haven't uploaded everything yet.
+# ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════
+#  HINGLISH — Roman-script Hindi+English mix, not pure Devanagari.
+#  This is what modern Indian YouTube/Instagram content actually
+#  sounds like, and it also means captions can use ANY of your
+#  premium Latin fonts directly — no Devanagari font needed at all.
+# ═══════════════════════════════════════════════════════════
+HINGLISH_INSTRUCTION = """Write ALL voiceover in HINGLISH — natural Hindi-English code-mixed
+language written ENTIRELY IN ROMAN/ENGLISH ALPHABET, exactly like popular Indian YouTubers
+speak (Tech Burner, Ashish Chanchlani, Finance with Sharan). 
+
+CRITICAL RULES:
+- NEVER use Devanagari script (देवनागरी). Every word must be spelled in Roman letters.
+- Mix Hindi and English naturally: "Yeh dekh ke aapka dimaag ghoom jayega" not pure English,
+  not pure Hindi.
+- Use common Hinglish spellings: "kya", "hai", "nahi", "matlab", "bilkul", "paisa", "sach",
+  written in Roman letters exactly like that.
+- Keep it casual and punchy, like a viral reel script, not formal news Hindi.
+
+Example GOOD line: "Paytm ka stock crash ho gaya raatों raat, aur kisi ko pata nahi chala kyun."
+Example BAD line (pure Devanagari, DO NOT DO THIS): "पेटीएम का स्टॉक रातों रात क्रैश हो गया"
+Example BAD line (too formal/textbook Hindi): "पेटीएम के शेयरों में भारी गिरावट दर्ज की गई।"
+"""
+
+ASSETS_DIR = Path("assets")
+
+def pick_asset(subfolder, extension=None):
+    """Returns a random file path from assets/<subfolder>/, or None if empty/missing."""
+    folder = ASSETS_DIR / subfolder
+    if not folder.exists():
+        return None
+    if extension:
+        files = list(folder.glob(f"*.{extension}"))
+    else:
+        files = [f for f in folder.iterdir() if f.is_file()]
+    return str(random.choice(files)) if files else None
+
+def get_caption_font():
+    """Real premium font if uploaded, otherwise safe system fallback."""
+    real = pick_asset("fonts/caption", "ttf")
+    if real:
+        return real
+    # Fallback: Devanagari-safe font only needed for pure Hindi;
+    # Hinglish (Roman script) works fine with any Latin font.
+    return "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+def get_lut_file(color_grade):
+    """Real .cube LUT file matching the genre's color grade, if uploaded."""
+    real = pick_asset(f"luts/{color_grade}", "cube")
+    if real:
+        return real
+    return pick_asset("luts", "cube")  # any LUT as a fallback
+
+def get_overlay_image():
+    """Random bg-removed overlay PNG (fire/particles/etc) if uploaded."""
+    return pick_asset("overlays", "png")
+
 def extract_json_object(text):
     """Same robust extraction as extract_json_array, but for a single {...} object."""
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
@@ -346,7 +417,7 @@ def stage_1_research(cfg):
     lang  = cfg["lang"]
     log.info(f"Stage 1: Research — {topic}")
     tg(f"📚 Researching: {topic}")
-    lang_note = f"Write ALL content in {lang} language." if lang != "english" else ""
+    lang_note = HINGLISH_INSTRUCTION if lang == "hindi" else (f"Write ALL content in {lang} language." if lang != "english" else "")
     try:
         text = gemini(f"""Research: "{topic}"
 {lang_note}
@@ -398,20 +469,21 @@ Topic: {topic}
 Language: {cfg['lang']}
 
 Return ONLY JSON array (no markdown):
-[{{"scene":1,"voiceover":"exact words to say","visual_type":"stock_video","visual_search":"{vprefix} relevant keyword","ai_prompt":"cinematic image description","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]
+[{{"scene":1,"voiceover":"exact words to say — copy verbatim from the script, do not translate or rewrite it","visual_type":"stock_video","visual_search":"English keyword only","ai_prompt":"English cinematic description only","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]
 
 Rules:
 - Split at natural pause/sentence boundaries
 - Max 15 words per voiceover
+- Do NOT translate or rewrite the voiceover text — use it exactly as the user wrote it
 - visual_type: "stock_video" or "ai_image" or "text_stat"
-- visual_search MUST start with "{vprefix}"
+- visual_search and ai_prompt MUST BE IN ENGLISH ONLY regardless of what language the script is in — use generic nouns like "office building", "money currency", "worried person" — no brand names, no Hindi/Devanagari text
 - sfx: deep_impact|whoosh|click|riser|none""", max_tokens=3000)
         scenes = json.loads(extract_json_array(text))
         t = 0.0
         for s in scenes:
             s["start_time"] = t; t += float(s.get("duration_hint",4))
-            if vprefix.lower() not in s.get("visual_search","").lower():
-                s["visual_search"] = f"{vprefix} {s.get('visual_search','')}"
+            s["visual_search"] = sanitize_visual_term(s.get("visual_search",""), vprefix, cfg.get("niche",""))
+            s["ai_prompt"] = sanitize_visual_term(s.get("ai_prompt",""), vprefix, cfg.get("niche",""), is_prompt=True)
         log.info(f"Stage 2: Parsed {len(scenes)} scenes from provided script")
         return scenes
     except Exception as e:
@@ -447,7 +519,7 @@ def stage_2_script(research, cfg):
     tg(f"✍️ Writing script...")
 
     target = max(15, int(dur * scenes_pm))
-    lang_note = f"ALL voiceover in {lang}." if lang != "english" else ""
+    lang_note = HINGLISH_INSTRUCTION if lang == "hindi" else (f"ALL voiceover in {lang}." if lang != "english" else "")
 
     hook      = research.get("hook","")
     hook_q    = research.get("hook_question","")
@@ -547,7 +619,7 @@ CRITICAL: Return ONLY a raw JSON array of exactly {batch_n} objects. No reasonin
     import itertools
     facts = [f for f in ([research.get("hook","")] + research.get("key_facts",[]) + research.get("statistics",[])) if f]
     if not facts:
-        facts = [f"{topic} के बारे में जानकारी"]
+        facts = [f"{topic} ke baare mein jaankari"]
     cycled = list(itertools.islice(itertools.cycle(facts), target))
     variants = ["aerial establishing shot","close-up detail shot","wide dramatic angle","low angle dramatic","office interior shot"]
     t = 0.0; script = []
@@ -716,6 +788,14 @@ def fetch_sfx(sfx_type):
     if sfx_type == "none" or not sfx_type: return None
     if sfx_type in _sfx_cache: return _sfx_cache[sfx_type]
 
+    # Prefer your real curated SFX (assets/sfx/<type>/*.mp3 or *.wav) —
+    # a synthesized sine wave is a placeholder, never as good as a real
+    # sound-designed whoosh/riser/impact file.
+    real = pick_asset(f"sfx/{sfx_type}")
+    if real:
+        _sfx_cache[sfx_type] = real
+        return real
+
     sfx_dir = WORKSPACE/"sfx"; sfx_dir.mkdir(exist_ok=True)
     out = str(sfx_dir/f"{sfx_type}.mp3")
 
@@ -782,7 +862,9 @@ def make_text_stat(text, out, dur, lang="hindi"):
         cur.append(w)
         if len(" ".join(cur))>18: lines.append(" ".join(cur)); cur=[]
     if cur: lines.append(" ".join(cur))
-    font = "/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf" if lang=="hindi" else "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    # Hinglish is Roman script, so any premium Latin font works here now —
+    # no more Devanagari font dependency needed
+    font = get_caption_font()
     dt=[]
     for i,line in enumerate(lines[:3]):
         y=f"(h/2)-{(len(lines)//2-i)*90}"
@@ -937,11 +1019,13 @@ def _srt(s):
 def build_caption_drawtext(script):
     """
     Build FFmpeg drawtext filter string.
-    2-3 words at a time, lower-third position, word-by-word timing.
-    Key words (numbers, capitalized) in yellow. Rest in white.
+    1-2 words at a time (high-retention style), lower-third position,
+    word-by-word timing. Key words (numbers, capitalized) in yellow.
+    Uses a real premium font if you've uploaded one to assets/fonts/caption/.
     """
     filters = []
-    
+    font = get_caption_font()  # picked once per video for visual consistency
+
     for scene in script:
         text  = scene.get("voiceover","").strip()
         dur   = scene.get("actual_duration",4.0)
@@ -952,7 +1036,7 @@ def build_caption_drawtext(script):
         chunks, cur = [], []
         for w in words:
             cur.append(w)
-            if len(cur)>=3: chunks.append(" ".join(cur)); cur=[]
+            if len(cur)>=2: chunks.append(" ".join(cur)); cur=[]
         if cur: chunks.append(" ".join(cur))
         
         tpc = dur/max(len(chunks),1)
@@ -970,11 +1054,10 @@ def build_caption_drawtext(script):
             safe = re.sub(r"[':\"\\%\[\]{}|]","",chunk)
             
             # Lower third: 75% down the screen
-            # Size 28, bold, black outline
             dt = (f"drawtext=text='{safe}':"
-                  f"fontsize=28:fontcolor={color}:"
+                  f"fontsize=32:fontcolor={color}:"
                   f"x=(w-text_w)/2:y=h*0.75:"
-                  f"fontfile=/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf:"
+                  f"fontfile={font}:"
                   f"borderw=4:bordercolor=black:"
                   f"enable='between(t,{cs:.3f},{ce:.3f})'")
             filters.append(dt)
@@ -1088,13 +1171,24 @@ def stage_7_assemble(script, cfg, music_path):
     # roughly halves total render time — critical on GitHub's free
     # CPU-only runners where an 8-min 1080p re-encode is already slow.
     grade = cfg.get("color_grade","cinematic")
-    grade_filters = {
-        "teal_orange": "curves=r='0/0 0.5/0.4 1/0.95':b='0/0.1 0.5/0.5 1/0.9',eq=saturation=1.15:contrast=1.1",
-        "cool_blue":   "curves=b='0/0.1 0.5/0.6 1/1':eq=saturation=0.9:contrast=1.05",
-        "dark_noir":   "eq=saturation=0.6:contrast=1.3:brightness=-0.05",
-        "cinematic":   "eq=saturation=1.05:contrast=1.15:gamma=0.95",
-    }
-    gf = grade_filters.get(grade, grade_filters["cinematic"])
+
+    # Real .cube LUT if you've uploaded one — this is genuine professional
+    # color grading, not the crude eq=saturation approximation. Falls back
+    # automatically if no LUT files exist yet in assets/luts/.
+    lut_file = get_lut_file(grade)
+    if lut_file:
+        gf = f"lut3d='{lut_file}'"
+        log.info(f"  Using real LUT: {lut_file}")
+    else:
+        grade_filters = {
+            "teal_orange": "curves=r='0/0 0.5/0.4 1/0.95':b='0/0.1 0.5/0.5 1/0.9',eq=saturation=1.15:contrast=1.1",
+            "cool_blue":   "curves=b='0/0.1 0.5/0.6 1/1':eq=saturation=0.9:contrast=1.05",
+            "dark_noir":   "eq=saturation=0.6:contrast=1.3:brightness=-0.05",
+            "cinematic":   "eq=saturation=1.05:contrast=1.15:gamma=0.95",
+        }
+        gf = grade_filters.get(grade, grade_filters["cinematic"])
+        log.info(f"  No LUT uploaded yet, using eq= approximation for '{grade}'")
+
     caption_filter = build_caption_drawtext(script)
 
     final=str(WORKSPACE/"final_video.mp4")
@@ -1161,23 +1255,24 @@ def stage_9_publish(video_path, script, cfg):
     # Generate metadata
     try:
         hook = script[0].get("voiceover","") if script else ""
-        niche_tag = f"#{niche}Hindi #Hindi{niche.capitalize()}" if niche else ""
-        meta_text = groq(f"""YouTube metadata for {lang} {genre} video.
+        lang_hint = "Write the title and description in HINGLISH (Hindi-English mixed, Roman script only, no Devanagari) — this is standard for Indian YouTube titles and is more clickable/searchable." if lang=="hindi" else f"Write in {lang}."
+        meta_text = groq(f"""YouTube metadata for a {genre} video.
 Topic: "{topic}"
 Niche: {niche}
 Hook: "{hook}"
+{lang_hint}
 Return ONLY JSON, no reasoning, no markdown fences, no explanation:
-{{"title":"viral {lang} title under 60 chars with power word",
-  "description":"3 engaging paragraphs in {lang} with keywords. Add income disclaimer if finance.",
-  "tags":["{topic}","hindi","{niche}","viral","facts"],
-  "hashtags":"#{topic.replace(' ','')} #hindi #{niche} #viral"
+{{"title":"viral title under 60 chars with power word or number",
+  "description":"3 engaging paragraphs with keywords",
+  "tags":["{topic}","hinglish","{niche}","viral","facts"],
+  "hashtags":"#{topic.replace(' ','')} #hinglish #{niche} #viral"
 }}""", max_tokens=400)
         meta = json.loads(extract_json_object(meta_text))
     except Exception as e:
         log.warning(f"Metadata generation failed, using fallback: {e}")
-        meta={"title":f"{topic} — पूरी सच्चाई",
-              "description":f"{topic} के बारे में पूरी जानकारी।",
-              "tags":[topic,"hindi",niche or "facts"],"hashtags":f"#{topic.replace(' ','')} #hindi"}
+        meta={"title":f"{topic} — Poori Sacchai",
+              "description":f"{topic} ke baare mein poori jaankari.",
+              "tags":[topic,"hinglish",niche or "facts"],"hashtags":f"#{topic.replace(' ','')} #hinglish"}
 
     log.info(f"Title: {meta['title']}")
     now=datetime.now(timezone.utc)
@@ -1283,14 +1378,25 @@ def run_pipeline():
 def stage_wan21_colab(scenes_needing_video, topic):
     """
     Runs Wan2.1 on Colab T4 GPU via CLI.
+    Auth is set up by the GitHub Actions workflow (writes the session
+    file to ~/.config/colab-cli/sessions.json before pipeline.py runs) —
+    this function just verifies it's usable and proceeds.
     Returns dict: {scene_number: local_video_path}
     """
     if not scenes_needing_video:
         return {}
 
-    colab_token = os.environ.get("COLAB_TOKEN", "")
-    if not colab_token:
-        log.warning("COLAB_TOKEN not set — skipping Wan2.1, using Pollinations instead")
+    session_file = os.path.expanduser("~/.config/colab-cli/sessions.json")
+    if not os.path.exists(session_file):
+        log.warning("Colab CLI session not found — skipping Wan2.1, using Pollinations instead")
+        return {}
+
+    # Verify the session is actually valid (not expired) before committing
+    # 30 minutes to a run that will just fail at the auth step
+    check = subprocess.run(["colab", "auth", "status"], capture_output=True, text=True, timeout=30)
+    if check.returncode != 0 or "not authenticated" in (check.stdout + check.stderr).lower():
+        log.warning(f"Colab CLI session invalid/expired — skipping Wan2.1. ({check.stdout[-150:]})")
+        tg("⚠️ Colab session expired — using Pollinations instead of Wan2.1 this run. Re-run the login on your PC and update the COLAB_TOKEN secret.")
         return {}
 
     log.info(f"Wan2.1 via Colab CLI: {len(scenes_needing_video)} scenes")
@@ -1305,14 +1411,6 @@ def stage_wan21_colab(scenes_needing_video, topic):
     clips_dir.mkdir(exist_ok=True)
 
     try:
-        # Install Colab CLI (if not already installed)
-        subprocess.run(["pip", "install", "-q", "google-colab-cli"],
-            capture_output=True, timeout=60)
-
-        # Authenticate
-        env = os.environ.copy()
-        env["COLAB_TOKEN"] = colab_token
-
         # Provision T4 GPU, run generator, download clips, stop
         # Using colab run which handles full lifecycle automatically
         result = subprocess.run([
@@ -1322,7 +1420,7 @@ def stage_wan21_colab(scenes_needing_video, topic):
             "--download", "/content/clips/:./wan_clips/",
             "--download", "/content/wan21_results.json:./wan21_results.json",
             "wan21_generator.py"
-        ], capture_output=True, text=True, timeout=1800, env=env)  # 30 min max
+        ], capture_output=True, text=True, timeout=1800)  # 30 min max
 
         log.info(f"Colab exit code: {result.returncode}")
         if result.stdout: log.info(f"Colab output: {result.stdout[-500:]}")
@@ -1510,7 +1608,7 @@ def run_pipeline_v51():
         # Stage 5: Route scenes to correct visual engine
         # ─── Wan2.1 for cartoon/animated genres ──────────
         wan_scenes = []
-        if genre in ("cartoon",) and os.environ.get("COLAB_TOKEN"):
+        if genre in ("cartoon",) and os.path.exists(os.path.expanduser("~/.config/colab-cli/sessions.json")):
             wan_scenes = [s for s in script
                           if s.get("visual_type") == "ai_image"
                           and not skip_ai(s.get("ai_prompt",""))]
