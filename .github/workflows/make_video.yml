@@ -53,7 +53,8 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg espeak-ng fonts-dejavu-core fonts-lohit-deva
+          sudo apt-get install -y ffmpeg espeak-ng fonts-dejavu-core
+
       - name: Install Python packages
         run: |
           pip install --upgrade pip
@@ -123,6 +124,17 @@ jobs:
       - name: Write YouTube token
         run: echo '${{ secrets.YOUTUBE_TOKEN_JSON }}' > token.json
 
+      - name: Setup Colab CLI auth (for cartoon genre Wan2.1 generation)
+        run: |
+          if [ -n "${{ secrets.COLAB_TOKEN }}" ]; then
+            mkdir -p ~/.config/colab-cli
+            echo '${{ secrets.COLAB_TOKEN }}' > ~/.config/colab-cli/sessions.json
+            pip install -q google-colab-cli
+            colab auth status || echo "Colab auth check failed — Wan2.1 will be skipped this run, Pollinations fallback will be used instead"
+          else
+            echo "COLAB_TOKEN not set — skipping Colab CLI setup, cartoon genre will use Pollinations"
+          fi
+
       - name: Run pipeline
         env:
           GROQ_KEY:            ${{ secrets.GROQ_KEY }}
@@ -133,10 +145,12 @@ jobs:
           FREESOUND_KEY:       ${{ secrets.FREESOUND_KEY }}
           TELEGRAM_TOKEN:      ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+          YOUTUBE_TOKEN_JSON:  ${{ secrets.YOUTUBE_TOKEN_JSON }}
+          COLAB_TOKEN:         ${{ secrets.COLAB_TOKEN }}
+          KLING_API_KEY:       ${{ secrets.KLING_API_KEY }}
           TOPIC:               ${{ steps.parse.outputs.TOPIC }}
           NICHE:               ${{ steps.parse.outputs.NICHE }}
           SCRIPT:              ${{ steps.parse.outputs.SCRIPT }}
-          YOUTUBE_TOKEN_JSON:  ${{ secrets.YOUTUBE_TOKEN_JSON }}
         run: python pipeline.py
 
       - name: Upload debug workspace
