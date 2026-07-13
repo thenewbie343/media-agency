@@ -278,25 +278,62 @@ def pick_asset(subfolder, extension=None):
         files = [f for f in folder.iterdir() if f.is_file()]
     return str(random.choice(files)) if files else None
 
-def get_caption_font():
-    """Real premium font if uploaded, otherwise safe system fallback."""
-    real = pick_asset("fonts/caption", "ttf")
-    if real:
-        return real
-    # Fallback: Devanagari-safe font only needed for pure Hindi;
-    # Hinglish (Roman script) works fine with any Latin font.
+def get_caption_font(bold=False):
+    """
+    Real premium font if uploaded, otherwise safe system fallback.
+    Filters by filename keyword — your font names already say what
+    they are ("Zosma Bold", "ZabriskieBook-Heavy" vs "Zosma", "Zephyr")
+    so no folder subdivision is needed, just a name match.
+    """
+    folder = ASSETS_DIR / "fonts" / "caption"
+    if folder.exists():
+        files = list(folder.glob("*.ttf")) + list(folder.glob("*.otf"))
+        if files:
+            bold_kw = ("bold", "black", "heavy", "juice", "cdhv")
+            if bold:
+                matches = [f for f in files if any(k in f.stem.lower() for k in bold_kw)]
+            else:
+                matches = [f for f in files if not any(k in f.stem.lower() for k in bold_kw)]
+            pool = matches if matches else files
+            return str(random.choice(pool))
+    # Fallback: Hinglish is Roman script, so any Latin system font works fine
     return "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
-def get_lut_file(color_grade):
-    """Real .cube LUT file matching the genre's color grade, if uploaded."""
-    real = pick_asset(f"luts/{color_grade}", "cube")
-    if real:
-        return real
-    return pick_asset("luts", "cube")  # any LUT as a fallback
+# Maps our internal color-grade categories to keywords found in your
+# actual LUT filenames (all living flat in assets/luts/, not subfoldered)
+LUT_KEYWORD_MAP = {
+    "teal_orange": ["warm cinema", "kodak", "clean", "gold rush"],
+    "cool_blue":   ["blue cold", "blue moon", "blue ice", "blue steel", "matrix green"],
+    "dark_noir":   ["noir", "iron"],
+    "cinematic":   ["warm cinema", "clean straight", "big"],
+}
 
-def get_overlay_image():
-    """Random bg-removed overlay PNG (fire/particles/etc) if uploaded."""
-    return pick_asset("overlays", "png")
+def get_lut_file(color_grade):
+    """
+    Finds a real .cube LUT whose filename matches this genre's mood,
+    searching the flat assets/luts/ folder by keyword instead of
+    expecting subfolders (your LUTs are named thematically, e.g.
+    "SL Noir HDR.cube", "Warm Cinema.cube", "VM Thermal Vice.cube").
+    """
+    folder = ASSETS_DIR / "luts"
+    if not folder.exists():
+        return None
+    all_luts = list(folder.glob("*.cube"))
+    if not all_luts:
+        return None
+    keywords = LUT_KEYWORD_MAP.get(color_grade, [])
+    matches = [f for f in all_luts if any(kw in f.stem.lower() for kw in keywords)]
+    pool = matches if matches else all_luts  # any LUT beats no LUT
+    return str(random.choice(pool))
+
+def get_overlay_video():
+    """
+    Random VHS/glitch video overlay (.mp4) if uploaded to assets/overlays/.
+    These are effect clips (screen-blended over footage for a transition
+    flash), not transparent PNGs — handled via the blend filter, not
+    alpha overlay.
+    """
+    return pick_asset("overlays", "mp4")
 
 def extract_json_object(text):
     """Same robust extraction as extract_json_array, but for a single {...} object."""
@@ -788,13 +825,20 @@ def fetch_sfx(sfx_type):
     if sfx_type == "none" or not sfx_type: return None
     if sfx_type in _sfx_cache: return _sfx_cache[sfx_type]
 
-    # Prefer your real curated SFX (assets/sfx/<type>/*.mp3 or *.wav) —
-    # a synthesized sine wave is a placeholder, never as good as a real
-    # sound-designed whoosh/riser/impact file.
-    real = pick_asset(f"sfx/{sfx_type}")
-    if real:
-        _sfx_cache[sfx_type] = real
-        return real
+    # Your real curated SFX folders use these exact (capitalized) names —
+    # this maps our internal sfx_type keys to your actual folder names.
+    # No "click" folder was supplied, so click always uses the synthesized
+    # tone below, which is fine (it's a tiny, unobtrusive sound anyway).
+    folder_map = {
+        "deep_impact": "sfx/Impacts",
+        "whoosh":      "sfx/Whooshes",
+        "riser":       "sfx/Risers",
+    }
+    if sfx_type in folder_map:
+        real = pick_asset(folder_map[sfx_type])
+        if real:
+            _sfx_cache[sfx_type] = real
+            return real
 
     sfx_dir = WORKSPACE/"sfx"; sfx_dir.mkdir(exist_ok=True)
     out = str(sfx_dir/f"{sfx_type}.mp3")
@@ -863,8 +907,8 @@ def make_text_stat(text, out, dur, lang="hindi"):
         if len(" ".join(cur))>18: lines.append(" ".join(cur)); cur=[]
     if cur: lines.append(" ".join(cur))
     # Hinglish is Roman script, so any premium Latin font works here now —
-    # no more Devanagari font dependency needed
-    font = get_caption_font()
+    # stat cards are hook/emphasis moments, so use a bold/heavy font
+    font = get_caption_font(bold=True)
     dt=[]
     for i,line in enumerate(lines[:3]):
         y=f"(h/2)-{(len(lines)//2-i)*90}"
@@ -1064,6 +1108,28 @@ def build_caption_drawtext(script):
     
     return ",".join(filters) if filters else "null"
 
+def apply_overlay_to_scene(scene_video, overlay_video, dur, out_path):
+    """
+    Screen-blends a VHS/glitch overlay clip onto a scene's video.
+    These overlay packs have black backgrounds by design — 'screen' blend
+    mode makes black areas transparent-ish and only the bright glitch/
+    static effect shows through, which is exactly how these packs are
+    meant to be used in real editing software.
+    The overlay is looped to cover the full scene duration since most
+    glitch clips are shorter than a typical 4s scene.
+    """
+    cmd = ["ffmpeg","-y",
+        "-i", scene_video,
+        "-stream_loop","-1","-i", overlay_video,
+        "-filter_complex",
+        f"[1:v]scale=1920:1080,setpts=PTS-STARTPTS[ov];"
+        f"[0:v][ov]blend=all_mode=screen:shortest=1[v]",
+        "-map","[v]","-t",str(dur),
+        "-c:v","libx264","-preset","ultrafast","-an",
+        out_path]
+    r = subprocess.run(cmd, capture_output=True, timeout=90)
+    return r.returncode == 0 and os.path.exists(out_path)
+
 def stage_7_assemble(script, cfg, music_path):
     log.info("Stage 7: Assembling...")
     tg("🎞️ Final assembly...")
@@ -1072,6 +1138,27 @@ def stage_7_assemble(script, cfg, music_path):
     # Step 1: Merge video+voice per scene, add SFX
     scene_files=[]
     cur_time=0.0
+
+    # Apply real VHS/glitch overlays at up to 8 high-impact moments
+    # (deep_impact/riser scenes) — these get a screen-blended transition
+    # effect using your actual overlay pack, giving a genuine "premium
+    # editor" flash instead of a plain hard cut.
+    overlay_candidates = [s for s in script if s.get("sfx") in ("deep_impact","riser") and s.get("video_file")]
+    overlay_scenes = random.sample(overlay_candidates, min(8, len(overlay_candidates))) if overlay_candidates else []
+    if overlay_scenes:
+        log.info(f"Applying overlay flash to {len(overlay_scenes)} high-impact scenes")
+    for scene in overlay_scenes:
+        overlay_video = get_overlay_video()
+        if not overlay_video:
+            break  # no overlays uploaded, stop trying for remaining scenes
+        n = scene["scene"]
+        dur = scene.get("actual_duration", float(scene.get("duration_hint",4)))
+        composited = str(asm/f"overlay_{n:03d}.mp4")
+        if apply_overlay_to_scene(scene["video_file"], overlay_video, dur, composited):
+            scene["video_file"] = composited
+            log.info(f"  Scene {n}: overlay flash applied ({os.path.basename(overlay_video)})")
+        else:
+            log.warning(f"  Scene {n}: overlay compositing failed, using plain clip")
 
     for scene in script:
         n     = scene["scene"]
@@ -1244,6 +1331,92 @@ verdict: "approved"(>=7),"drafts"(5-6),"retry"(<5)""")
 # ═══════════════════════════════════════════════════════════
 #  STAGE 9 — PUBLISH
 # ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════
+#  STAGE 10 — GOOGLE DRIVE BACKUP
+#  Every video gets archived to Drive regardless of QC verdict —
+#  Approved_Uploads / Drafts / Rejects, exactly like the original
+#  vision for this project. Reuses the same YOUTUBE_TOKEN_JSON
+#  credential (now with drive.file scope added).
+# ═══════════════════════════════════════════════════════════
+_drive_service = None
+
+def get_drive_service():
+    global _drive_service
+    if _drive_service:
+        return _drive_service
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    token_data = os.environ.get("YOUTUBE_TOKEN_JSON", "")
+    if not token_data:
+        raise ValueError("YOUTUBE_TOKEN_JSON empty — cannot access Drive")
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+        tmp.write(token_data); token_path = tmp.name
+    creds = Credentials.from_authorized_user_file(token_path)
+    _drive_service = build("drive", "v3", credentials=creds)
+    return _drive_service
+
+def find_or_create_drive_folder(service, name, parent_id=None):
+    query = f"name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    if parent_id:
+        query += f" and '{parent_id}' in parents"
+    results = service.files().list(q=query, fields="files(id,name)").execute()
+    files = results.get("files", [])
+    if files:
+        return files[0]["id"]
+    metadata = {"name": name, "mimeType": "application/vnd.google-apps.folder"}
+    if parent_id:
+        metadata["parents"] = [parent_id]
+    folder = service.files().create(body=metadata, fields="id").execute()
+    return folder["id"]
+
+def stage_10_drive_backup(video_path, script, research, cfg, verdict, score):
+    """Uploads the final video + research + script to a dated Drive folder,
+    routed into Approved_Uploads / Drafts / Rejects based on QC verdict."""
+    log.info("Stage 10: Backing up to Google Drive...")
+    try:
+        from googleapiclient.http import MediaFileUpload
+        service = get_drive_service()
+
+        root_id = find_or_create_drive_folder(service, "MediaAgency")
+        bucket_name = {"approved": "Approved_Uploads", "drafts": "Drafts", "retry": "Rejects"}.get(verdict, "Drafts")
+        bucket_id = find_or_create_drive_folder(service, bucket_name, root_id)
+
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
+        safe_topic = re.sub(r'[^a-zA-Z0-9]+', '-', cfg["topic"])[:40].strip('-')
+        video_folder_name = f"{date_str}_{safe_topic}_score{score}"
+        video_folder_id = find_or_create_drive_folder(service, video_folder_name, bucket_id)
+
+        # Upload final video
+        if video_path and os.path.exists(video_path):
+            media = MediaFileUpload(video_path, mimetype="video/mp4", resumable=True)
+            service.files().create(
+                body={"name": "final_video.mp4", "parents": [video_folder_id]},
+                media_body=media, fields="id"
+            ).execute()
+            log.info(f"  Drive: video uploaded to {bucket_name}/{video_folder_name}")
+
+        # Upload research + script JSON for debugging/reuse
+        for label, data in [("research.json", research), ("script_final.json", script)]:
+            try:
+                tmp_path = str(WORKSPACE / f"_drive_{label}")
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                media = MediaFileUpload(tmp_path, mimetype="application/json")
+                service.files().create(
+                    body={"name": label, "parents": [video_folder_id]},
+                    media_body=media, fields="id"
+                ).execute()
+            except Exception as e:
+                log.warning(f"  Drive: failed to upload {label}: {e}")
+
+        folder_link = f"https://drive.google.com/drive/folders/{video_folder_id}"
+        log.info(f"Stage 10: Backup complete → {folder_link}")
+        return folder_link
+
+    except Exception as e:
+        log.warning(f"Stage 10: Drive backup failed (non-fatal): {e}")
+        return None
+
 def stage_9_publish(video_path, script, cfg):
     log.info("Stage 9: Publishing...")
     tg("📤 Uploading to YouTube...")
@@ -1646,10 +1819,13 @@ def run_pipeline_v51():
         verdict = qc.get("verdict","approved")
         score   = qc.get("score",7)
 
+        drive_link = stage_10_drive_backup(final_video, script, research, cfg, verdict, score)
+        drive_note = f"\n📁 Drive: {drive_link}" if drive_link else ""
+
         if verdict == "retry":
-            tg(f"❌ QC {score}/10 — Rejected\n{qc.get('reason','')}"); return
+            tg(f"❌ QC {score}/10 — Rejected\n{qc.get('reason','')}{drive_note}"); return
         if verdict == "drafts":
-            tg(f"⚠️ QC {score}/10 — Drafts\n{qc.get('reason','')}"); return
+            tg(f"⚠️ QC {score}/10 — Drafts\n{qc.get('reason','')}{drive_note}"); return
 
         url     = stage_9_publish(final_video, script, cfg)
         elapsed = int(time.time()-start)
@@ -1666,7 +1842,7 @@ def run_pipeline_v51():
             f"✂️ Avg {total/max(len(script),1):.1f}s/cut\n"
             f"🎥 Wan2.1: {wan_ct} clips | Kling: {kling_ct} clips\n"
             f"🌍 {cfg['lang']} | {cfg['genre']}\n"
-            f"⚡ {elapsed}s total"
+            f"⚡ {elapsed}s total{drive_note}"
         )
 
     except Exception as e:
