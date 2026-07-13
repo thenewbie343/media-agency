@@ -1564,14 +1564,6 @@ def stage_wan21_colab(scenes_needing_video, topic):
         log.warning("Colab CLI session not found — skipping Wan2.1, using Pollinations instead")
         return {}
 
-    # Verify the session is actually valid (not expired) before committing
-    # 30 minutes to a run that will just fail at the auth step
-    check = subprocess.run(["colab", "auth", "status"], capture_output=True, text=True, timeout=30)
-    if check.returncode != 0 or "not authenticated" in (check.stdout + check.stderr).lower():
-        log.warning(f"Colab CLI session invalid/expired — skipping Wan2.1. ({check.stdout[-150:]})")
-        tg("⚠️ Colab session expired — using Pollinations instead of Wan2.1 this run. Re-run the login on your PC and update the COLAB_TOKEN secret.")
-        return {}
-
     log.info(f"Wan2.1 via Colab CLI: {len(scenes_needing_video)} scenes")
     tg(f"🎨 Wan2.1 GPU generation: {len(scenes_needing_video)} animated clips...")
 
