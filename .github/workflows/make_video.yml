@@ -48,7 +48,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install system deps
         run: |
@@ -129,11 +129,12 @@ jobs:
           if [ -n "${{ secrets.COLAB_TOKEN }}" ]; then
             mkdir -p ~/.config/colab-cli
             echo '${{ secrets.COLAB_TOKEN }}' > ~/.config/colab-cli/sessions.json
-            pip install -q google-colab-cli
+            pip install -q google-colab-cli || echo "google-colab-cli install failed — Wan2.1 will be skipped this run, Pollinations fallback will be used instead"
             colab auth status || echo "Colab auth check failed — Wan2.1 will be skipped this run, Pollinations fallback will be used instead"
           else
             echo "COLAB_TOKEN not set — skipping Colab CLI setup, cartoon genre will use Pollinations"
           fi
+        continue-on-error: true
 
       - name: Run pipeline
         env:
