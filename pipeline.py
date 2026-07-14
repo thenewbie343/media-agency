@@ -302,10 +302,12 @@ def get_caption_font(bold=False):
 # Maps our internal color-grade categories to keywords found in your
 # actual LUT filenames (all living flat in assets/luts/, not subfoldered)
 LUT_KEYWORD_MAP = {
-    "teal_orange": ["warm cinema", "kodak", "clean", "gold rush"],
+    "teal_orange": ["warm cinema", "kodak", "clean straight", "gold rush"],
     "cool_blue":   ["blue cold", "blue moon", "blue ice", "blue steel", "matrix green"],
-    "dark_noir":   ["noir", "iron"],
+    "dark_noir":   ["noir", "iron", "bleach"],
     "cinematic":   ["warm cinema", "clean straight", "big"],
+    "cartoon":     ["thermal royalty", "thermal picasso", "thermal plastic", "gold rush"],
+    "energetic":   ["thermal vice", "thermal crush", "cross"],
 }
 
 def get_lut_file(color_grade):
@@ -314,6 +316,11 @@ def get_lut_file(color_grade):
     searching the flat assets/luts/ folder by keyword instead of
     expecting subfolders (your LUTs are named thematically, e.g.
     "SL Noir HDR.cube", "Warm Cinema.cube", "VM Thermal Vice.cube").
+
+    IMPORTANT: if nothing matches, returns None (falls back to the safe
+    eq= color grade) instead of picking a random LUT — a random pick
+    previously caused whole videos to render in the wrong mood entirely
+    (e.g. a bright pink LUT applied to a serious crime documentary).
     """
     folder = ASSETS_DIR / "luts"
     if not folder.exists():
@@ -323,8 +330,9 @@ def get_lut_file(color_grade):
         return None
     keywords = LUT_KEYWORD_MAP.get(color_grade, [])
     matches = [f for f in all_luts if any(kw in f.stem.lower() for kw in keywords)]
-    pool = matches if matches else all_luts  # any LUT beats no LUT
-    return str(random.choice(pool))
+    if not matches:
+        return None  # no matching mood — safer to skip than guess wrong
+    return str(random.choice(matches))
 
 def get_overlay_video():
     """
@@ -530,7 +538,7 @@ Rules:
         t = 0.0
         scenes = []
         for i, sent in enumerate(sentences[:40]):
-            vt = "text_stat" if i % 5 == 4 else "stock_video" if i % 3 == 1 else "ai_image"
+            vt = "text_stat" if i % 10 == 9 else "stock_video" if i % 3 == 1 else "ai_image"
             s = {"scene":i+1,"voiceover":sent[:80],"visual_type":vt,
                  "visual_search":f"{vprefix} cinematic","ai_prompt":f"cinematic {topic} scene",
                  "emotion":"dramatic","sfx":sfx_def,"duration_hint":4,"start_time":t}
@@ -571,29 +579,17 @@ def stage_2_script(research, cfg):
     elif niche == "crime":
         niche_note = "Build tension slowly. Use dramatic pauses. Reveal information bit by bit. Make the viewer feel like they are watching a thriller."
 
-    # ── BATCHED GENERATION ──────────────────────────────────────
-    # Requesting 90+ scenes of Hindi text in ONE completion reliably
-    # gets truncated mid-array (Hindi/Devanagari uses far more tokens
-    # per character than English), which is why "Unbalanced JSON array"
-    # kept happening regardless of API key. Fix: generate in small
-    # batches that always fit comfortably within the token budget.
-    BATCH_SIZE = 10
-    full_script = []
-    last_line = ""
-    stalled = 0
-
-    while len(full_script) < target and stalled < 3:
-        remaining = target - len(full_script)
-        batch_n = min(BATCH_SIZE, remaining)
-        start_num = len(full_script) + 1
-
-        continuity = (f'The previous scene ended with: "{last_line}". Continue the story naturally from here — do not repeat it.'
-                      if last_line else
-                      'This is the OPENING of the video. Scene 1 must be a shocking hook.')
-
-        prompt = f"""You are a world-class viral Hindi YouTube scriptwriter.
+    # ── OUTLINE FIRST — this is the fix for disconnected, nonsensical
+    # scenes. Batching alone (with only "the last line" as context) has
+    # no memory of the overall story, so scenes drift into unrelated
+    # fragments after a few batches. Generating a structured beat outline
+    # ONCE up front, then feeding that FULL outline into every batch,
+    # keeps the whole video on one coherent throughline.
+    log.info("Stage 2: Generating story outline first...")
+    num_beats = max(6, min(15, target // 8))
+    try:
+        outline_text = groq(f"""You are a world-class viral Hindi YouTube scriptwriter.
 Style: {style}
-{lang_note}
 {niche_note}
 
 Topic: "{topic}"
@@ -604,15 +600,78 @@ Key facts:
 Stats:
 {stats_str}
 
+Write a {num_beats}-point STORY OUTLINE for this video — one clear, connected story
+that builds from hook to conclusion, not a list of random facts.
+Each point = one beat of the story in ONE short sentence (English is fine here,
+this is just a planning outline, not the final script).
+Point 1 MUST be the shocking hook. Points must flow in logical order —
+each one should follow naturally from the one before it, like telling a real story
+to a friend, not jumping between unrelated facts.
+
+Return ONLY a JSON array of {num_beats} short strings, no markdown, no explanation:
+["beat 1 sentence", "beat 2 sentence", ...]""", max_tokens=1000)
+        outline = json.loads(extract_json_array(outline_text))
+        if not outline or len(outline) < 4:
+            raise ValueError("Outline too short")
+        outline_str = "\n".join(f"{i+1}. {b}" for i, b in enumerate(outline))
+        log.info(f"Stage 2: Outline has {len(outline)} beats")
+    except Exception as e:
+        log.warning(f"Outline generation failed ({e}), scenes may be less connected")
+        outline_str = f"1. {hook}\n2. Explore the key facts about {topic}\n3. Wrap up with the significance of {topic}"
+        outline = None
+
+    # ── BATCHED GENERATION ──────────────────────────────────────
+    # Requesting 90+ scenes of Hindi text in ONE completion reliably
+    # gets truncated mid-array (Hindi/Devanagari uses far more tokens
+    # per character than English), which is why "Unbalanced JSON array"
+    # kept happening regardless of API key. Fix: generate in small
+    # batches that always fit comfortably within the token budget —
+    # but now every batch sees the FULL outline, not just the last line,
+    # so the story stays connected across all of them.
+    BATCH_SIZE = 10
+    full_script = []
+    stalled = 0
+
+    while len(full_script) < target and stalled < 3:
+        remaining = target - len(full_script)
+        batch_n = min(BATCH_SIZE, remaining)
+        start_num = len(full_script) + 1
+        progress_pct = int((start_num / target) * 100)
+
+        continuity = (
+            f"STORY OUTLINE (the whole video's arc — stay connected to this throughout):\n{outline_str}\n\n"
+            f"You are now writing scenes for roughly the {progress_pct}% point of the story "
+            f"(scene {start_num} of {target} total). Write scenes that correspond to whichever "
+            f"outline beat(s) fit this point in the story. Do not jump to a random unrelated fact — "
+            f"follow the outline's order and keep building the SAME story."
+        )
+        if full_script:
+            continuity += f'\n\nThe previous scene said: "{full_script[-1].get("voiceover","")}". Continue naturally from there, do not repeat it.'
+        else:
+            continuity += "\n\nThis is the OPENING of the video. Scene 1 must be the shocking hook from the outline."
+
+        prompt = f"""You are a world-class viral Hindi YouTube scriptwriter.
+Style: {style}
+{lang_note}
+{niche_note}
+
+Topic: "{topic}"
+
 {continuity}
 
 Write EXACTLY {batch_n} scenes, numbered {start_num} to {start_num + batch_n - 1}.
 
 STRICT RULES:
+- Every scene must be a real, grammatically complete sentence a human would actually say —
+  never a garbled or nonsensical fragment. Read it back in your head before writing it:
+  does it actually mean something coherent? If not, rewrite it.
 - Max 12 words per scene voiceover
-- visual_type: rotate "stock_video","ai_image","text_stat" — never 3 same in row
+- visual_type: mostly "stock_video" or "ai_image". Use "text_stat" RARELY — only for scenes
+  that state an actual number, statistic, or shocking data point. Do NOT force a text_stat
+  on a fixed pattern; most scenes should show real footage, not a text card.
 - visual_search MUST BE 100% IN ENGLISH ONLY, even though voiceover is in {lang}. Use simple generic nouns a stock photo site understands (e.g. "bank building", "indian currency", "worried man office", "smartphone screen"). NEVER put Hindi/Devanagari text in visual_search. NEVER use specific brand/company names in visual_search — use generic category words instead (e.g. "mobile payment app" not "Paytm").
 - ai_prompt MUST ALSO BE IN ENGLISH ONLY. Cinematic description, no faces, no text, no flags, no monuments, no specific brand names or logos (use generic descriptions like "fintech office" instead of company names — brand names get blocked by the image generator's safety filter).
+- visual_search and ai_prompt must actually match what THIS scene's voiceover is about — never generic filler unrelated to the sentence
 - sfx: deep_impact=reveal | whoosh=transition | click=fact | riser=tension | none=calm
 
 CRITICAL: Return ONLY a raw JSON array of exactly {batch_n} objects. No reasoning, no explanation, no markdown fences.
@@ -631,7 +690,6 @@ CRITICAL: Return ONLY a raw JSON array of exactly {batch_n} objects. No reasonin
                 s["visual_search"] = sanitize_visual_term(s.get("visual_search",""), vprefix, niche)
                 s["ai_prompt"] = sanitize_visual_term(s.get("ai_prompt",""), vprefix, niche, is_prompt=True)
             full_script.extend(batch)
-            last_line = batch[-1].get("voiceover","")
             log.info(f"  Batch OK: +{len(batch)} scenes ({len(full_script)}/{target} total)")
             stalled = 0
             # Respect Groq's free-tier TPM limit — without this delay,
@@ -644,6 +702,18 @@ CRITICAL: Return ONLY a raw JSON array of exactly {batch_n} objects. No reasonin
             time.sleep(8)  # back off longer on failure, likely a rate limit
 
     if len(full_script) >= 10:
+        # Hard safety cap: no matter what the LLM decided, never let more
+        # than 15% of scenes become text_stat cards. This is what was
+        # causing "only 5-6 real clips visible" — too many yellow-text
+        # cards were diluting the actual visual content.
+        max_text_stat = max(1, int(len(full_script) * 0.15))
+        text_stat_indices = [i for i, s in enumerate(full_script) if s.get("visual_type") == "text_stat"]
+        if len(text_stat_indices) > max_text_stat:
+            excess = text_stat_indices[max_text_stat:]
+            for idx in excess:
+                full_script[idx]["visual_type"] = "ai_image" if idx % 2 == 0 else "stock_video"
+            log.info(f"  Capped text_stat: {len(text_stat_indices)} → {max_text_stat} (converted {len(excess)} to real visuals)")
+
         t = 0.0
         for s in full_script:
             s["start_time"] = t; t += float(s.get("duration_hint",4))
@@ -661,7 +731,7 @@ CRITICAL: Return ONLY a raw JSON array of exactly {batch_n} objects. No reasonin
     variants = ["aerial establishing shot","close-up detail shot","wide dramatic angle","low angle dramatic","office interior shot"]
     t = 0.0; script = []
     for i, f in enumerate(cycled):
-        vt = "text_stat" if i % 5 == 4 else ("stock_video" if i % 3 == 1 else "ai_image")
+        vt = "text_stat" if i % 10 == 9 else ("stock_video" if i % 3 == 1 else "ai_image")
         variant = variants[i % len(variants)]
         s = {"scene": i+1, "voiceover": f[:60], "visual_type": vt,
              "visual_search": f"{vprefix} {variant}",
