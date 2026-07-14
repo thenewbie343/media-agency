@@ -1018,7 +1018,8 @@ def fetch_pexels_video(search, out, dur):
         with open(raw,"wb") as f:
             for chunk in v.iter_content(8192): f.write(chunk)
         r2=subprocess.run(["ffmpeg","-y","-i",raw,"-t",str(dur),
-            "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+            "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25",
+            "-r","25","-vsync","cfr",
             "-c:v","libx264","-an","-preset","fast",out],capture_output=True,timeout=60)
         return r2.returncode==0
     except Exception as e: log.warning(f"Pexels video: {e}"); return False
@@ -1049,7 +1050,8 @@ def fetch_pixabay(search, out, dur=None):
             with open(raw,"wb") as f:
                 for chunk in v.iter_content(8192): f.write(chunk)
             r2=subprocess.run(["ffmpeg","-y","-i",raw,"-t",str(dur),
-                "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+                "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25",
+                "-r","25","-vsync","cfr",
                 "-c:v","libx264","-an","-preset","fast",out],capture_output=True,timeout=60)
             return r2.returncode==0
         else:  # image
@@ -1192,9 +1194,11 @@ def apply_overlay_to_scene(scene_video, overlay_video, dur, out_path):
         "-i", scene_video,
         "-stream_loop","-1","-i", overlay_video,
         "-filter_complex",
-        f"[1:v]scale=1920:1080,setpts=PTS-STARTPTS[ov];"
-        f"[0:v][ov]blend=all_mode=screen:shortest=1[v]",
+        f"[1:v]scale=1920:1080,fps=25,setpts=PTS-STARTPTS[ov];"
+        f"[0:v]fps=25[base];"
+        f"[base][ov]blend=all_mode=screen:shortest=1[v]",
         "-map","[v]","-t",str(dur),
+        "-r","25","-vsync","cfr",
         "-c:v","libx264","-preset","ultrafast","-an",
         out_path]
     r = subprocess.run(cmd, capture_output=True, timeout=90)
@@ -1302,12 +1306,31 @@ def stage_7_assemble(script, cfg, music_path):
     r=subprocess.run(["ffmpeg","-y","-f","concat","-safe","0","-i",cfile,
         "-c","copy","-movflags","+faststart",raw],
         capture_output=True,timeout=120)
-    if r.returncode!=0:
-        log.warning(f"Copy-mode concat failed, re-encoding instead: {r.stderr.decode()[-150:]}")
+
+    # CRITICAL SAFETY CHECK: stream-copy concat can return code 0 even
+    # when it silently corrupted the timeline (this happened when clips
+    # had mismatched frame rates — Pexels/Pixabay stock footage wasn't
+    # locked to 25fps like everything else, causing huge chunks of the
+    # video and its paired audio to vanish even though ffmpeg "succeeded").
+    # Verify the actual output duration roughly matches what it should be
+    # before trusting it.
+    needs_reencode = (r.returncode != 0)
+    if not needs_reencode:
+        actual_dur = get_dur(raw)
+        if actual_dur < cur_time * 0.85:
+            log.warning(f"Copy-mode concat produced a corrupted/truncated video "
+                        f"({actual_dur:.0f}s actual vs {cur_time:.0f}s expected) — forcing re-encode")
+            needs_reencode = True
+
+    if needs_reencode:
+        if r.returncode != 0:
+            log.warning(f"Copy-mode concat failed, re-encoding instead: {r.stderr.decode()[-150:]}")
         r2=subprocess.run(["ffmpeg","-y","-f","concat","-safe","0","-i",cfile,
-            "-c:v","libx264","-preset","ultrafast","-c:a","aac","-movflags","+faststart",raw],
+            "-c:v","libx264","-preset","ultrafast","-r","25","-vsync","cfr","-c:a","aac","-movflags","+faststart",raw],
             capture_output=True,timeout=900)
         if r2.returncode!=0: raise RuntimeError(f"Concat failed: {r2.stderr.decode()[-200:]}")
+        final_dur = get_dur(raw)
+        log.info(f"Re-encoded concat: {final_dur:.0f}s (expected ~{cur_time:.0f}s)")
 
     # Step 2.5: Mix background music into the audio track FIRST
     # (audio-only operation — fast, uses -c:v copy, no video re-encode)
