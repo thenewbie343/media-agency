@@ -786,37 +786,51 @@ EMOTION_VOICE_MAP = {
 }
 
 def stage_3_voice(script, cfg):
-    lang  = cfg["lang"]
-    voice = cfg.get("voice", VOICE_MAP.get(lang, VOICE_MAP["hindi"])[0])
-    fallback = VOICE_MAP.get(lang, VOICE_MAP["hindi"])
-    log.info(f"Stage 3: Voice ({voice})...")
+    lang = cfg["lang"]
+    use_kokoro = os.environ.get("USE_KOKORO", "true").lower() in ("true", "1", "yes")
+    log.info(f"Stage 3: Voice (Kokoro: {use_kokoro})...")
     tg(f"🎙️ Generating voice...")
-    audio_dir = WORKSPACE/"audio"; audio_dir.mkdir(exist_ok=True)
+    audio_dir = WORKSPACE / "audio"; audio_dir.mkdir(exist_ok=True)
     failed_scenes = 0
+    
     for idx, scene in enumerate(script):
-        n    = scene["scene"]
-        text = scene.get("voiceover","").strip()
+        n = scene["scene"]
+        text = scene.get("voiceover", "").strip()
         if not text:
-            scene["audio_file"]=None; continue
-        emotion = scene.get("emotion","dramatic")
-        rate, pitch = EMOTION_VOICE_MAP.get(emotion, ("+8%","+0Hz"))
-        out = str(audio_dir/f"scene_{n:03d}.mp3")
+            scene["audio_file"] = None
+            continue
+        emotion = scene.get("emotion", "dramatic")
+        out = str(audio_dir / f"scene_{n:03d}.mp3")
         done = False
-        for v in fallback:
-            # Retry twice per voice before moving to the next fallback —
-            # Edge-TTS silently drops requests when hit too fast on long
-            # (90+ scene) videos, which is what caused dozens of scenes
-            # to end up with audio_file=None and broke the whole timeline.
-            for attempt in range(2):
-                try:
-                    asyncio.run(_edge_tts(text, out, v, rate=rate, pitch=pitch))
-                    if os.path.exists(out) and os.path.getsize(out) > 500:
-                        scene["audio_file"]=out; done=True
-                    break
-                except Exception as e:
-                    log.warning(f"  Scene {n} {v} attempt {attempt+1}: {e}")
-                    time.sleep(1.5)
-            if done: break
+        
+        # Try Kokoro first if enabled
+        if use_kokoro:
+            try:
+                done = generate_kokoro_voice(text, out, lang, emotion)
+                if done:
+                    scene["audio_file"] = out
+                    log.info(f"  Scene {n}: Kokoro TTS ✓")
+            except Exception as e:
+                log.warning(f"  Scene {n}: Kokoro failed: {e}")
+        
+        # Fallback to Edge-TTS
+        if not done:
+            voice = cfg.get("voice", VOICE_MAP.get(lang, VOICE_MAP["hindi"])[0])
+            fallback = VOICE_MAP.get(lang, VOICE_MAP["hindi"])
+            rate, pitch = EMOTION_VOICE_MAP.get(emotion, ("+8%", "+0Hz"))
+            for v in fallback:
+                for attempt in range(2):
+                    try:
+                        asyncio.run(_edge_tts(text, out, v, rate=rate, pitch=pitch))
+                        if os.path.exists(out) and os.path.getsize(out) > 500:
+                            scene["audio_file"]=out; done=True
+                        break
+                    except Exception as e:
+                        log.warning(f"  Scene {n} {v} attempt {attempt+1}: {e}")
+                        time.sleep(1.5)
+                if done: break
+
+        # Fallback to gTTS
         if not done:
             try:
                 from gtts import gTTS
@@ -827,16 +841,78 @@ def stage_3_voice(script, cfg):
                     done=True
             except Exception as e:
                 log.error(f"  Scene {n}: gTTS also failed: {e}")
+        
         if not done:
             failed_scenes += 1
-            scene["audio_file"]=None
-        # Small pause every few scenes so we never hammer Edge-TTS
-        # continuously across 90+ back-to-back requests
+            scene["audio_file"] = None
+        
         if idx % 5 == 4:
             time.sleep(1)
+    
     if failed_scenes:
         log.warning(f"Stage 3: {failed_scenes}/{len(script)} scenes have NO audio (all retries exhausted)")
     return script
+
+def generate_kokoro_voice(text, out_path, lang, emotion):
+    """Generate voice using Kokoro TTS"""
+    voice_map = {
+        "english": "af_heart",
+        "hindi": "af_heart",  # Kokoro doesn't have Hindi, use English for Hinglish
+        "spanish": "af_heart",
+        "french": "af_heart",
+        "german": "af_heart"
+    }
+    voice = voice_map.get(lang, "af_heart")
+    
+    speed_map = {
+        "dramatic": 1.0,
+        "shocking": 1.3,
+        "mysterious": 0.9,
+        "inspiring": 1.1,
+        "calm": 0.85,
+        "energetic": 1.2
+    }
+    speed = speed_map.get(emotion, 1.0)
+    
+    try:
+        from kokoro import KPipeline
+        pipeline = KPipeline(lang_code='a')
+        generator = pipeline(text, voice=voice, speed=speed, split_pattern=r'\n+')
+        
+        audio_segments = []
+        sample_rate = 24000
+        
+        for i, (gs, ps, audio) in enumerate(generator):
+            audio_segments.append(audio)
+        
+        if audio_segments:
+            import numpy as np
+            full_audio = np.concatenate(audio_segments)
+            
+            try:
+                from pydub import AudioSegment
+                audio_segment = AudioSegment(
+                    full_audio.tobytes(),
+                    frame_rate=sample_rate,
+                    sample_width=full_audio.dtype.itemsize,
+                    channels=1
+                )
+                audio_segment.export(out_path, format="mp3")
+                return os.path.exists(out_path) and os.path.getsize(out_path) > 500
+            except ImportError:
+                import soundfile as sf
+                wav_path = out_path.replace('.mp3', '.wav')
+                sf.write(wav_path, full_audio, sample_rate)
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", wav_path,
+                    "-codec:a", "libmp3lame", "-qscale:a", "2", out_path
+                ], capture_output=True, timeout=30)
+                return os.path.exists(out_path) and os.path.getsize(out_path) > 500
+    except ImportError:
+        log.warning("Kokoro TTS not available, falling back to other methods")
+    except Exception as e:
+        log.warning(f"Kokoro generation failed: {e}")
+    return False
 
 # ═══════════════════════════════════════════════════════════
 #  STAGE 4 — MUSIC (freepd.com + incompetech — CC licensed)
@@ -874,6 +950,29 @@ def stage_4_music(cfg):
                 log.info(f"Stage 4: Using your uploaded track — {chosen.name}")
                 return str(chosen)
 
+    # 2. Try Freesound API
+    freesound_key = os.environ.get("FREESOUND_KEY", "")
+    if freesound_key:
+        try:
+            music = get_freesound_music(mood, freesound_key)
+            if music and is_valid_audio(music):
+                log.info("Stage 4: Music from Freesound")
+                return music
+        except Exception as e:
+            log.warning(f"Stage 4: Freesound failed: {e}")
+
+    # 3. Try Pixabay API
+    pixabay_key = os.environ.get("PIXABAY_KEY", "")
+    if pixabay_key:
+        try:
+            music = get_pixabay_music(mood, pixabay_key)
+            if music and is_valid_audio(music):
+                log.info("Stage 4: Music from Pixabay")
+                return music
+        except Exception as e:
+            log.warning(f"Stage 4: Pixabay failed: {e}")
+
+    # 4. Try FreePD
     music_map = {
         "serious corporate dramatic":  "https://freepd.com/music/Sci-Fi%20Intelligence.mp3",
         "dark suspense thriller":      "https://freepd.com/music/Dark%20Mystery.mp3",
@@ -884,7 +983,6 @@ def stage_4_music(cfg):
         "dark noir":                   "https://freepd.com/music/Dark%20Mystery.mp3",
         "cool blue":                   "https://freepd.com/music/Blue%20Skies.mp3",
     }
-    # Find best match
     url = None
     for key in music_map:
         if any(w in mood for w in key.split()):
@@ -897,34 +995,116 @@ def stage_4_music(cfg):
         if r.status_code == 200 and len(r.content) > 1000:
             with open(music_path,"wb") as f: f.write(r.content)
             if is_valid_audio(music_path):
-                log.info(f"Stage 4: Music downloaded from freepd.com")
+                log.info(f"Stage 4: Music from freepd.com")
                 return music_path
-            else:
-                log.warning("Stage 4: freepd.com download was not valid audio (likely an error page)")
     except Exception as e:
-        log.warning(f"Stage 4 freepd failed: {e}")
+        log.warning(f"Stage 4: FreePD failed: {e}")
 
-    # Fallback: incompetech
-    try:
-        r = requests.get("https://incompetech.filmmusic.io/song/3989-impact-prelude/download?type=mp3", timeout=30)
-        if r.status_code == 200:
-            with open(music_path,"wb") as f: f.write(r.content)
-            if is_valid_audio(music_path):
-                log.info("Stage 4: Music from incompetech")
-                return music_path
-            else:
-                log.warning("Stage 4: incompetech download was not valid audio")
-    except Exception as e:
-        log.warning(f"Stage 4 incompetech failed: {e}")
-
-    # Last resort: generate silence — use .m4a since we encode as aac
-    # (writing aac data into a .mp3-named file caused ffmpeg to reject
-    # it later with "Invalid argument" during the music mix step)
+    # 5. Generate silence
     music_path = str(WORKSPACE/"music.m4a")
     subprocess.run(["ffmpeg","-y","-f","lavfi","-i","anullsrc=r=44100:cl=stereo",
         "-t","300","-c:a","aac",music_path], capture_output=True, timeout=30)
-    log.warning("Stage 4: Using silent track — no background music this run")
+    log.warning("Stage 4: Using silent track")
     return music_path
+
+def get_freesound_music(mood, api_key):
+    """Get background music from Freesound API"""
+    search_terms = {
+        "serious corporate dramatic": ["corporate", "dramatic", "cinematic"],
+        "dark suspense thriller": ["suspense", "thriller", "dark"],
+        "calm lo-fi focus": ["lo-fi", "calm", "focus"],
+        "cinematic dramatic": ["cinematic", "dramatic"],
+        "energetic trap beat": ["energetic", "trap", "beat"],
+        "playful upbeat cartoon": ["cartoon", "playful", "upbeat"],
+        "dark noir": ["noir", "dark", "mysterious"],
+        "cool blue": ["chill", "lo-fi", "calm"]
+    }
+    search_query = random.choice(search_terms.get(mood, ["cinematic"]))
+    
+    try:
+        resp = requests.get(
+            "https://freesound.org/apiv2/search/text/",
+            params={
+                "query": search_query,
+                "filter": "duration:[30 TO 180] type:wav",
+                "sort": "rating_desc",
+                "page_size": 20
+            },
+            headers={"Authorization": f"Token {api_key}"},
+            timeout=30
+        )
+        if resp.status_code != 200:
+            return None
+        results = resp.json().get("results", [])
+        if not results:
+            return None
+        sound = random.choice(results)
+        sound_id = sound["id"]
+        
+        detail_resp = requests.get(
+            f"https://freesound.org/apiv2/sounds/{sound_id}/",
+            headers={"Authorization": f"Token {api_key}"},
+            timeout=30
+        )
+        if detail_resp.status_code != 200:
+            return None
+        download_url = detail_resp.json().get("previews", {}).get("preview-hq-mp3")
+        if not download_url:
+            return None
+        
+        music_path = str(WORKSPACE / "freesound_music.mp3")
+        r = requests.get(download_url, timeout=60)
+        if r.status_code == 200 and len(r.content) > 1000:
+            with open(music_path, "wb") as f:
+                f.write(r.content)
+            return music_path
+    except Exception as e:
+        log.warning(f"Freesound music failed: {e}")
+    return None
+
+def get_pixabay_music(mood, api_key):
+    """Get background music from Pixabay API"""
+    genre_map = {
+        "serious corporate dramatic": "cinematic",
+        "dark suspense thriller": "dark",
+        "calm lo-fi focus": "chill",
+        "cinematic dramatic": "cinematic",
+        "energetic trap beat": "electro",
+        "playful upbeat cartoon": "pop",
+        "dark noir": "dark",
+        "cool blue": "chill"
+    }
+    genre = genre_map.get(mood, "cinematic")
+    
+    try:
+        resp = requests.get(
+            "https://pixabay.com/api/videos/",
+            params={"key": api_key, "q": genre, "page_size": 20, "video_type": "music"},
+            timeout=30
+        )
+        if resp.status_code != 200:
+            return None
+        results = resp.json().get("hits", [])
+        if not results:
+            return None
+        music = random.choice(results)
+        download_url = music["videos"]["medium"]["url"]
+        
+        music_path = str(WORKSPACE / "pixabay_music.mp4")
+        r = requests.get(download_url, timeout=60)
+        if r.status_code == 200 and len(r.content) > 1000:
+            with open(music_path, "wb") as f:
+                f.write(r.content)
+            audio_path = str(WORKSPACE / "pixabay_music.mp3")
+            subprocess.run([
+                "ffmpeg", "-y", "-i", music_path,
+                "-vn", "-codec:a", "libmp3lame", "-qscale:a", "2",
+                audio_path
+            ], capture_output=True, timeout=60)
+            return audio_path
+    except Exception as e:
+        log.warning(f"Pixabay music failed: {e}")
+    return None
 
 # ═══════════════════════════════════════════════════════════
 #  STAGE 5 — SFX (Freesound preview URLs — no OAuth needed)
@@ -1207,54 +1387,157 @@ def _srt(s):
     h,m=int(s//3600),int((s%3600)//60)
     return f"{h:02d}:{m:02d}:{int(s%60):02d},{int((s%1)*1000):03d}"
 
+def get_caption_fonts():
+    """Get list of available caption fonts from assets/fonts/caption/"""
+    font_dir = ASSETS_DIR / "fonts" / "caption"
+    if font_dir.exists():
+        fonts = list(font_dir.glob("*.ttf")) + list(font_dir.glob("*.otf"))
+        if fonts:
+            return [str(f) for f in fonts]
+    return [get_caption_font()]
+
 def build_caption_drawtext(script):
     """
-    Build FFmpeg drawtext filter string.
-    1-2 words at a time (high-retention style), lower-third position,
-    word-by-word timing. Key words (numbers, capitalized) in yellow.
-    Uses a real premium font if you've uploaded one to assets/fonts/caption/.
+    Build FFmpeg drawtext filter string with:
+    - Different fonts for key vs regular words
+    - Larger sizes for important words
+    - Fade-in animations
+    - Bold for key words
     """
     filters = []
-    font = get_caption_font()  # picked once per video for visual consistency
+    font_list = get_caption_fonts()
 
     for scene in script:
-        text  = scene.get("voiceover","").strip()
-        dur   = scene.get("actual_duration",4.0)
-        start = scene.get("start_time",0.0)
-        if not text: continue
+        text = scene.get("voiceover", "").strip()
+        dur = scene.get("actual_duration", 4.0)
+        start = scene.get("start_time", 0.0)
+        if not text:
+            continue
         
         words = text.split()
-        chunks, cur = [], []
-        for w in words:
-            cur.append(w)
-            if len(cur)>=2: chunks.append(" ".join(cur)); cur=[]
-        if cur: chunks.append(" ".join(cur))
+        chunks = []
+        i = 0
+        while i < len(words):
+            word = words[i]
+            is_key = bool(re.search(r'\d', word)) or (len(word) > 2 and word[0].isupper())
+            if is_key:
+                chunks.append((word, True))
+                i += 1
+            else:
+                chunk_size = random.randint(1, 3)
+                chunk_words = words[i:i+chunk_size]
+                chunks.append((" ".join(chunk_words), False))
+                i += chunk_size
         
-        tpc = dur/max(len(chunks),1)
+        tpc = dur / max(len(chunks), 1)
         
-        for j,chunk in enumerate(chunks):
-            cs = start + j*tpc
+        for j, (chunk_text, is_key) in enumerate(chunks):
+            cs = start + j * tpc
             ce = cs + tpc - 0.05
+            fade_in_end = cs + 0.2
             
-            # Detect key words (numbers, caps) for yellow
-            has_key = bool(re.search(r'\d', chunk)) or any(
-                w[0].isupper() and len(w)>2 for w in chunk.split() if w
+            font = random.choice(font_list)
+            
+            if is_key:
+                fontsize = random.randint(48, 64)
+                color = "#FFD700"
+            else:
+                fontsize = random.randint(28, 36)
+                color = "white"
+            
+            y_positions = ["h*0.65", "h*0.7", "h*0.75", "h*0.8"]
+            y = random.choice(y_positions)
+            
+            safe_text = re.sub(r"[':\"\\%\[\]{}|]", "", chunk_text)
+            
+            dt = (
+                f"drawtext=text='{safe_text}':"
+                f"fontsize={fontsize}:fontcolor={color}:"
+                f"x=(w-text_w)/2:y={y}:"
+                f"fontfile={font}:"
+                f"borderw=4:bordercolor=black:"
+                f"alpha='if(lt(t,{cs}),0,if(lt(t,{fade_in_end}),(t-{cs})/0.2,1))':"
+                f"enable='between(t,{cs:.3f},{ce:.3f})'"
             )
-            color = "#FFD700" if has_key else "white"
-            
-            safe = re.sub(r"[':\"\\%\[\]{}|]","",chunk)
-            
-            # Lower third: 75% down the screen
-            dt = (f"drawtext=text='{safe}':"
-                  f"fontsize=32:fontcolor={color}:"
-                  f"x=(w-text_w)/2:y=h*0.75:"
-                  f"fontfile={font}:"
-                  f"borderw=4:bordercolor=black:"
-                  f"enable='between(t,{cs:.3f},{ce:.3f})'")
             filters.append(dt)
     
     return ",".join(filters) if filters else "null"
 
+def create_intro(cfg, out_path):
+    """Create an intro clip with the topic title"""
+    topic = cfg.get("topic", "")
+    safe_topic = re.sub(r"[':\"\\%\[\]{}|]", "", topic[:60])
+    font = get_caption_font(bold=True)
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "color=c=0x080808:size=1920:1080:duration=2.0:rate=25",
+        "-vf",
+        f"drawtext=text='{safe_topic}':fontsize=72:fontcolor=#FFD700:x=(w-text_w)/2:y=(h-text_h)/2:fontfile={font}:borderw=6:bordercolor=black:alpha='if(lt(t,0.5),t/0.5,if(lt(t,1.5),1,if(lt(t,2.0),(2.0-t)/0.5,0)))',noise=alls=6:allf=t+u",
+        "-c:v", "libx264", "-preset", "ultrafast", "-an", out_path
+    ]
+    subprocess.run(cmd, capture_output=True, timeout=60)
+    return out_path if os.path.exists(out_path) else None
+
+def create_outro(cfg, out_path):
+    """Create an outro clip with call-to-action"""
+    cta_text = "Like, Share & Subscribe!"
+    font = get_caption_font(bold=True)
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "color=c=0x080808:size=1920:1080:duration=2.0:rate=25",
+        "-vf",
+        f"drawtext=text='{cta_text}':fontsize=64:fontcolor=#FFD700:x=(w-text_w)/2:y=(h-text_h)/2:fontfile={font}:borderw=6:bordercolor=black:alpha='if(lt(t,0.5),t/0.5,if(lt(t,1.5),1,if(lt(t,2.0),(2.0-t)/0.5,0)))',noise=alls=6:allf=t+u",
+        "-c:v", "libx264", "-preset", "ultrafast", "-an", out_path
+    ]
+    subprocess.run(cmd, capture_output=True, timeout=60)
+    return out_path if os.path.exists(out_path) else None
+
+def concat_with_transitions(clips, out_path):
+    """Concatenate clips with xfade transitions between them"""
+    if len(clips) == 1:
+        if os.path.exists(clips[0]):
+            import shutil
+            shutil.copy(clips[0], out_path)
+        return
+
+    transition_types = ["fade", "wipeleft", "wiperight", "circlecrop", "pixelize"]
+    transition_duration = 0.5
+
+    filter_parts = []
+    input_args = []
+    for i, clip in enumerate(clips):
+        input_args.extend(["-i", clip])
+
+    current_v = "[0:v]"
+    current_a = "[0:a]"
+
+    for i in range(1, len(clips)):
+        trans_type = random.choice(transition_types)
+        dur_prev = get_dur(clips[i-1])
+        offset = dur_prev - transition_duration
+        filter_parts.append(f"{current_v}[{i}:v]xfade=transition={trans_type}:duration={transition_duration}:offset={offset}[v{i}]")
+        filter_parts.append(f"{current_a}[{i}:a]acrossfade=duration={transition_duration}[a{i}]")
+        current_v = f"[v{i}]"
+        current_a = f"[a{i}]"
+
+    filter_complex = ";".join(filter_parts)
+    cmd = [
+        "ffmpeg", "-y", *input_args,
+        "-filter_complex", filter_complex,
+        "-map", current_v, "-map", current_a,
+        "-c:v", "libx264", "-preset", "ultrafast",
+        "-c:a", "aac", out_path
+    ]
+    result = subprocess.run(cmd, capture_output=True, timeout=900)
+    if result.returncode != 0 or not os.path.exists(out_path):
+        cfile = WORKSPACE / "assembly" / "concat_fallback.txt"
+        with open(cfile, "w") as f:
+            for clip in clips:
+                f.write(f"file '{os.path.abspath(clip)}'\n")
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(cfile),
+            "-c", "copy", out_path
+        ], capture_output=True, timeout=120)
 def apply_overlay_to_scene(scene_video, overlay_video, dur, out_path):
     """
     Screen-blends a VHS/glitch overlay clip onto a scene's video.
@@ -1374,47 +1657,33 @@ def stage_7_assemble(script, cfg, music_path):
 
     if not scene_files: raise RuntimeError("No scenes assembled!")
 
-    # Step 2: Concat all scenes — try fast stream copy first (all clips
-    # share the same codec/resolution/fps, so this should just work and
-    # takes seconds instead of many minutes). Only fall back to a real
-    # re-encode if copy-mode concat fails for some reason.
-    cfile=str(asm/"concat.txt")
-    with open(cfile,"w") as f:
-        for sf in scene_files: f.write(f"file '{os.path.abspath(sf)}'\n")
+    # Step 1.5: Add intro and outro
+    full_clips = []
+    intro_path = str(asm / "intro.mp4")
+    intro = create_intro(cfg, intro_path)
+    if intro:
+        full_clips.append(intro)
+    full_clips.extend(scene_files)
+    outro_path = str(asm / "outro.mp4")
+    outro = create_outro(cfg, outro_path)
+    if outro:
+        full_clips.append(outro)
 
-    raw=str(WORKSPACE/"raw.mp4")
-    r=subprocess.run(["ffmpeg","-y","-f","concat","-safe","0","-i",cfile,
-        "-c","copy","-movflags","+faststart",raw],
-        capture_output=True,timeout=120)
-
-    # CRITICAL SAFETY CHECK: stream-copy concat can return code 0 even
-    # when it silently corrupted the timeline (this happened when clips
-    # had mismatched frame rates — Pexels/Pixabay stock footage wasn't
-    # locked to 25fps like everything else, causing huge chunks of the
-    # video and its paired audio to vanish even though ffmpeg "succeeded").
-    # Verify the actual output duration roughly matches what it should be
-    # before trusting it.
-    needs_reencode = (r.returncode != 0)
-    if not needs_reencode:
-        actual_dur = get_dur(raw)
-        if actual_dur < cur_time * 0.85:
-            log.warning(f"Copy-mode concat produced a corrupted/truncated video "
-                        f"({actual_dur:.0f}s actual vs {cur_time:.0f}s expected) — forcing re-encode")
-            needs_reencode = True
-
-    if needs_reencode:
-        if r.returncode != 0:
-            log.warning(f"Copy-mode concat failed, re-encoding instead: {r.stderr.decode()[-150:]}")
-        r2=subprocess.run(["ffmpeg","-y","-f","concat","-safe","0","-i",cfile,
-            "-c:v","libx264","-preset","ultrafast","-r","25","-vsync","cfr","-c:a","aac","-movflags","+faststart",raw],
-            capture_output=True,timeout=900)
-        if r2.returncode!=0: raise RuntimeError(f"Concat failed: {r2.stderr.decode()[-200:]}")
-        final_dur = get_dur(raw)
-        log.info(f"Re-encoded concat: {final_dur:.0f}s (expected ~{cur_time:.0f}s)")
+    # Step 2: Concat with transitions
+    raw = str(WORKSPACE / "raw.mp4")
+    concat_with_transitions(full_clips, raw)
+    if not os.path.exists(raw):
+        raise RuntimeError("Concat failed: raw.mp4 was not created")
+    final_dur = get_dur(raw)
+    expected_dur = cur_time + (2.0 if intro else 0.0) + (2.0 if outro else 0.0)
+    if final_dur < expected_dur * 0.8:
+        log.warning(
+            f"Concat output looks short ({final_dur:.0f}s actual vs {expected_dur:.0f}s expected)"
+        )
 
     # Step 2.5: Mix background music into the audio track FIRST
     # (audio-only operation — fast, uses -c:v copy, no video re-encode)
-    total_dur = sum(s.get("actual_duration",4) for s in script)
+    total_dur = max(get_dur(raw), sum(s.get("actual_duration",4) for s in script))
     with_music=str(WORKSPACE/"with_music.mp4")
     if music_path and os.path.exists(music_path):
         r_mus = subprocess.run(["ffmpeg","-y","-i",raw,"-stream_loop","-1","-i",music_path,
@@ -1807,9 +2076,8 @@ def stage_wan21_colab(scenes_needing_video, topic):
 
 def generate_kling_clip(prompt, duration=5, mode="std", scene_num=0):
     """
-    Generate one video clip via Kling API.
+    Generate one video clip via Kling API (supports kling26ai.com and aimlapi.com).
     Returns local file path or None.
-    Uses klingapi.com (official Kling developer API).
     """
     kling_key = os.environ.get("KLING_API_KEY", "")
     if not kling_key:
@@ -1818,62 +2086,118 @@ def generate_kling_clip(prompt, duration=5, mode="std", scene_num=0):
     out_path = str(WORKSPACE / "visuals" / f"kling_{scene_num:03d}.mp4")
 
     try:
-        BASE = "https://api.klingapi.com"
+        # Try kling26ai.com first
+        BASE = "https://kling26ai.com"
 
         # Submit generation task
-        resp = requests.post(f"{BASE}/v1/videos/text2video",
+        resp = requests.post(f"{BASE}/api/generate",
             headers={"Authorization": f"Bearer {kling_key}",
                      "Content-Type": "application/json"},
-            json={"model": "kling-v2.6-pro" if mode=="pro" else "kling-v2.6",
-                  "prompt": prompt,
-                  "negative_prompt": "blurry, ugly, text, watermark, faces, deformed",
-                  "duration": duration,
+            json={"prompt": prompt,
                   "aspect_ratio": "16:9",
-                  "mode": mode},
+                  "duration": str(duration),
+                  "sound": False},
             timeout=30)
 
         if resp.status_code != 200:
-            log.warning(f"Kling submit failed: {resp.status_code} {resp.text[:200]}")
-            return None
+            log.warning(f"Kling26 submit failed: {resp.status_code} {resp.text[:200]}")
+            # Fallback to AIML API
+            return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
 
-        task_id = resp.json().get("task_id")
+        result = resp.json()
+        if result.get("code") != 200:
+            log.warning(f"Kling26 error: {result.get('message', '')}")
+            return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
+
+        task_id = result.get("data", {}).get("task_id")
         if not task_id:
-            log.warning(f"Kling: no task_id in response")
-            return None
+            log.warning(f"Kling26: no task_id in response")
+            return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
 
-        log.info(f"  Kling task {task_id} submitted, polling...")
+        log.info(f"  Kling26 task {task_id} submitted, polling...")
 
         # Poll for result (max 5 minutes)
         for attempt in range(60):
             time.sleep(5)
-            poll = requests.get(f"{BASE}/v1/videos/text2video/{task_id}",
+            poll = requests.get(f"{BASE}/api/status?task_id={task_id}",
                 headers={"Authorization": f"Bearer {kling_key}"},
                 timeout=15)
 
             if poll.status_code != 200:
                 continue
 
-            data   = poll.json()
-            status = data.get("status", "")
+            data = poll.json()
+            if data.get("code") != 200:
+                continue
 
+            status = data.get("data", {}).get("status", "")
+
+            if status == "SUCCESS":
+                video_urls = data.get("data", {}).get("response", [])
+                if video_urls:
+                    r = requests.get(video_urls[0], stream=True, timeout=60)
+                    with open(out_path, "wb") as f:
+                        for chunk in r.iter_content(8192): f.write(chunk)
+                    log.info(f"  Kling26 scene {scene_num}: ✓ ({os.path.getsize(out_path)//1024}KB)")
+                    return out_path
+                break
+            elif status == "FAILED":
+                log.warning(f"  Kling26 task failed: {data.get('data', {}).get('error_message','')}")
+                break
+            else:
+                log.info(f"  Kling26 {task_id}: {status} (attempt {attempt+1}/60)")
+
+    except Exception as e:
+        log.warning(f"  Kling26 scene {scene_num}: {e}")
+        return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
+
+    return None
+
+def generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path):
+    """Fallback Kling generation via AIML API"""
+    try:
+        BASE = "https://api.aimlapi.com"
+        resp = requests.post(f"{BASE}/v2/video/generations",
+            headers={"Authorization": f"Bearer {kling_key}",
+                     "Content-Type": "application/json"},
+            json={"model": "klingai/video-v2-6-pro-image-to-video" if mode=="pro" else "klingai/video-v2-6-image-to-video",
+                  "prompt": prompt,
+                  "duration": duration,
+                  "negative_prompt": "blurry, ugly, text, watermark, faces, deformed",
+                  "generate_audio": False},
+            timeout=30)
+        if resp.status_code != 200:
+            log.warning(f"AIMLAPI Kling submit failed: {resp.status_code} {resp.text[:200]}")
+            return None
+        gen_id = resp.json().get("id")
+        if not gen_id:
+            return None
+        log.info(f"  AIMLAPI Kling task {gen_id} submitted, polling...")
+        for attempt in range(60):
+            time.sleep(5)
+            poll = requests.get(f"{BASE}/v2/video/generations?generation_id={gen_id}",
+                headers={"Authorization": f"Bearer {kling_key}"},
+                timeout=15)
+            if poll.status_code != 200:
+                continue
+            data = poll.json()
+            status = data.get("status", "")
             if status == "completed":
-                video_url = data.get("video_url", "") or data.get("url","")
+                video_url = data.get("video", {}).get("url", "")
                 if video_url:
                     r = requests.get(video_url, stream=True, timeout=60)
                     with open(out_path, "wb") as f:
                         for chunk in r.iter_content(8192): f.write(chunk)
-                    log.info(f"  Kling scene {scene_num}: ✓ ({os.path.getsize(out_path)//1024}KB)")
+                    log.info(f"  AIMLAPI Kling scene {scene_num}: ✓ ({os.path.getsize(out_path)//1024}KB)")
                     return out_path
                 break
-            elif status in ("failed", "error"):
-                log.warning(f"  Kling task failed: {data.get('error','')}")
+            elif status == "error":
+                log.warning(f"  AIMLAPI Kling task failed: {data.get('error', '')}")
                 break
             else:
-                log.info(f"  Kling {task_id}: {status} (attempt {attempt+1}/60)")
-
+                log.info(f"  AIMLAPI Kling {gen_id}: {status} (attempt {attempt+1}/60)")
     except Exception as e:
-        log.warning(f"  Kling scene {scene_num}: {e}")
-
+        log.warning(f"  AIMLAPI Kling scene {scene_num}: {e}")
     return None
 
 def stage_kling_visuals(script, cfg, max_clips=2):

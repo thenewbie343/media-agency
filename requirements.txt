@@ -1,0 +1,10 @@
+requests
+google-generativeai
+groq
+edge-tts
+beautifulsoup4
+pydub
+kokoro-tts
+ffmpeg-python
+numpy
+soundfile
