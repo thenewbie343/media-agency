@@ -1503,17 +1503,48 @@ def concat_with_transitions(clips, out_path):
     transition_types = ["fade", "wipeleft", "wiperight", "circlecrop", "pixelize"]
     transition_duration = 0.5
 
+    # Process clips to ensure they have audio (add silent audio if missing)
+    processed_clips = []
+    asm_dir = WORKSPACE / "assembly"
+    asm_dir.mkdir(exist_ok=True)
+    for i, clip in enumerate(clips):
+        temp_out = str(asm_dir / f"temp_clip_{i:03d}.mp4")
+        # Check if clip has audio stream
+        check_cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "a", "-show_entries", "stream=codec_type",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            clip
+        ]
+        check_result = subprocess.run(check_cmd, capture_output=True, text=True, timeout=30)
+        has_audio = len(check_result.stdout.strip()) > 0
+        if has_audio:
+            processed_clips.append(clip)
+        else:
+            # Add silent audio
+            subprocess.run([
+                "ffmpeg", "-y",
+                "-i", clip,
+                "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                "-shortest",
+                "-c:v", "copy", "-c:a", "aac", temp_out
+            ], capture_output=True, timeout=60)
+            if os.path.exists(temp_out):
+                processed_clips.append(temp_out)
+            else:
+                processed_clips.append(clip)
+
     filter_parts = []
     input_args = []
-    for i, clip in enumerate(clips):
+    for i, clip in enumerate(processed_clips):
         input_args.extend(["-i", clip])
 
     current_v = "[0:v]"
     current_a = "[0:a]"
 
-    for i in range(1, len(clips)):
+    for i in range(1, len(processed_clips)):
         trans_type = random.choice(transition_types)
-        dur_prev = get_dur(clips[i-1])
+        dur_prev = get_dur(processed_clips[i-1])
         offset = dur_prev - transition_duration
         filter_parts.append(f"{current_v}[{i}:v]xfade=transition={trans_type}:duration={transition_duration}:offset={offset}[v{i}]")
         filter_parts.append(f"{current_a}[{i}:a]acrossfade=duration={transition_duration}[a{i}]")
@@ -1530,9 +1561,10 @@ def concat_with_transitions(clips, out_path):
     ]
     result = subprocess.run(cmd, capture_output=True, timeout=900)
     if result.returncode != 0 or not os.path.exists(out_path):
+        # Fallback to simple concat if transitions fail
         cfile = WORKSPACE / "assembly" / "concat_fallback.txt"
         with open(cfile, "w") as f:
-            for clip in clips:
+            for clip in processed_clips:
                 f.write(f"file '{os.path.abspath(clip)}'\n")
         subprocess.run([
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(cfile),
@@ -2076,8 +2108,9 @@ def stage_wan21_colab(scenes_needing_video, topic):
 
 def generate_kling_clip(prompt, duration=5, mode="std", scene_num=0):
     """
-    Generate one video clip via Kling API (supports kling26ai.com and aimlapi.com).
+    Generate one video clip via Kling API.
     Returns local file path or None.
+    Uses klingapi.com (official Kling developer API).
     """
     kling_key = os.environ.get("KLING_API_KEY", "")
     if not kling_key:
@@ -2086,118 +2119,62 @@ def generate_kling_clip(prompt, duration=5, mode="std", scene_num=0):
     out_path = str(WORKSPACE / "visuals" / f"kling_{scene_num:03d}.mp4")
 
     try:
-        # Try kling26ai.com first
-        BASE = "https://kling26ai.com"
+        BASE = "https://api.klingapi.com"
 
         # Submit generation task
-        resp = requests.post(f"{BASE}/api/generate",
+        resp = requests.post(f"{BASE}/v1/videos/text2video",
             headers={"Authorization": f"Bearer {kling_key}",
                      "Content-Type": "application/json"},
-            json={"prompt": prompt,
+            json={"model": "kling-v2.6-pro" if mode=="pro" else "kling-v2.6",
+                  "prompt": prompt,
+                  "negative_prompt": "blurry, ugly, text, watermark, faces, deformed",
+                  "duration": duration,
                   "aspect_ratio": "16:9",
-                  "duration": str(duration),
-                  "sound": False},
+                  "mode": mode},
             timeout=30)
 
         if resp.status_code != 200:
-            log.warning(f"Kling26 submit failed: {resp.status_code} {resp.text[:200]}")
-            # Fallback to AIML API
-            return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
+            log.warning(f"Kling submit failed: {resp.status_code} {resp.text[:200]}")
+            return None
 
-        result = resp.json()
-        if result.get("code") != 200:
-            log.warning(f"Kling26 error: {result.get('message', '')}")
-            return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
-
-        task_id = result.get("data", {}).get("task_id")
+        task_id = resp.json().get("task_id")
         if not task_id:
-            log.warning(f"Kling26: no task_id in response")
-            return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
+            log.warning(f"Kling: no task_id in response")
+            return None
 
-        log.info(f"  Kling26 task {task_id} submitted, polling...")
+        log.info(f"  Kling task {task_id} submitted, polling...")
 
         # Poll for result (max 5 minutes)
         for attempt in range(60):
             time.sleep(5)
-            poll = requests.get(f"{BASE}/api/status?task_id={task_id}",
+            poll = requests.get(f"{BASE}/v1/videos/text2video/{task_id}",
                 headers={"Authorization": f"Bearer {kling_key}"},
                 timeout=15)
 
             if poll.status_code != 200:
                 continue
 
-            data = poll.json()
-            if data.get("code") != 200:
-                continue
-
-            status = data.get("data", {}).get("status", "")
-
-            if status == "SUCCESS":
-                video_urls = data.get("data", {}).get("response", [])
-                if video_urls:
-                    r = requests.get(video_urls[0], stream=True, timeout=60)
-                    with open(out_path, "wb") as f:
-                        for chunk in r.iter_content(8192): f.write(chunk)
-                    log.info(f"  Kling26 scene {scene_num}: ✓ ({os.path.getsize(out_path)//1024}KB)")
-                    return out_path
-                break
-            elif status == "FAILED":
-                log.warning(f"  Kling26 task failed: {data.get('data', {}).get('error_message','')}")
-                break
-            else:
-                log.info(f"  Kling26 {task_id}: {status} (attempt {attempt+1}/60)")
-
-    except Exception as e:
-        log.warning(f"  Kling26 scene {scene_num}: {e}")
-        return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
-
-    return None
-
-def generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path):
-    """Fallback Kling generation via AIML API"""
-    try:
-        BASE = "https://api.aimlapi.com"
-        resp = requests.post(f"{BASE}/v2/video/generations",
-            headers={"Authorization": f"Bearer {kling_key}",
-                     "Content-Type": "application/json"},
-            json={"model": "klingai/video-v2-6-pro-image-to-video" if mode=="pro" else "klingai/video-v2-6-image-to-video",
-                  "prompt": prompt,
-                  "duration": duration,
-                  "negative_prompt": "blurry, ugly, text, watermark, faces, deformed",
-                  "generate_audio": False},
-            timeout=30)
-        if resp.status_code != 200:
-            log.warning(f"AIMLAPI Kling submit failed: {resp.status_code} {resp.text[:200]}")
-            return None
-        gen_id = resp.json().get("id")
-        if not gen_id:
-            return None
-        log.info(f"  AIMLAPI Kling task {gen_id} submitted, polling...")
-        for attempt in range(60):
-            time.sleep(5)
-            poll = requests.get(f"{BASE}/v2/video/generations?generation_id={gen_id}",
-                headers={"Authorization": f"Bearer {kling_key}"},
-                timeout=15)
-            if poll.status_code != 200:
-                continue
-            data = poll.json()
+            data   = poll.json()
             status = data.get("status", "")
+
             if status == "completed":
-                video_url = data.get("video", {}).get("url", "")
+                video_url = data.get("video_url", "") or data.get("url","")
                 if video_url:
                     r = requests.get(video_url, stream=True, timeout=60)
                     with open(out_path, "wb") as f:
                         for chunk in r.iter_content(8192): f.write(chunk)
-                    log.info(f"  AIMLAPI Kling scene {scene_num}: ✓ ({os.path.getsize(out_path)//1024}KB)")
+                    log.info(f"  Kling scene {scene_num}: ✓ ({os.path.getsize(out_path)//1024}KB)")
                     return out_path
                 break
-            elif status == "error":
-                log.warning(f"  AIMLAPI Kling task failed: {data.get('error', '')}")
+            elif status in ("failed", "error"):
+                log.warning(f"  Kling task failed: {data.get('error','')}")
                 break
             else:
-                log.info(f"  AIMLAPI Kling {gen_id}: {status} (attempt {attempt+1}/60)")
+                log.info(f"  Kling {task_id}: {status} (attempt {attempt+1}/60)")
+
     except Exception as e:
-        log.warning(f"  AIMLAPI Kling scene {scene_num}: {e}")
+        log.warning(f"  Kling scene {scene_num}: {e}")
+
     return None
 
 def stage_kling_visuals(script, cfg, max_clips=2):
