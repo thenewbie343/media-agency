@@ -2108,9 +2108,8 @@ def stage_wan21_colab(scenes_needing_video, topic):
 
 def generate_kling_clip(prompt, duration=5, mode="std", scene_num=0):
     """
-    Generate one video clip via Kling API.
+    Generate one video clip via Kling API (supports kling26ai.com and aimlapi.com).
     Returns local file path or None.
-    Uses klingapi.com (official Kling developer API).
     """
     kling_key = os.environ.get("KLING_API_KEY", "")
     if not kling_key:
@@ -2119,62 +2118,118 @@ def generate_kling_clip(prompt, duration=5, mode="std", scene_num=0):
     out_path = str(WORKSPACE / "visuals" / f"kling_{scene_num:03d}.mp4")
 
     try:
-        BASE = "https://api.klingapi.com"
+        # Try kling26ai.com first
+        BASE = "https://kling26ai.com"
 
         # Submit generation task
-        resp = requests.post(f"{BASE}/v1/videos/text2video",
+        resp = requests.post(f"{BASE}/api/generate",
             headers={"Authorization": f"Bearer {kling_key}",
                      "Content-Type": "application/json"},
-            json={"model": "kling-v2.6-pro" if mode=="pro" else "kling-v2.6",
-                  "prompt": prompt,
-                  "negative_prompt": "blurry, ugly, text, watermark, faces, deformed",
-                  "duration": duration,
+            json={"prompt": prompt,
                   "aspect_ratio": "16:9",
-                  "mode": mode},
+                  "duration": str(duration),
+                  "sound": False},
             timeout=30)
 
         if resp.status_code != 200:
-            log.warning(f"Kling submit failed: {resp.status_code} {resp.text[:200]}")
-            return None
+            log.warning(f"Kling26 submit failed: {resp.status_code} {resp.text[:200]}")
+            # Fallback to AIML API
+            return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
 
-        task_id = resp.json().get("task_id")
+        result = resp.json()
+        if result.get("code") != 200:
+            log.warning(f"Kling26 error: {result.get('message', '')}")
+            return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
+
+        task_id = result.get("data", {}).get("task_id")
         if not task_id:
-            log.warning(f"Kling: no task_id in response")
-            return None
+            log.warning(f"Kling26: no task_id in response")
+            return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
 
-        log.info(f"  Kling task {task_id} submitted, polling...")
+        log.info(f"  Kling26 task {task_id} submitted, polling...")
 
         # Poll for result (max 5 minutes)
         for attempt in range(60):
             time.sleep(5)
-            poll = requests.get(f"{BASE}/v1/videos/text2video/{task_id}",
+            poll = requests.get(f"{BASE}/api/status?task_id={task_id}",
                 headers={"Authorization": f"Bearer {kling_key}"},
                 timeout=15)
 
             if poll.status_code != 200:
                 continue
 
-            data   = poll.json()
-            status = data.get("status", "")
+            data = poll.json()
+            if data.get("code") != 200:
+                continue
 
+            status = data.get("data", {}).get("status", "")
+
+            if status == "SUCCESS":
+                video_urls = data.get("data", {}).get("response", [])
+                if video_urls:
+                    r = requests.get(video_urls[0], stream=True, timeout=60)
+                    with open(out_path, "wb") as f:
+                        for chunk in r.iter_content(8192): f.write(chunk)
+                    log.info(f"  Kling26 scene {scene_num}: ✓ ({os.path.getsize(out_path)//1024}KB)")
+                    return out_path
+                break
+            elif status == "FAILED":
+                log.warning(f"  Kling26 task failed: {data.get('data', {}).get('error_message','')}")
+                break
+            else:
+                log.info(f"  Kling26 {task_id}: {status} (attempt {attempt+1}/60)")
+
+    except Exception as e:
+        log.warning(f"  Kling26 scene {scene_num}: {e}")
+        return generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path)
+
+    return None
+
+def generate_kling_clip_aimlapi(prompt, duration, mode, scene_num, kling_key, out_path):
+    """Fallback Kling generation via AIML API"""
+    try:
+        BASE = "https://api.aimlapi.com"
+        resp = requests.post(f"{BASE}/v2/video/generations",
+            headers={"Authorization": f"Bearer {kling_key}",
+                     "Content-Type": "application/json"},
+            json={"model": "klingai/video-v2-6-pro-text-to-video" if mode=="pro" else "klingai/video-v2-6-text-to-video",
+                  "prompt": prompt,
+                  "duration": duration,
+                  "negative_prompt": "blurry, ugly, text, watermark, faces, deformed",
+                  "generate_audio": False},
+            timeout=30)
+        if resp.status_code != 200:
+            log.warning(f"AIMLAPI Kling submit failed: {resp.status_code} {resp.text[:200]}")
+            return None
+        gen_id = resp.json().get("id")
+        if not gen_id:
+            return None
+        log.info(f"  AIMLAPI Kling task {gen_id} submitted, polling...")
+        for attempt in range(60):
+            time.sleep(5)
+            poll = requests.get(f"{BASE}/v2/video/generations?generation_id={gen_id}",
+                headers={"Authorization": f"Bearer {kling_key}"},
+                timeout=15)
+            if poll.status_code != 200:
+                continue
+            data = poll.json()
+            status = data.get("status", "")
             if status == "completed":
-                video_url = data.get("video_url", "") or data.get("url","")
+                video_url = data.get("video", {}).get("url", "")
                 if video_url:
                     r = requests.get(video_url, stream=True, timeout=60)
                     with open(out_path, "wb") as f:
                         for chunk in r.iter_content(8192): f.write(chunk)
-                    log.info(f"  Kling scene {scene_num}: ✓ ({os.path.getsize(out_path)//1024}KB)")
+                    log.info(f"  AIMLAPI Kling scene {scene_num}: ✓ ({os.path.getsize(out_path)//1024}KB)")
                     return out_path
                 break
-            elif status in ("failed", "error"):
-                log.warning(f"  Kling task failed: {data.get('error','')}")
+            elif status == "error":
+                log.warning(f"  AIMLAPI Kling task failed: {data.get('error', '')}")
                 break
             else:
-                log.info(f"  Kling {task_id}: {status} (attempt {attempt+1}/60)")
-
+                log.info(f"  AIMLAPI Kling {gen_id}: {status} (attempt {attempt+1}/60)")
     except Exception as e:
-        log.warning(f"  Kling scene {scene_num}: {e}")
-
+        log.warning(f"  AIMLAPI Kling scene {scene_num}: {e}")
     return None
 
 def stage_kling_visuals(script, cfg, max_clips=2):
