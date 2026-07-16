@@ -1915,11 +1915,19 @@ Return ONLY JSON, no reasoning, no markdown fences, no explanation:
   "hashtags":"#{topic.replace(' ','')} #hinglish #{niche} #viral"
 }}""", max_tokens=800)
         meta = json.loads(extract_json_object(meta_text))
+        log.info(f"Generated metadata: {meta}")
     except Exception as e:
         log.warning(f"Metadata generation failed, using fallback: {e}")
         meta={"title":f"{topic} — Poori Sacchai",
               "description":f"{topic} ke baare mein poori jaankari.",
-              "tags":[topic,"hinglish",niche or "facts"],"hashtags":f"#{topic.replace(' ','')} #hinglish"}
+              "tags":[topic,"hinglish",niche or "facts"],
+              "hashtags":f"#{topic.replace(' ','')} #hinglish"}
+
+    # Ensure all required keys exist in meta
+    meta.setdefault("title", f"{topic} — Poori Sacchai")
+    meta.setdefault("description", f"{topic} ke baare mein poori jaankari.")
+    meta.setdefault("tags", [topic, "hinglish", niche or "facts"])
+    meta.setdefault("hashtags", f"#{topic.replace(' ','')} #hinglish")
 
     log.info(f"Title: {meta['title']}")
     now=datetime.now(timezone.utc)
@@ -1938,7 +1946,8 @@ Return ONLY JSON, no reasoning, no markdown fences, no explanation:
         yt=build("youtube","v3",credentials=creds)
         body={"snippet":{"title":meta["title"],
               "description":meta["description"]+"\n\n"+meta.get("hashtags",""),
-              "tags":meta.get("tags",[topic]),"categoryId":"28"},
+              "tags":meta["tags"],
+              "categoryId":"28"},
               "status":{"privacyStatus":"private","publishAt":pub,"selfDeclaredMadeForKids":False}}
         media=MediaFileUpload(video_path,mimetype="video/mp4",resumable=True,chunksize=5*1024*1024)
         req=yt.videos().insert(part="snippet,status",body=body,media_body=media)
