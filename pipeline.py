@@ -165,7 +165,7 @@ def _save(data, name):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 _gem_idx = 0
-def gemini(prompt, model="gemini-2.5-flash"):
+def gemini(prompt, model="gemini-2.0-flash"):
     global _gem_idx
     import google.generativeai as genai
     keys = [k for k in [GEMINI_KEY, GEMINI_KEY_2] if k]
