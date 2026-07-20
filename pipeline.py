@@ -2309,9 +2309,10 @@ def run_pipeline_v52():
             
             # Save updated script for Remotion
             _save(script, "script_remotion.json")
-            script_path = str(WORKSPACE / "script_remotion.json")
+            script_path = str((WORKSPACE / "script_remotion.json").resolve())
+            final_video_abs = str((WORKSPACE / "final_documentary.mp4").resolve())
 
-            remotion_cmd = f"npx remotion render src/index.ts DocumentaryVideo {final_video} --props={script_path}"
+            remotion_cmd = f"npx remotion render src/index.ts DocumentaryVideo {final_video_abs} --props={script_path}"
             log.info(f"Running Remotion: {remotion_cmd}")
             import subprocess
             res = subprocess.run(remotion_cmd, cwd="remotion", shell=True, capture_output=True, text=True)
