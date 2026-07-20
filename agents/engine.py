@@ -50,5 +50,10 @@ def run_documentary_pipeline(cfg):
         log.info("QC Approved script!")
         final_script = director_script
         
+    # Ensure scene keys exist just in case QC LLM dropped them
+    for i, scene in enumerate(final_script):
+        if "scene" not in scene:
+            scene["scene"] = i + 1
+            
     return final_script
 
