@@ -4,7 +4,7 @@ groq
 edge-tts
 beautifulsoup4
 pydub
-kokoro-onnx
+kokoro-tts
 ffmpeg-python
 numpy
 soundfile

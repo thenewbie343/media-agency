@@ -1,11 +1,3 @@
-# .github/workflows/make_video.yml
-# ─────────────────────────────────────────────────────────
-# Triggered by:
-#   1. daily_scheduler.yml (automatic daily videos)
-#   2. Telegram /make command via telegram_listener.py
-#   3. Manual run from GitHub Actions tab
-# ─────────────────────────────────────────────────────────
-
 name: Make Video
 
 on:
@@ -68,10 +60,13 @@ jobs:
             google-api-python-client \
             google-auth-oauthlib \
             google-auth-httplib2 \
-            kokoro-onnx \
+            kokoro \
+            onnxruntime \
             pydub \
             soundfile \
-            numpy
+            numpy \
+            scipy \
+            duckduckgo-search
 
       - name: Parse input (handle all 3 trigger modes)
         id: parse
@@ -91,7 +86,6 @@ jobs:
 
           topic = ""; niche = ""; script = ""; sched = "18:00"
 
-          # Mode 1: called from daily_scheduler (raw_video_json)
           if raw_json and raw_json.strip() and raw_json != "":
               try:
                   v = json.loads(raw_json)
@@ -99,17 +93,14 @@ jobs:
                   niche  = v.get("niche","")
                   sched  = v.get("time","18:00")
                   script = v.get("script","") or ""
-                  # Add time to topic so pipeline can parse it
                   topic  = f"{topic} {sched}"
               except: pass
 
-          # Mode 2: Telegram / repository_dispatch
           elif dispatch_topic:
               topic  = dispatch_topic
               niche  = dispatch_niche
               script = dispatch_script
 
-          # Mode 3: Manual GitHub workflow
           elif manual_topic:
               topic  = f"{manual_topic} {manual_time}"
               niche  = manual_niche
@@ -138,6 +129,18 @@ jobs:
             echo "COLAB_TOKEN not set — skipping Colab CLI setup, cartoon genre will use Pollinations"
           fi
         continue-on-error: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Remotion Dependencies
+        run: |
+          if [ -d "remotion" ]; then
+            cd remotion
+            npm install
+          fi
 
       - name: Run pipeline
         env:
