@@ -13,7 +13,7 @@ except ImportError:
 log = logging.getLogger("agency")
 
 class BaseAgent:
-    def __init__(self, model_name="gemini-1.5-pro-latest"):
+    def __init__(self, model_name="gemini-2.5-flash"):
         self.model_name = model_name
         
         # Setup Gemini
