@@ -2305,8 +2305,8 @@ def run_pipeline_v52():
                     import shutil
                     basename = os.path.basename(vid)
                     shutil.copy(vid, str(public_dir / basename))
-                    # Remotion can access it via '/assets/basename'
-                    scene["video_file"] = f"/assets/{basename}"
+                    # Remotion can access it via 'assets/basename'
+                    scene["video_file"] = f"assets/{basename}"
             
             # Save updated script for Remotion
             _save({"scenes": script}, "script_remotion.json")
