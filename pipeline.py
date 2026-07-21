@@ -1961,16 +1961,16 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
             lines.append(f"file '{os.path.abspath(audio)}'")
         else:
             # Insert silence if no audio
-            silence_path = asm / f"silence_{dur}.m4a"
+            silence_path = asm / f"silence_{dur}.mp3"
             if not os.path.exists(silence_path):
-                subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", f"anullsrc=r=44100:cl=stereo", "-t", str(dur), "-c:a", "aac", str(silence_path)], capture_output=True)
+                subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", str(dur), "-c:a", "libmp3lame", str(silence_path)], capture_output=True)
             lines.append(f"file '{os.path.abspath(silence_path)}'")
         current_time += dur
             
     with open(concat_file, "w") as f:
         f.write("\n".join(lines))
         
-    voice_track = str(asm / "voice_track.m4a")
+    voice_track = str(asm / "voice_track.mp3")
     subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file), "-c", "copy", voice_track], capture_output=True)
     
     # 2. Mix Voice + Music + (Optional ambient texture)
@@ -2243,6 +2243,7 @@ def run_pipeline_v52():
     tg(f"🚀 v5.2 DUAL-SCRIPT\n📌 {cfg['topic']}\n🎬 {genre} | {cfg['lang']} | {cfg['duration_min']}min\n⏰ {cfg['schedule']} UTC")
 
     try:
+        research = None
         if genre == "documentary":
             log.info("🎯 Routing to new AI Studio Documentary Engine (Phase 2 Integration)...")
             from agents.engine import run_documentary_pipeline
@@ -2308,7 +2309,7 @@ def run_pipeline_v52():
                     scene["video_file"] = f"/assets/{basename}"
             
             # Save updated script for Remotion
-            _save(script, "script_remotion.json")
+            _save({"scenes": script}, "script_remotion.json")
             script_path = str((WORKSPACE / "script_remotion.json").resolve())
             final_video_abs = str((WORKSPACE / "final_documentary.mp4").resolve())
 
