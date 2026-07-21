@@ -182,19 +182,8 @@ def gemini(prompt, model="gemini-2.5-flash"):
     raise RuntimeError("All Gemini keys exhausted")
 
 def groq(prompt, max_tokens=4000):
-    from groq import Groq
-    client = Groq(api_key=GROQ_KEY)
-    for model in GROQ_MODELS:
-        try:
-            r = client.chat.completions.create(
-                model=model,
-                messages=[{"role":"user","content":prompt}],
-                temperature=0.8, max_tokens=max_tokens)
-            return r.choices[0].message.content.strip()
-        except Exception as e:
-            log.warning(f"Groq {model}: {e}")
-            time.sleep(2)
-    raise RuntimeError("All Groq models failed")
+    # Rerouted to Gemini 2.5 Flash to eliminate Groq API dependency and failures
+    return gemini(prompt)
 
 # ═══════════════════════════════════════════════════════════
 #  DUAL-SCRIPT INSTRUCTIONS
