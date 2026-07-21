@@ -112,18 +112,7 @@ class BaseAgent:
                         sleep_time = float(match.group(1)) + 1.5
                         log.info(f"Rate limited. Detected required sleep: {sleep_time:.1f}s")
                     
-                    if current_key == gemini_key_1 and gemini_key_2:
-                        log.info(f"[{self.__class__.__name__}] Rotating to GEMINI_KEY_2 to bypass rate limit!")
-                        genai.configure(api_key=gemini_key_2)
-                        self.model = genai.GenerativeModel(model_name=self.model_name)
-                        current_key = gemini_key_2
-                        sleep_time = 1
-                    elif current_key == gemini_key_2 and gemini_key_1:
-                        log.info(f"[{self.__class__.__name__}] Rotating to GEMINI_KEY_1 to bypass rate limit!")
-                        genai.configure(api_key=gemini_key_1)
-                        self.model = genai.GenerativeModel(model_name=self.model_name)
-                        current_key = gemini_key_1
-                    
+                    log.info(f"[{self.__class__.__name__}] Waiting {sleep_time:.1f}s for rate limit reset...")
                     time.sleep(sleep_time)
                 else:
                     raise
