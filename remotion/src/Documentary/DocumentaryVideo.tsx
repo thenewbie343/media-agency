@@ -1,5 +1,8 @@
 import { AbsoluteFill, Composition, getInputProps } from 'remotion';
 import { DocumentaryScene } from './DocumentaryScene';
+import { TransitionSeries, linearTiming } from '@remotion/transitions';
+import { fade } from '@remotion/transitions/fade';
+import { Fragment } from 'react';
 
 // Define the shape of our input props (from the Python pipeline)
 export type SceneData = {
@@ -8,29 +11,36 @@ export type SceneData = {
   caption: string;
   visual_type: string;
   video_file?: string;
+  actual_duration?: number;
   duration_hint: number;
 };
 
 export const DocumentaryVideo: React.FC<{ scenes: SceneData[] }> = ({ scenes }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: 'black' }}>
-      {/* We iterate over the scenes and calculate their start frames */}
-      {scenes.map((scene, index) => {
-        // Calculate start frame based on sum of previous durations (assuming 30fps)
-        const startFrame = scenes
-          .slice(0, index)
-          .reduce((acc, curr) => acc + Math.round(curr.duration_hint * 30), 0);
-        const durationFrames = Math.round(scene.duration_hint * 30);
+      <TransitionSeries>
+        {scenes.map((scene, index) => {
+          // Use exact actual_duration for precision audio sync
+          const durationFrames = Math.ceil((scene.actual_duration || scene.duration_hint) * 30);
 
-        return (
-          <DocumentaryScene
-            key={scene.scene}
-            scene={scene}
-            startFrame={startFrame}
-            durationFrames={durationFrames}
-          />
-        );
-      })}
+          return (
+            <Fragment key={index}>
+              {index > 0 && (
+                <TransitionSeries.Transition
+                  presentation={fade()}
+                  timing={linearTiming({ durationInFrames: 15 })}
+                />
+              )}
+              <TransitionSeries.Sequence durationInFrames={durationFrames}>
+                <DocumentaryScene
+                  scene={scene}
+                  durationFrames={durationFrames}
+                />
+              </TransitionSeries.Sequence>
+            </Fragment>
+          );
+        })}
+      </TransitionSeries>
     </AbsoluteFill>
   );
 };
@@ -46,17 +56,21 @@ export const RemotionRoot: React.FC = () => {
       voiceover: "Testing",
       caption: "This is a test caption",
       visual_type: "motion_graphics",
-      duration_hint: 4
+      duration_hint: 4,
+      actual_duration: 4
     }
   ];
 
   const scenes = (inputProps.scenes as SceneData[]) || defaultScenes;
 
-  // Calculate total duration
-  const totalDuration = scenes.reduce(
+  // Calculate total duration (accounting for transitions overlap)
+  const baseDuration = scenes.reduce(
     (acc, curr) => acc + Math.round(curr.duration_hint * 30),
     0
   );
+  
+  const transitionOverlap = scenes.length > 1 ? (scenes.length - 1) * 15 : 0;
+  const totalDuration = baseDuration - transitionOverlap;
 
   return (
     <>

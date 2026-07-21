@@ -564,7 +564,7 @@ def stage_2_script(research, cfg):
     total_angles = max(4, unique_facts + unique_stats + unique_timeline)
     
     # Each angle gets 2 scenes (setup + payoff), plus hook and conclusion
-    target = min(max(10, int(dur * scenes_pm)), total_angles * 2 + 4)
+    target = max(20, min(max(10, int(dur * scenes_pm)), total_angles * 2 + 4))
     log.info(f"Stage 2: Research depth = {total_angles} angles → {target} scenes max")
 
     # Use dual-script instructions for Hindi
@@ -624,7 +624,7 @@ Return ONLY a JSON array of {num_beats} short strings, no markdown:
     BATCH_SIZE = 6
     full_script = []
     stalled = 0
-    max_stalled = 2
+    max_stalled = 5
 
     while len(full_script) < target and stalled < max_stalled:
         remaining = target - len(full_script)
@@ -646,10 +646,10 @@ Return ONLY a JSON array of {num_beats} short strings, no markdown:
             f"{prev_scenes_text}\n\n"
             f"Write scenes {start_num} to {start_num + batch_n - 1}. "
             f"CRITICAL: Each scene must cover a NEW angle not listed above. "
-            f"NEVER repeat information already stated. If you run out of facts, end early."
+            f"NEVER repeat information already stated. If facts run out, explore the emotional impact, historical context, or broader consequences of the event."
         )
 
-        prompt = f"""You are a world-class viral Hindi YouTube scriptwriter.
+        prompt = f"""You are a world-class viral Hindi YouTube scriptwriter and documentary editor.
 Style: {style}
 {voice_note}
 {caption_note}
@@ -660,17 +660,16 @@ Topic: "{topic}"
 {continuity}
 
 STRICT RULES:
-- voiceover: HINGLISH vocabulary in Devanagari — "स्टॉक" not "शेयर", "क्रैश" not "दुर्घटना", "ऐप" not "अनुप्रयोग"
-- AVOID pure formal Hindi: no "विनाश", no "नष्ट", no "अपहरण", no "मिथ्यापराण"
-- caption: Hinglish in Roman
+- voiceover: HINGLISH vocabulary in Devanagari — "स्टॉक" not "शेयर", "क्रैश" not "दुर्घटना"
+- caption: Hinglish in Roman. MUST be actual dialogue/subtitles. NEVER write structural headers, tags, or metadata like "COLD WAR PEAK" in the caption. It is printed directly on screen for the viewer.
+- ai_prompt: ENGLISH ONLY. Must be highly descriptive and historically accurate (e.g., "1980s Soviet Serpukhov-15 military bunker, blinking computer consoles, cinematic lighting" instead of just "alarm blaring").
+- visual_search: ENGLISH ONLY. Keep it simple for stock footage searches (e.g. "military bunker").
 - Each scene = ONE new fact or angle. NO repetition.
-- If facts run out, write fewer scenes. NEVER pad with filler.
-- Max 12 words voiceover, max 10 words caption
-- visual_search and ai_prompt: ENGLISH ONLY
+- Max 12 words voiceover, max 10 words caption.
 - sfx: deep_impact|whoosh|click|riser|none
 
 Return ONLY JSON array. No markdown.
-[{{"scene":{start_num},"voiceover":"...","caption":"...","visual_type":"stock_video","visual_search":"...","ai_prompt":"...","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":4}}]"""
+[{{"scene":{start_num},"voiceover":"...","caption":"...","visual_type":"stock_video","visual_search":"...","ai_prompt":"...","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":5}}]"""
 
         try:
             try:
@@ -1208,33 +1207,38 @@ def fetch_duckduckgo_image(search, out):
     try:
         from duckduckgo_search import DDGS
         import requests
-        with DDGS() as ddgs:
-            results = list(ddgs.images(
-                keywords=search,
-                region="wt-wt",
-                safesearch="moderate",
-                size="Large",
-                max_results=5
-            ))
-            if not results:
-                return False
-                
-            for res in results:
-                url = res.get("image")
-                if not url:
-                    continue
-                try:
-                    r = requests.get(url, timeout=10)
-                    if r.status_code == 200:
-                        with open(out, "wb") as f:
-                            f.write(r.content)
-                        return True
-                except:
-                    continue
-        return False
+        for attempt in range(3):
+            try:
+                with DDGS() as ddgs:
+                    results = list(ddgs.images(
+                        keywords=search,
+                        region="wt-wt",
+                        safesearch="moderate",
+                        size="Large",
+                        max_results=5
+                    ))
+                    if not results:
+                        return False
+                        
+                    for res in results:
+                        url = res.get("image")
+                        if not url:
+                            continue
+                        try:
+                            r = requests.get(url, timeout=10)
+                            if r.status_code == 200:
+                                with open(out, "wb") as f:
+                                    f.write(r.content)
+                                return True
+                        except Exception:
+                            continue
+            except Exception as e:
+                log.warning(f"DDG fetch failed for {search} (Attempt {attempt+1}): {e}")
+                time.sleep(4)
     except Exception as e:
-        log.warning(f"DDG fetch failed for {search}: {e}")
-        return False
+        log.warning(f"DDG fatal error: {e}")
+    return False
+
 
 def fetch_pexels_video(search, out, dur):
     try:
@@ -1310,16 +1314,20 @@ HF_TOKENS = [t for t in HF_TOKENS if t.strip()]
 def fetch_hf_image(prompt, out_path):
     if not HF_TOKENS: return False
     url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
-    token = random.choice(HF_TOKENS)
-    headers = {"Authorization": f"Bearer {token}"}
-    try:
-        r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=25)
-        if r.status_code == 200:
-            with open(out_path, "wb") as f: f.write(r.content)
-            return True
-        log.warning(f"HF Image failed: {r.status_code} {r.text[:100]}")
-    except Exception as e:
-        log.warning(f"HF Image Exception: {e}")
+    for attempt in range(3):
+        token = random.choice(HF_TOKENS)
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=30)
+            if r.status_code == 200:
+                with open(out_path, "wb") as f: f.write(r.content)
+                return True
+            log.warning(f"HF Image failed (Attempt {attempt+1}): {r.status_code} {r.text[:100]}")
+            if r.status_code == 503: # Model loading
+                time.sleep(3)
+        except Exception as e:
+            log.warning(f"HF Image Exception (Attempt {attempt+1}): {e}")
+            time.sleep(3)
     return False
 
 def fetch_hf_video(prompt, out_path):
@@ -1354,8 +1362,8 @@ def stage_6_visuals(script, cfg):
         img   = str(vis/f"scene_{n:03d}.jpg")
         anim  = ANIMS[i%len(ANIMS)]
 
-        dur = get_dur(scene["audio_file"]) if scene.get("audio_file") else float(scene.get("duration_hint",4))
-        scene["actual_duration"]=dur
+        dur = (get_dur(scene["audio_file"]) + 0.5) if scene.get("audio_file") else float(scene.get("duration_hint",4))
+        scene["actual_duration"] = dur - 0.5 if scene.get("audio_file") else dur
         success=False
 
         if vtype=="text_stat":
@@ -1394,8 +1402,16 @@ def stage_6_visuals(script, cfg):
         # Global Fallbacks if everything above failed
         if not success and fetch_duckduckgo_image(search, img):
             if img_to_vid(img, out, dur, anim): scene["video_file"]=out; success=True
+        
         if not success:
-            solid_bg(out,dur); scene["video_file"]=out; log.warning(f"  {n}: fallback solid bg")
+            log.warning(f"  {n}: ALL visuals failed. Falling back to dynamic text-stat.")
+            display_text = scene.get("caption", scene.get("voiceover", ""))
+            if make_text_stat(display_text,out,dur,cfg["lang"]):
+                scene["video_file"]=out; success=True
+            else:
+                log.warning(f"  {n}: text_stat fallback failed. Falling back to abstract Pexels.")
+                if fetch_pexels_video("cinematic abstract background", out, dur):
+                    scene["video_file"]=out; success=True
 
     return script
 
@@ -2338,8 +2354,6 @@ def run_pipeline_v52():
             final_video = str(WORKSPACE / "final_documentary.mp4")
             
             # Shell out to npx remotion render
-            # We must pass the absolute paths to Remotion. The script json contains absolute paths.
-            # We copy the assets to remotion/public to ensure Remotion can read them securely without file:// restrictions.
             public_dir = WORKSPACE.parent / "remotion" / "public" / "assets"
             public_dir.mkdir(parents=True, exist_ok=True)
             
@@ -2347,12 +2361,10 @@ def run_pipeline_v52():
             for scene in script:
                 vid = scene.get("video_file")
                 if vid and os.path.exists(vid):
-                    # Copy to remotion/public/assets and pass just the filename
                     dest = public_dir / os.path.basename(vid)
                     shutil.copy2(vid, dest)
                     scene["video_file"] = os.path.basename(vid)
             
-            # Save updated script for Remotion
             _save({"scenes": script}, "script_remotion.json")
             script_path = str((WORKSPACE / "script_remotion.json").resolve())
             final_video_abs = str((WORKSPACE / "final_documentary.mp4").resolve())
