@@ -15,7 +15,7 @@ log = logging.getLogger("agency")
 class BaseAgent:
     FORCE_GROQ = False
 
-    def __init__(self, model_name="gemini-2.5-flash"):
+    def __init__(self, model_name="gemini-3.1-flash-lite"):
         self.model_name = model_name
         
         # Setup Gemini
