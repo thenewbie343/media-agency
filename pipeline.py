@@ -2320,11 +2320,11 @@ def run_pipeline_v52():
         script = stage_3_voice(script, cfg)
         music_path = stage_4_music(cfg)
 
-        # Wan2.1 for cartoon genres
+        # Wan2.1 for high-end AI visuals across ALL genres
         wan_scenes = []
-        if genre in ("cartoon",) and os.path.exists(os.path.expanduser("~/.config/colab-cli/sessions.json")):
+        if os.path.exists(os.path.expanduser("~/.config/colab-cli/sessions.json")):
             wan_scenes = [s for s in script
-                          if s.get("visual_type") == "ai_image"
+                          if s.get("visual_type") in ("ai_video", "ai_image")
                           and not skip_ai(s.get("ai_prompt",""))]
             log.info(f"Routing {len(wan_scenes)} scenes to Wan2.1")
 
