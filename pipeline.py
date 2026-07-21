@@ -2302,11 +2302,9 @@ def run_pipeline_v52():
             for scene in script:
                 vid = scene.get("video_file")
                 if vid and os.path.exists(vid):
-                    import shutil
-                    basename = os.path.basename(vid)
-                    shutil.copy(vid, str(public_dir / basename))
-                    # Remotion can access it via 'assets/basename'
-                    scene["video_file"] = f"assets/{basename}"
+                    # Instead of copying, we just pass the absolute path directly to Remotion
+                    # Chromium security check is disabled in remotion.config.ts
+                    scene["video_file"] = os.path.abspath(vid)
             
             # Save updated script for Remotion
             _save({"scenes": script}, "script_remotion.json")

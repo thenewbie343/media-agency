@@ -1,4 +1,4 @@
-import { AbsoluteFill, Sequence, useVideoConfig, useCurrentFrame, interpolate, spring, Img, Video, staticFile } from 'remotion';
+import { AbsoluteFill, Sequence, useVideoConfig, useCurrentFrame, interpolate, spring, Img, Video } from 'remotion';
 import { SceneData } from './DocumentaryVideo';
 import { Fragment } from 'react';
 
@@ -25,9 +25,9 @@ export const DocumentaryScene: React.FC<{
         <AbsoluteFill style={{ transform: `scale(${scale})` }}>
           {scene.video_file ? (
             scene.video_file.endsWith('.mp4') ? (
-              <Video src={staticFile(scene.video_file)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <Video src={`file://${scene.video_file}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
-              <Img src={staticFile(scene.video_file)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <Img src={`file://${scene.video_file}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             )
           ) : (
             // Placeholder if no visual found
