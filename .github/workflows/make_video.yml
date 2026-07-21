@@ -155,6 +155,9 @@ jobs:
           YOUTUBE_TOKEN_JSON:  ${{ secrets.YOUTUBE_TOKEN_JSON }}
           COLAB_TOKEN:         ${{ secrets.COLAB_TOKEN }}
           KLING_API_KEY:       ${{ secrets.KLING_API_KEY }}
+          HF_TOKEN_1:          ${{ secrets.HF_TOKEN_1 }}
+          HF_TOKEN_2:          ${{ secrets.HF_TOKEN_2 }}
+          HF_TOKEN_3:          ${{ secrets.HF_TOKEN_3 }}
           TOPIC:               ${{ steps.parse.outputs.TOPIC }}
           NICHE:               ${{ steps.parse.outputs.NICHE }}
           SCRIPT:              ${{ steps.parse.outputs.SCRIPT }}

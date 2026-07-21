@@ -1301,6 +1301,44 @@ def solid_bg(out, dur):
         "-i",f"color=c=0x080808:size=1920x1080:duration={dur}:rate=25",
         "-c:v","libx264","-pix_fmt","yuv420p",out],capture_output=True,timeout=30)
 
+HF_TOKENS = [
+    os.environ.get("HF_TOKEN_1", ""),
+    os.environ.get("HF_TOKEN_2", ""),
+    os.environ.get("HF_TOKEN_3", "")
+]
+HF_TOKENS = [t for t in HF_TOKENS if t.strip()]
+
+def fetch_hf_image(prompt, out_path):
+    if not HF_TOKENS: return False
+    url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
+    token = random.choice(HF_TOKENS)
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=25)
+        if r.status_code == 200:
+            with open(out_path, "wb") as f: f.write(r.content)
+            return True
+        log.warning(f"HF Image failed: {r.status_code} {r.text[:100]}")
+    except Exception as e:
+        log.warning(f"HF Image Exception: {e}")
+    return False
+
+def fetch_hf_video(prompt, out_path):
+    if not HF_TOKENS: return False
+    # Use a fast video model, timeout=55s to avoid crashing action
+    url = "https://api-inference.huggingface.co/models/damo-vilab/text-to-video-ms-1.7b"
+    token = random.choice(HF_TOKENS)
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=55)
+        if r.status_code == 200:
+            with open(out_path, "wb") as f: f.write(r.content)
+            return True
+        log.warning(f"HF Video failed: {r.status_code} {r.text[:100]}")
+    except Exception as e:
+        log.warning(f"HF Video Exception (timeout likely): {e}")
+    return False
+
 def stage_6_visuals(script, cfg):
     topic   = cfg["topic"]
     vprefix = cfg.get("visual_prefix", topic)
@@ -1322,34 +1360,41 @@ def stage_6_visuals(script, cfg):
         success=False
 
         if vtype=="text_stat":
-            # Use caption (Hinglish) for text_stat cards
             display_text = scene.get("caption", scene.get("voiceover", ""))
             if make_text_stat(display_text,out,dur,cfg["lang"]):
                 scene["video_file"]=out; log.info(f"  {n}: text_stat ✓"); continue
 
-        elif vtype=="stock_video":
-            log.info(f"  {n}: stock '{search}'")
-            if fetch_pexels_video(search,out,dur): scene["video_file"]=out; success=True
-            if not success and fetch_pixabay(search,out,dur): scene["video_file"]=out; success=True
+        elif vtype in ["intro_video", "ai_video"]:
+            if not skip_ai(prompt):
+                if fetch_hf_video(prompt, out):
+                    scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Video ✓")
+            if not success and fetch_pexels_video(search, out, dur):
+                scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels fallback ✓")
+            if not success and fetch_hf_image(prompt, img):
+                if img_to_vid(img, out, dur, anim):
+                    scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Image+KenBurns fallback ✓")
 
-        else:
-            if skip_ai(prompt):
-                log.info(f"  {n}: skip AI (hallucination risk)")
-            else:
-                if fetch_pollinations(prompt,img,seed=n*17+i):
-                    if img_to_vid(img,out,dur,anim): scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations+{anim} ✓")
+        elif vtype in ["ai_image", "motion_graphics"]:
+            if not skip_ai(prompt):
+                if fetch_hf_image(prompt, img):
+                    if img_to_vid(img, out, dur, anim):
+                        scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Image ✓")
+                if not success and fetch_pollinations(prompt, img, seed=n*17+i):
+                    if img_to_vid(img, out, dur, anim):
+                        scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations fallback ✓")
+            if not success and fetch_pexels_image(search, img):
+                if img_to_vid(img, out, dur, anim):
+                    scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels image fallback ✓")
 
-        if not success:
-            if fetch_pexels_video(search,out,dur): scene["video_file"]=out; success=True
-        if not success:
-            if fetch_duckduckgo_image(search, img):
-                if img_to_vid(img, out, dur, anim): scene["video_file"]=out; success=True
-        if not success:
-            if fetch_pexels_image(search,img):
-                if img_to_vid(img,out,dur,anim): scene["video_file"]=out; success=True
-        if not success:
-            if fetch_pixabay(search,img):
-                if img_to_vid(img,out,dur,anim): scene["video_file"]=out; success=True
+        elif vtype in ["stock_video", "broll_video"]:
+            if fetch_pexels_video(search, out, dur):
+                scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels video ✓")
+            if not success and fetch_pixabay(search, out, dur):
+                scene["video_file"]=out; success=True; log.info(f"  {n}: Pixabay video fallback ✓")
+
+        # Global Fallbacks if everything above failed
+        if not success and fetch_duckduckgo_image(search, img):
+            if img_to_vid(img, out, dur, anim): scene["video_file"]=out; success=True
         if not success:
             solid_bg(out,dur); scene["video_file"]=out; log.warning(f"  {n}: fallback solid bg")
 

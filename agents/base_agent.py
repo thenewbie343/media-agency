@@ -76,11 +76,15 @@ class BaseAgent:
                         
         raise ValueError(f"Could not extract valid JSON from response: {text[:200]}...")
 
-    def call_llm(self, prompt, system_prompt="", retries=3, require_json=True):
+    def call_llm(self, prompt, system_prompt="", retries=4, require_json=True):
         """Calls the LLM and returns the parsed JSON response."""
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"SYSTEM INSTRUCTIONS:\n{system_prompt}\n\nUSER PROMPT:\n{prompt}"
+            
+        gemini_key_1 = os.environ.get("GEMINI_KEY", "")
+        gemini_key_2 = os.environ.get("GEMINI_KEY_2", "")
+        current_key = gemini_key_1
             
         for attempt in range(retries):
             try:
@@ -99,9 +103,28 @@ class BaseAgent:
                 return output
                 
             except Exception as e:
-                log.error(f"[{self.__class__.__name__}] LLM Call failed: {e}")
+                err_str = str(e)
+                log.error(f"[{self.__class__.__name__}] LLM Call failed: {err_str}")
                 if attempt < retries - 1:
-                    time.sleep(5)
+                    sleep_time = 5
+                    match = re.search(r"retry in ([\d\.]+)s", err_str)
+                    if match:
+                        sleep_time = float(match.group(1)) + 1.5
+                        log.info(f"Rate limited. Detected required sleep: {sleep_time:.1f}s")
+                    
+                    if current_key == gemini_key_1 and gemini_key_2:
+                        log.info(f"[{self.__class__.__name__}] Rotating to GEMINI_KEY_2 to bypass rate limit!")
+                        genai.configure(api_key=gemini_key_2)
+                        self.model = genai.GenerativeModel(model_name=self.model_name)
+                        current_key = gemini_key_2
+                        sleep_time = 1
+                    elif current_key == gemini_key_2 and gemini_key_1:
+                        log.info(f"[{self.__class__.__name__}] Rotating to GEMINI_KEY_1 to bypass rate limit!")
+                        genai.configure(api_key=gemini_key_1)
+                        self.model = genai.GenerativeModel(model_name=self.model_name)
+                        current_key = gemini_key_1
+                    
+                    time.sleep(sleep_time)
                 else:
                     raise
                     
