@@ -115,6 +115,30 @@ class BaseAgent:
                     log.info(f"[{self.__class__.__name__}] Waiting {sleep_time:.1f}s for rate limit reset...")
                     time.sleep(sleep_time)
                 else:
-                    raise
+                    # Worst-case scenario: Gemini exhausted all retries. Try Groq.
+                    groq_key = os.environ.get("GROQ_KEY", "")
+                    if groq_key:
+                        log.warning(f"[{self.__class__.__name__}] Gemini exhausted all retries! Falling back to Groq Llama-3.3-70B (Worst-case)...")
+                        try:
+                            from groq import Groq
+                            client = Groq(api_key=groq_key)
+                            msgs = []
+                            if system_prompt:
+                                msgs.append({"role": "system", "content": system_prompt})
+                            msgs.append({"role": "user", "content": prompt})
+                            r = client.chat.completions.create(
+                                model="llama-3.3-70b-versatile",
+                                messages=msgs,
+                                temperature=0.8, max_tokens=4000
+                            )
+                            output = r.choices[0].message.content.strip()
+                            if require_json:
+                                return self._extract_json(output)
+                            return output
+                        except Exception as groq_e:
+                            log.error(f"[{self.__class__.__name__}] Groq fallback also failed: {groq_e}")
+                            raise e
+                    else:
+                        raise e
                     
         return None
