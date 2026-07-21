@@ -1,13 +1,12 @@
-import { AbsoluteFill, Sequence, useVideoConfig, useCurrentFrame, interpolate, spring, Img, Video, staticFile } from 'remotion';
+import { AbsoluteFill, useVideoConfig, useCurrentFrame, interpolate, spring, Img, Video, staticFile } from 'remotion';
 import { SceneData } from './DocumentaryVideo';
 import { Fragment } from 'react';
 
 // Advanced Motion Graphic Engine for YouTube Documentaries
 export const DocumentaryScene: React.FC<{
   scene: SceneData;
-  startFrame: number;
   durationFrames: number;
-}> = ({ scene, startFrame, durationFrames }) => {
+}> = ({ scene, durationFrames }) => {
   const { fps } = useVideoConfig();
   const frame = useCurrentFrame();
 
@@ -44,7 +43,6 @@ export const DocumentaryScene: React.FC<{
   const framesPerWord = words.length > 0 ? (durationFrames * 0.8) / words.length : 10;
 
   return (
-    <Sequence from={startFrame} durationInFrames={durationFrames}>
       <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#000' }}>
         
         {/* Visual Layer (Image/Video) with Camera Movement & Filter */}
@@ -141,6 +139,5 @@ export const DocumentaryScene: React.FC<{
           </AbsoluteFill>
         )}
       </AbsoluteFill>
-    </Sequence>
   );
 };
