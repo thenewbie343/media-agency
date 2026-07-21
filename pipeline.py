@@ -558,14 +558,8 @@ def stage_2_script(research, cfg):
     tg(f"✍️ Writing script...")
 
     # FIX v5.3: Cap target based on research depth, not blind duration
-    unique_facts = len([f for f in research.get("key_facts", []) if len(f) > 15])
-    unique_stats = len(research.get("statistics", []))
-    unique_timeline = len(research.get("timeline", []))
-    total_angles = max(4, unique_facts + unique_stats + unique_timeline)
-    
-    # Each angle gets 2 scenes (setup + payoff), plus hook and conclusion
-    target = max(20, min(max(10, int(dur * scenes_pm)), total_angles * 2 + 4))
-    log.info(f"Stage 2: Research depth = {total_angles} angles → {target} scenes max")
+    target = max(20, int(dur * 12))
+    log.info(f"Stage 2: Duration {dur}m → {target} scenes target")
 
     # Use dual-script instructions for Hindi
     if lang == "hindi":
@@ -624,7 +618,7 @@ Return ONLY a JSON array of {num_beats} short strings, no markdown:
     BATCH_SIZE = 6
     full_script = []
     stalled = 0
-    max_stalled = 5
+    max_stalled = 10
 
     while len(full_script) < target and stalled < max_stalled:
         remaining = target - len(full_script)
@@ -691,7 +685,7 @@ Return ONLY JSON array. No markdown.
                 is_duplicate = False
                 for prev in full_script:
                     sim = _semantic_similarity(voice, prev.get("voiceover", ""))
-                    if sim > 0.65:
+                    if sim > 0.75:
                         log.warning(f"  Rejected duplicate (sim={sim:.0%}): {voice[:50]}...")
                         is_duplicate = True
                         break
@@ -1380,6 +1374,9 @@ def stage_6_visuals(script, cfg):
             if not success and fetch_hf_image(prompt, img):
                 if img_to_vid(img, out, dur, anim):
                     scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Image+KenBurns fallback ✓")
+            if not success and fetch_pollinations(prompt, img, seed=n*17+i):
+                if img_to_vid(img, out, dur, anim):
+                    scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations fallback ✓")
 
         elif vtype in ["ai_image", "motion_graphics"]:
             if not skip_ai(prompt):
@@ -1404,13 +1401,15 @@ def stage_6_visuals(script, cfg):
             if img_to_vid(img, out, dur, anim): scene["video_file"]=out; success=True
         
         if not success:
-            log.warning(f"  {n}: ALL visuals failed. Falling back to dynamic text-stat.")
-            display_text = scene.get("caption", scene.get("voiceover", ""))
-            if make_text_stat(display_text,out,dur,cfg["lang"]):
+            log.warning(f"  {n}: ALL standard visuals failed. Falling back to generic cinematic Pexels video.")
+            if fetch_pexels_video("cinematic documentary abstract", out, dur):
+                scene["video_file"]=out; success=True
+            elif fetch_pixabay("cinematic documentary abstract", out, dur):
                 scene["video_file"]=out; success=True
             else:
-                log.warning(f"  {n}: text_stat fallback failed. Falling back to abstract Pexels.")
-                if fetch_pexels_video("cinematic abstract background", out, dur):
+                log.warning(f"  {n}: Generic stock fallback failed. Falling back to dynamic text-stat as LAST resort.")
+                display_text = scene.get("caption", scene.get("voiceover", ""))
+                if make_text_stat(display_text,out,dur,cfg["lang"]):
                     scene["video_file"]=out; success=True
 
     return script
