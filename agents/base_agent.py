@@ -13,6 +13,8 @@ except ImportError:
 log = logging.getLogger("agency")
 
 class BaseAgent:
+    FORCE_GROQ = False
+
     def __init__(self, model_name="gemini-2.5-flash"):
         self.model_name = model_name
         
@@ -38,46 +40,51 @@ class BaseAgent:
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
         text = re.sub(r"```json|```", "", text).strip()
         
+        # Handle trailing commas
+        text = re.sub(r",(\s*[}\]])", r"\1", text)
+        
         try:
-            # First try parsing directly
             return json.loads(text)
         except json.JSONDecodeError:
-            pass
-            
-        # Try to find array
-        start_arr = text.find("[")
-        start_obj = text.find("{")
-        
-        if start_arr != -1 and (start_obj == -1 or start_arr < start_obj):
-            # Probably an array
-            depth = 0
-            for i in range(start_arr, len(text)):
-                if text[i] == "[": depth += 1
-                elif text[i] == "]":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return json.loads(text[start_arr:i+1])
-                        except: pass
-                        break
-                        
-        if start_obj != -1:
-            # Probably an object
-            depth = 0
-            for i in range(start_obj, len(text)):
-                if text[i] == "{": depth += 1
-                elif text[i] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return json.loads(text[start_obj:i+1])
-                        except: pass
-                        break
+            match = re.search(r"(\[.*\]|\{.*\})", text, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(1))
+                except: pass
                         
         raise ValueError(f"Could not extract valid JSON from response: {text[:200]}...")
 
+    def _call_groq(self, prompt, system_prompt, require_json):
+        groq_key = os.environ.get("GROQ_KEY", "")
+        if not groq_key:
+            raise Exception("GROQ_KEY not found for fallback")
+        from groq import Groq
+        client = Groq(api_key=groq_key)
+        msgs = []
+        if system_prompt:
+            msgs.append({"role": "system", "content": system_prompt})
+        msgs.append({"role": "user", "content": prompt})
+        r = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=msgs,
+            temperature=0.8, max_tokens=4000
+        )
+        output = r.choices[0].message.content.strip()
+        if require_json:
+            return self._extract_json(output)
+        return output
+
     def call_llm(self, prompt, system_prompt="", retries=4, require_json=True):
         """Calls the LLM and returns the parsed JSON response."""
+        
+        if BaseAgent.FORCE_GROQ:
+            log.info(f"[{self.__class__.__name__}] Bypassing Gemini (Force Groq is active)")
+            try:
+                return self._call_groq(prompt, system_prompt, require_json)
+            except Exception as e:
+                log.error(f"[{self.__class__.__name__}] Groq call failed: {e}")
+                raise e
+
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"SYSTEM INSTRUCTIONS:\n{system_prompt}\n\nUSER PROMPT:\n{prompt}"
@@ -116,29 +123,13 @@ class BaseAgent:
                     time.sleep(sleep_time)
                 else:
                     # Worst-case scenario: Gemini exhausted all retries. Try Groq.
-                    groq_key = os.environ.get("GROQ_KEY", "")
-                    if groq_key:
-                        log.warning(f"[{self.__class__.__name__}] Gemini exhausted all retries! Falling back to Groq Llama-3.3-70B (Worst-case)...")
-                        try:
-                            from groq import Groq
-                            client = Groq(api_key=groq_key)
-                            msgs = []
-                            if system_prompt:
-                                msgs.append({"role": "system", "content": system_prompt})
-                            msgs.append({"role": "user", "content": prompt})
-                            r = client.chat.completions.create(
-                                model="llama-3.3-70b-versatile",
-                                messages=msgs,
-                                temperature=0.8, max_tokens=4000
-                            )
-                            output = r.choices[0].message.content.strip()
-                            if require_json:
-                                return self._extract_json(output)
-                            return output
-                        except Exception as groq_e:
-                            log.error(f"[{self.__class__.__name__}] Groq fallback also failed: {groq_e}")
-                            raise e
-                    else:
+                    log.warning(f"[{self.__class__.__name__}] Gemini exhausted all retries! Falling back to Groq Llama-3.3-70B (Worst-case)...")
+                    try:
+                        res = self._call_groq(prompt, system_prompt, require_json)
+                        BaseAgent.FORCE_GROQ = True # Flip switch for subsequent agents
+                        return res
+                    except Exception as groq_e:
+                        log.error(f"[{self.__class__.__name__}] Groq fallback also failed: {groq_e}")
                         raise e
                     
         return None
