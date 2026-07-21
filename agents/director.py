@@ -13,6 +13,7 @@ class DirectorAgent(BaseAgent):
 Your job is to take a basic script (array of scenes) and upgrade it by adding precise visual and audio metadata to every scene.
 
 VISUAL TYPES ALLOWED:
+- `ai_image` (For generating specific historical or conceptual imagery)
 - `motion_graphics` (For abstract concepts, numbers, stock charts, animated text)
 - `real_photo` (For specific people, companies, historical evidence)
 - `broll_video` (Generic cinematic filler)

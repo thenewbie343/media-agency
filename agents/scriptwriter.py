@@ -17,7 +17,7 @@ LANGUAGE:
 - The `caption` MUST BE IN HINGLISH (Roman script) (max 3-4 words per scene), to be displayed on screen.
 
 RULES:
-1. Break the video into 10 to 15 scenes.
+1. Break the video into 40 to 60 fast-paced micro-scenes (roughly 1 sentence or 4-5 seconds per scene).
 2. Follow the 3-Act structure from the Outline.
 3. Write highly engaging voiceover. Don't be boring.
 
