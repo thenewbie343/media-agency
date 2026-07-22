@@ -20,7 +20,18 @@ Usage by pipeline.py:
 
 import json, os, subprocess, sys
 import base64
+import threading
+import time
 from pathlib import Path
+
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+
+def keep_alive():
+    while True:
+        print("... [keepalive] ...", file=sys.stderr, flush=True)
+        time.sleep(15)
+
+threading.Thread(target=keep_alive, daemon=True).start()
 
 # ── Read scene prompts from sys.argv[1] ───────────────────
 if len(sys.argv) < 2:
