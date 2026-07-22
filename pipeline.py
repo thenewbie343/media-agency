@@ -2354,7 +2354,7 @@ def run_pipeline_v52():
 
         # Wan2.1 for high-end AI visuals across ALL genres
         wan_scenes = []
-        if os.path.exists(os.path.expanduser("~/.config/colab-cli/sessions.json")):
+        if os.path.exists(os.path.expanduser("~/.config/colab-cli/token.json")):
             wan_scenes = [s for s in script
                           if s.get("visual_type") in ("ai_video", "ai_image")
                           and not skip_ai(s.get("ai_prompt",""))]
