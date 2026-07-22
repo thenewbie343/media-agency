@@ -62,8 +62,12 @@ MODEL_ID = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(MODEL_ID, subfolder="vae", torch_dtype=torch.float32)
 pipe = WanPipeline.from_pretrained(MODEL_ID, vae=vae, torch_dtype=torch.bfloat16)
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=8.0)
-pipe.to("cuda")
-print("Model loaded on GPU")
+pipe.enable_model_cpu_offload()
+if hasattr(pipe.vae, "enable_slicing"):
+    pipe.vae.enable_slicing()
+if hasattr(pipe.vae, "enable_tiling"):
+    pipe.vae.enable_tiling()
+print("Model loaded with CPU offloading and VAE optimizations")
 
 # ── Generate each scene ───────────────────────────────────
 results = []
@@ -73,8 +77,9 @@ for scene in scenes:
     dur    = float(scene.get("duration_hint", 4))
     out    = str(output_dir / f"scene_{n:03d}.mp4")
 
-    # Clamp duration: Wan2.1 generates in frames
-    num_frames = min(int(dur * 16), 96)  # max 96 frames on T4
+    # Clamp duration: Wan2.1 3D-VAE requires (num_frames - 1) % 4 == 0
+    raw_frames = min(int(dur * 16), 96)
+    num_frames = max(1, raw_frames - ((raw_frames - 1) % 4))
 
     print(f"  Scene {n}: '{prompt[:60]}' → {num_frames} frames")
     try:
