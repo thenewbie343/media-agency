@@ -2127,9 +2127,9 @@ def stage_wan21_colab(scenes_needing_video, topic):
     if not scenes_needing_video:
         return {}
 
-    session_file = os.path.expanduser("~/.config/colab-cli/sessions.json")
+    session_file = os.path.expanduser("~/.config/colab-cli/token.json")
     if not os.path.exists(session_file):
-        log.warning("Colab CLI session not found — skipping Wan2.1")
+        log.warning("Colab CLI token not found — skipping Wan2.1")
         return {}
 
     log.info(f"Wan2.1 via Colab CLI: {len(scenes_needing_video)} scenes")
