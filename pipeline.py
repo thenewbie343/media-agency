@@ -2143,18 +2143,45 @@ def stage_wan21_colab(scenes_needing_video, topic):
     clips_dir.mkdir(exist_ok=True)
 
     try:
-        result = subprocess.run([
+        # Pass prompts as a JSON string argument to the script
+        import shlex
+        prompts_json_str = json.dumps(scenes_needing_video)
+        
+        cmd = [
             "colab", "run", "--gpu", "T4",
-            "--upload", f"{prompts_file}:/content/scene_prompts.json",
-            "--upload", "wan21_generator.py:/content/wan21_generator.py",
-            "--download", "/content/clips/:./wan_clips/",
-            "--download", "/content/wan21_results.json:./wan21_results.json",
-            "wan21_generator.py"
-        ], capture_output=True, text=True, timeout=1800)
+            "wan21_generator.py",
+            prompts_json_str
+        ]
+        
+        log.info(f"Executing: colab run --gpu T4 wan21_generator.py '[json...]'")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
 
         log.info(f"Colab exit code: {result.returncode}")
-        if result.stdout: log.info(f"Colab output: {result.stdout[-500:]}")
-        if result.stderr: log.warning(f"Colab stderr: {result.stderr[-300:]}")
+        if result.stderr: log.warning(f"Colab stderr: {result.stderr[-500:]}")
+        
+        import base64
+        import re
+        
+        # Parse standard output for base64 files
+        stdout_text = result.stdout
+        file_pattern = re.compile(r"<<FILE:([^>]+)>>\n(.*?)\n<<EOF>>", re.DOTALL)
+        
+        for match in file_pattern.finditer(stdout_text):
+            filename = match.group(1)
+            b64_data = match.group(2).strip()
+            
+            try:
+                raw_data = base64.b64decode(b64_data)
+                if filename == "wan21_results.json":
+                    dest_path = WORKSPACE / filename
+                else:
+                    dest_path = clips_dir / filename
+                    
+                with open(dest_path, "wb") as f:
+                    f.write(raw_data)
+                log.info(f"Decoded {filename} from Colab stdout ({len(raw_data)//1024}KB)")
+            except Exception as e:
+                log.error(f"Failed to decode base64 for {filename}: {e}")
 
         results_file = WORKSPACE / "wan21_results.json"
         if results_file.exists():

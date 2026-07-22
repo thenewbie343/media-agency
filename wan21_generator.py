@@ -19,12 +19,15 @@ Usage by pipeline.py:
 """
 
 import json, os, subprocess, sys
+import base64
 from pathlib import Path
 
-# ── Read scene prompts ────────────────────────────────────
-with open("scene_prompts.json") as f:
-    scenes = json.load(f)
+# ── Read scene prompts from sys.argv[1] ───────────────────
+if len(sys.argv) < 2:
+    print("Error: No prompts provided. Pass JSON string as argument.")
+    sys.exit(1)
 
+scenes = json.loads(sys.argv[1])
 output_dir = Path("/content/clips")
 output_dir.mkdir(exist_ok=True)
 
@@ -60,7 +63,6 @@ for scene in scenes:
     out    = str(output_dir / f"scene_{n:03d}.mp4")
 
     # Clamp duration: Wan2.1 generates in frames
-    # At 16fps: 4s = 64 frames, 6s = 96 frames
     num_frames = min(int(dur * 16), 96)  # max 96 frames on T4
 
     print(f"  Scene {n}: '{prompt[:60]}' → {num_frames} frames")
@@ -80,7 +82,12 @@ for scene in scenes:
 
         if os.path.exists(out) and os.path.getsize(out) > 1000:
             print(f"  Scene {n}: ✓ ({os.path.getsize(out)//1024}KB)")
-            results.append({"scene": n, "file": out, "success": True})
+            # Output the file back to the host via base64 stdout!
+            with open(out, "rb") as vf:
+                b64_data = base64.b64encode(vf.read()).decode('utf-8')
+            print(f"<<FILE:scene_{n:03d}.mp4>>\n{b64_data}\n<<EOF>>")
+            
+            results.append({"scene": n, "file": f"./wan_clips/scene_{n:03d}.mp4", "success": True})
         else:
             print(f"  Scene {n}: ✗ empty file")
             results.append({"scene": n, "file": None, "success": False})
@@ -89,11 +96,7 @@ for scene in scenes:
         print(f"  Scene {n}: ✗ {e}")
         results.append({"scene": n, "file": None, "success": False})
 
-# ── Save results manifest ─────────────────────────────────
-with open("/content/wan21_results.json", "w") as f:
-    json.dump(results, f, indent=2)
-
+# Output the results manifest via base64 as well
+manifest = json.dumps(results)
+print(f"<<FILE:wan21_results.json>>\n{base64.b64encode(manifest.encode('utf-8')).decode('utf-8')}\n<<EOF>>")
 print(f"\nDone. Generated {sum(1 for r in results if r['success'])}/{len(scenes)} clips")
-print("Files in /content/clips/:")
-for f in sorted(output_dir.iterdir()):
-    print(f"  {f.name} ({f.stat().st_size//1024}KB)")
