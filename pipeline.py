@@ -643,6 +643,10 @@ Return ONLY a JSON array of {num_beats} short strings, no markdown:
             f"NEVER repeat information already stated. If facts run out, explore the emotional impact, historical context, or broader consequences of the event."
         )
 
+        vt_rule = "Use 'stock_video' or 'broll_video' mostly."
+        if cfg.get("genre") in ("cartoon", "surreal"):
+            vt_rule = "MUST use 'ai_video' or 'ai_image' for EVERY scene to generate visuals."
+
         prompt = f"""You are a world-class viral Hindi YouTube scriptwriter and documentary editor.
 Style: {style}
 {voice_note}
@@ -658,12 +662,13 @@ STRICT RULES:
 - caption: Hinglish in Roman. MUST be actual dialogue/subtitles. NEVER write structural headers, tags, or metadata like "COLD WAR PEAK" in the caption. It is printed directly on screen for the viewer.
 - ai_prompt: ENGLISH ONLY. Must be highly descriptive and historically accurate (e.g., "1980s Soviet Serpukhov-15 military bunker, blinking computer consoles, cinematic lighting" instead of just "alarm blaring").
 - visual_search: ENGLISH ONLY. Keep it simple for stock footage searches (e.g. "military bunker").
+- visual_type: {vt_rule}
 - Each scene = ONE new fact or angle. NO repetition.
 - Max 12 words voiceover, max 10 words caption.
 - sfx: deep_impact|whoosh|click|riser|none
 
 Return ONLY JSON array. No markdown.
-[{{"scene":{start_num},"voiceover":"...","caption":"...","visual_type":"stock_video","visual_search":"...","ai_prompt":"...","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":5}}]"""
+[{{"scene":{start_num},"voiceover":"...","caption":"...","visual_type":"ai_video","visual_search":"...","ai_prompt":"...","emotion":"dramatic","sfx":"{sfx_def}","duration_hint":5}}]"""
 
         try:
             try:
