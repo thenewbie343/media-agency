@@ -872,15 +872,18 @@ def generate_kokoro_voice(text, out_path, lang, emotion):
         from kokoro import KPipeline
         import numpy as np
 
-        # FIXED: Correct language code for phoneme dictionary
-        pipeline = KPipeline(lang_code=lang_code)
-        generator = pipeline(text, voice=voice, speed=speed, split_pattern=r'\n+')
+        import sys, os, contextlib
+        with open(os.devnull, 'w') as devnull:
+            with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
+                # FIXED: Correct language code for phoneme dictionary
+                pipeline = KPipeline(lang_code=lang_code)
+                generator = pipeline(text, voice=voice, speed=speed, split_pattern=r'\n+')
 
-        audio_segments = []
-        sample_rate = 24000
+                audio_segments = []
+                sample_rate = 24000
 
-        for i, (gs, ps, audio) in enumerate(generator):
-            audio_segments.append(audio)
+                for i, (gs, ps, audio) in enumerate(generator):
+                    audio_segments.append(audio)
 
         if not audio_segments:
             return False
