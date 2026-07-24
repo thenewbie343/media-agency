@@ -93,11 +93,13 @@ for scene in scenes:
             num_frames=num_frames,
             guidance_scale=7.5,
             num_inference_steps=20,
-            generator=torch.Generator("cpu").manual_seed(n * 17)
+            generator=torch.Generator().manual_seed(n * 17)
         ).frames[0]
 
+        import numpy as np
         import imageio
-        imageio.mimwrite(out, output, fps=8, quality=8)
+        frames_np = [np.array(f) for f in output]
+        imageio.mimwrite(out, frames_np, fps=8, quality=8)
 
         if os.path.exists(out) and os.path.getsize(out) > 1000:
             print(f"  Scene {n}: ✓ ({os.path.getsize(out)//1024}KB)")
