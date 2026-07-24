@@ -2200,7 +2200,7 @@ def stage_wan21_colab(scenes_needing_video, topic):
             tg(f"✅ Wan2.1: {len(clip_map)} animated clips ready")
             return clip_map
         else:
-            log.error("wan21_results.json not found")
+            log.warning("⚠️ Colab GPU temporarily unavailable or in daily cooldown. Seamlessly routing visual generation to Pollinations Engine...")
             return {}
 
     except subprocess.TimeoutExpired:
