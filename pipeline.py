@@ -1360,22 +1360,25 @@ def stage_6_visuals(script, cfg):
 
         elif vtype in ["intro_video", "ai_video"]:
             if not skip_ai(prompt):
-                if fetch_pollinations(prompt, img, seed=n*17+i):
-                    if img_to_vid(img, out, dur, anim):
-                        scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations+KenBurns ✓")
-            if not success and fetch_hf_video(prompt, out):
-                scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Video ✓")
+                if fetch_hf_video(prompt, out):
+                    scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Video ✓")
+            if not success and fetch_hf_image(prompt, img):
+                if img_to_vid(img, out, dur, anim):
+                    scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Image+KenBurns fallback ✓")
+            if not success and fetch_pollinations(prompt, img, seed=n*17+i):
+                if img_to_vid(img, out, dur, anim):
+                    scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations fallback ✓")
             if not success and fetch_pexels_video(search, out, dur):
                 scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels fallback ✓")
 
         elif vtype in ["ai_image", "motion_graphics"]:
             if not skip_ai(prompt):
-                if fetch_pollinations(prompt, img, seed=n*17+i):
-                    if img_to_vid(img, out, dur, anim):
-                        scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations ✓")
-                if not success and fetch_hf_image(prompt, img):
+                if fetch_hf_image(prompt, img):
                     if img_to_vid(img, out, dur, anim):
                         scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Image ✓")
+                if not success and fetch_pollinations(prompt, img, seed=n*17+i):
+                    if img_to_vid(img, out, dur, anim):
+                        scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations fallback ✓")
             if not success and fetch_pexels_image(search, img):
                 if img_to_vid(img, out, dur, anim):
                     scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels image fallback ✓")
