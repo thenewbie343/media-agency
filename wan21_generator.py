@@ -44,6 +44,11 @@ output_dir.mkdir(exist_ok=True)
 
 print(f"Wan2.1 generator: {len(scenes)} scenes to generate")
 
+if len(sys.argv) > 2 and sys.argv[2]:
+    hf_token = sys.argv[2]
+    # Set HF_TOKEN environment variable so diffusers can pick it up automatically
+    os.environ["HF_TOKEN"] = hf_token
+
 # ── Install Wan2.1 dependencies ───────────────────────────
 print("Installing dependencies...")
 subprocess.run([sys.executable, "-m", "pip", "install", "-q",

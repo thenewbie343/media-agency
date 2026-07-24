@@ -2134,14 +2134,16 @@ def stage_wan21_colab(scenes_needing_video, topic):
         # Pass prompts as a JSON string argument to the script
         import shlex
         prompts_json_str = json.dumps(scenes_needing_video)
+        hf_token = os.environ.get("HF_TOKEN_1", "")
         
         cmd = [
             "colab", "run", "--gpu", "T4", "--timeout", "21600",
             "wan21_generator.py",
-            prompts_json_str
+            prompts_json_str,
+            hf_token
         ]
         
-        log.info(f"Executing: colab run --gpu T4 --timeout 21600 wan21_generator.py '[json...]'")
+        log.info(f"Executing: colab run --gpu T4 --timeout 21600 wan21_generator.py '[json...]' '[token]'")
         import base64
         
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
