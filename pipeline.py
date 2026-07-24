@@ -462,10 +462,11 @@ Return ONLY valid JSON (no markdown):
     except Exception as e:
         log.warning(f"Stage 1 Gemini failed: {e}")
     try:
-        from bs4 import BeautifulSoup
-        resp = requests.get(f"https://html.duckduckgo.com/html/?q={quote(topic)}",
-            headers={"User-Agent":"Mozilla/5.0"}, timeout=15)
-        snips = [s.get_text() for s in BeautifulSoup(resp.text,"html.parser").select(".result__snippet")][:8]
+        url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={quote(topic)}&utf8=&format=json"
+        resp = requests.get(url, timeout=15)
+        import re
+        snips = [re.sub(r'<[^>]+>', '', s["snippet"]) for s in resp.json().get("query", {}).get("search", [])][:8]
+        if not snips: raise Exception("No wiki results")
         return {"hook":snips[0] if snips else f"The truth about {topic}",
                 "hook_question":f"What really happened with {topic}?",
                 "key_facts":snips,"statistics":[],"timeline":[],"visual_themes":[topic]}
@@ -1142,7 +1143,7 @@ def ken_burns(anim, dur, w=1920, h=1080):
         "zoom_out":  f"zoompan=z='if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
         "pan_right": f"zoompan=z='1.3':x='min(iw*0.3,on*1.5)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
         "pan_left":  f"zoompan=z='1.3':x='max(0,iw*0.3-on*1.5)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
-        "pan_up":    f"zoompan=z='1.3':x='iw/2-(iw/zoom/2)':y='max(0,ih*0.3-on*1.0)':d={fr}:s={w}x{h}:fps=25",
+        "pan_up":    f"zoompan=z='1.3':x='iw/2-(ih/zoom/2)':y='max(0,ih*0.3-on*1.0)':d={fr}:s={w}x{h}:fps=25",
     }
     return opts.get(anim,opts["zoom_in"])
 
@@ -1203,21 +1204,23 @@ def fetch_pollinations(prompt, out, seed=None):
     return False
 
 def fetch_duckduckgo_image(search, out):
+    # Replaced DuckDuckGo with Wikimedia Commons API due to aggressive anti-bot protection on GitHub Actions
     try:
-        from duckduckgo_search import DDGS
-        import requests
-        for attempt in range(3):
-            try:
-                with DDGS() as ddgs:
-                    results = list(ddgs.images(
-                        keywords=search,
-                        region="wt-wt",
-                        safesearch="moderate",
-                        size="Large",
-                        max_results=5
-                    ))
-                    if not results:
-                        return False
+        import requests, random
+        url = "https://commons.wikimedia.org/w/api.php"
+        params = {
+            "action": "query", "generator": "search", "gsrsearch": f"{search} filetype:bitmap",
+            "gsrnamespace": 6, "gsrlimit": 10, "prop": "imageinfo", "iiprop": "url", "format": "json"
+        }
+        r = requests.get(url, params=params, timeout=15)
+        pages = r.json().get("query", {}).get("pages", {})
+        urls = [p["imageinfo"][0]["url"] for p in pages.values() if "imageinfo" in p]
+        if not urls: return False
+        img_r = requests.get(random.choice(urls), timeout=15)
+        with open(out, "wb") as f: f.write(img_r.content)
+        return True
+    except:
+        return False
                         
                     for res in results:
                         url = res.get("image")
@@ -1374,14 +1377,14 @@ def stage_6_visuals(script, cfg):
             if not skip_ai(prompt):
                 if fetch_hf_video(prompt, out):
                     scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Video ✓")
-            if not success and fetch_pexels_video(search, out, dur):
-                scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels fallback ✓")
             if not success and fetch_hf_image(prompt, img):
                 if img_to_vid(img, out, dur, anim):
                     scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Image+KenBurns fallback ✓")
             if not success and fetch_pollinations(prompt, img, seed=n*17+i):
                 if img_to_vid(img, out, dur, anim):
                     scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations fallback ✓")
+            if not success and fetch_pexels_video(search, out, dur):
+                scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels fallback ✓")
 
         elif vtype in ["ai_image", "motion_graphics"]:
             if not skip_ai(prompt):
