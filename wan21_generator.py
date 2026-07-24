@@ -49,30 +49,29 @@ if len(sys.argv) > 2 and sys.argv[2]:
     # Set HF_TOKEN environment variable so diffusers can pick it up automatically
     os.environ["HF_TOKEN"] = hf_token
 
-# ── Install Wan2.1 dependencies ───────────────────────────
+# ── Install AnimateDiff dependencies ───────────────────────────
 print("Installing dependencies...")
 subprocess.run([sys.executable, "-m", "pip", "install", "-q",
     "diffusers", "transformers", "accelerate",
     "torch", "torchvision", "imageio[ffmpeg]",
-    "safetensors", "sentencepiece"], check=True)
+    "safetensors"], check=True)
 
 import torch
-from diffusers import AutoencoderKLWan, WanPipeline
-from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers import AnimateDiffPipeline, MotionAdapter, DDIMScheduler
 
-# ── Load Wan2.1-T2V-1.3B (smallest, fastest, T4-compatible) ──
-print("Loading Wan2.1-T2V-1.3B...")
-MODEL_ID = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+# ── Load AnimateDiff (SD1.5 - T4 compatible, ~3.5GB RAM) ──
+print("Loading AnimateDiff (SD1.5)...")
+adapter_id = "guoyww/animatediff-motion-adapter-v1-5-2"
+model_id   = "emilianJR/epiCRealism"
 
-vae = AutoencoderKLWan.from_pretrained(MODEL_ID, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanPipeline.from_pretrained(MODEL_ID, vae=vae, torch_dtype=torch.bfloat16)
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=8.0)
+adapter = MotionAdapter.from_pretrained(adapter_id, torch_dtype=torch.float16)
+pipe    = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config, clip_sample=False, timestep_spacing="linspace", steps_offset=1)
+
+pipe.enable_vae_slicing()
 pipe.enable_model_cpu_offload()
-if hasattr(pipe.vae, "enable_slicing"):
-    pipe.vae.enable_slicing()
-if hasattr(pipe.vae, "enable_tiling"):
-    pipe.vae.enable_tiling()
-print("Model loaded with CPU offloading and VAE optimizations")
+
+print("AnimateDiff loaded with CPU offloading and VAE slicing")
 
 # ── Generate each scene ───────────────────────────────────
 results = []
@@ -82,28 +81,26 @@ for scene in scenes:
     dur    = float(scene.get("duration_hint", 4))
     out    = str(output_dir / f"scene_{n:03d}.mp4")
 
-    # Clamp duration: Wan2.1 3D-VAE requires (num_frames - 1) % 4 == 0
-    raw_frames = min(int(dur * 16), 96)
-    num_frames = max(1, raw_frames - ((raw_frames - 1) % 4))
+    num_frames = 16
 
     print(f"  Scene {n}: '{prompt[:60]}' → {num_frames} frames")
     try:
         output = pipe(
-            prompt=prompt,
-            negative_prompt="blurry, low quality, text, watermark, ugly, deformed, faces",
-            height=480,
-            width=832,
+            prompt=f"cinematic 4k, detailed, anime studio ghibli style, {prompt}",
+            negative_prompt="blurry, low quality, text, watermark, ugly, deformed, extra limbs",
+            height=512,
+            width=896,
             num_frames=num_frames,
-            guidance_scale=5.0,
+            guidance_scale=7.5,
             num_inference_steps=20,
+            generator=torch.Generator("cpu").manual_seed(n * 17)
         ).frames[0]
 
         import imageio
-        imageio.mimwrite(out, output, fps=16, quality=8)
+        imageio.mimwrite(out, output, fps=8, quality=8)
 
         if os.path.exists(out) and os.path.getsize(out) > 1000:
             print(f"  Scene {n}: ✓ ({os.path.getsize(out)//1024}KB)")
-            # Output the file back to the host via base64 stdout!
             with open(out, "rb") as vf:
                 b64_data = base64.b64encode(vf.read()).decode('utf-8')
             print(f"<<FILE:scene_{n:03d}.mp4>>\n{b64_data}\n<<EOF>>")
