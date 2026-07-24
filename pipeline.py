@@ -1224,25 +1224,7 @@ def fetch_duckduckgo_image(search, out):
         return True
     except:
         return False
-                        
-                    for res in results:
-                        url = res.get("image")
-                        if not url:
-                            continue
-                        try:
-                            r = requests.get(url, timeout=10)
-                            if r.status_code == 200:
-                                with open(out, "wb") as f:
-                                    f.write(r.content)
-                                return True
-                        except Exception:
-                            continue
-            except Exception as e:
-                log.warning(f"DDG fetch failed for {search} (Attempt {attempt+1}): {e}")
-                time.sleep(4)
-    except Exception as e:
-        log.warning(f"DDG fatal error: {e}")
-    return False
+
 
 
 def fetch_pexels_video(search, out, dur):
