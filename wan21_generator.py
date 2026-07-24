@@ -60,7 +60,7 @@ print("Loading Wan2.1-T2V-1.3B...")
 MODEL_ID = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
 
 vae = AutoencoderKLWan.from_pretrained(MODEL_ID, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanPipeline.from_pretrained(MODEL_ID, vae=vae, torch_dtype=torch.bfloat16)
+pipe = WanPipeline.from_pretrained(MODEL_ID, vae=vae, torch_dtype=torch.float16)
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=8.0)
 pipe.enable_model_cpu_offload()
 if hasattr(pipe.vae, "enable_slicing"):
