@@ -2148,13 +2148,13 @@ def stage_wan21_colab(scenes_needing_video, topic):
         prompts_json_str = json.dumps(scenes_needing_video)
         
         cmd = [
-            "colab", "run", "--gpu", "T4", "--timeout", "3600",
+            "colab", "run", "--gpu", "T4", "--timeout", "21600",
             "wan21_generator.py",
             prompts_json_str
         ]
         
-        log.info(f"Executing: colab run --gpu T4 --timeout 3600 wan21_generator.py '[json...]'")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+        log.info(f"Executing: colab run --gpu T4 --timeout 21600 wan21_generator.py '[json...]'")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=21600)
 
         log.info(f"Colab exit code: {result.returncode}")
         if result.stderr: log.warning(f"Colab stderr: {result.stderr[-500:]}")
