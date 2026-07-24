@@ -2157,34 +2157,46 @@ def stage_wan21_colab(scenes_needing_video, topic):
         ]
         
         log.info(f"Executing: colab run --gpu T4 --timeout 21600 wan21_generator.py '[json...]'")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=21600)
-
-        log.info(f"Colab exit code: {result.returncode}")
-        if result.stderr: log.warning(f"Colab stderr: {result.stderr[-500:]}")
-        
         import base64
-        import re
         
-        # Parse standard output for base64 files
-        stdout_text = result.stdout
-        file_pattern = re.compile(r"<<FILE:([^>]+)>>\n(.*?)\n<<EOF>>", re.DOTALL)
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
         
-        for match in file_pattern.finditer(stdout_text):
-            filename = match.group(1)
-            b64_data = match.group(2).strip()
+        current_file = None
+        b64_buffer = []
+        
+        for line in process.stdout:
+            # Check if we are starting a file download
+            if line.startswith("<<FILE:"):
+                current_file = line.strip().replace("<<FILE:", "").replace(">>", "")
+                b64_buffer = []
+                log.info(f"Colab returning file: {current_file} (downloading base64...)")
+                continue
             
-            try:
-                raw_data = base64.b64decode(b64_data)
-                if filename == "wan21_results.json":
-                    dest_path = WORKSPACE / filename
-                else:
-                    dest_path = clips_dir / filename
-                    
-                with open(dest_path, "wb") as f:
-                    f.write(raw_data)
-                log.info(f"Decoded {filename} from Colab stdout ({len(raw_data)//1024}KB)")
-            except Exception as e:
-                log.error(f"Failed to decode base64 for {filename}: {e}")
+            # Check if file download is finished
+            if line.startswith("<<EOF>>") and current_file:
+                b64_data = "".join(b64_buffer).strip()
+                try:
+                    raw_data = base64.b64decode(b64_data)
+                    dest_path = WORKSPACE / current_file if current_file == "wan21_results.json" else clips_dir / current_file
+                    with open(dest_path, "wb") as f:
+                        f.write(raw_data)
+                    log.info(f"Saved {current_file} from Colab ({len(raw_data)//1024}KB)")
+                except Exception as e:
+                    log.error(f"Failed to decode base64 for {current_file}: {e}")
+                
+                current_file = None
+                b64_buffer = []
+                continue
+                
+            # If we are inside a file block, buffer the base64 chunks
+            if current_file:
+                b64_buffer.append(line)
+            else:
+                # Normal log line from Colab - print it in real-time!
+                print(f"[Colab] {line.strip()}", flush=True)
+
+        process.wait()
+        log.info(f"Colab exit code: {process.returncode}")
 
         results_file = WORKSPACE / "wan21_results.json"
         if results_file.exists():
