@@ -57,22 +57,28 @@ subprocess.run([sys.executable, "-m", "pip", "install", "-q",
     "safetensors"], check=True)
 
 import torch
-from diffusers import AnimateDiffPipeline, MotionAdapter, DDIMScheduler
+from diffusers import AnimateDiffPipeline, MotionAdapter, DPMSolverMultistepScheduler
 
 # ── Load AnimateDiff (SD1.5 Anime Model - T4 compatible) ──
 print("Loading AnimateDiff (Anime Model)...")
 adapter_id = "guoyww/animatediff-motion-adapter-v1-5-2"
-# High quality anime checkpoint
 model_id   = "stablediffusionapi/anything-v5"
 
 adapter = MotionAdapter.from_pretrained(adapter_id, torch_dtype=torch.float16)
 pipe    = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
-pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config, clip_sample=False, timestep_spacing="linspace", steps_offset=1)
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, algorithm_type="dpmsolver++", use_karras_sigmas=True)
 
 pipe.enable_vae_slicing()
 pipe.enable_model_cpu_offload()
 
-print("AnimateDiff Anime Engine loaded successfully")
+print("AnimateDiff Anime Engine loaded successfully with DPM++ 2M Karras")
+
+ANTI_MUTATION_NEGATIVE = (
+    "flickering, frame boiling, morphing, shape shifting, unstable background, "
+    "sudden jitter, warp, temporal incoherence, deformed, distorted, disfigured, "
+    "extra limbs, missing limbs, bad anatomy, floating objects, mutation, "
+    "over-saturated, hyper-detailed noise, text, watermark, signature"
+)
 
 # ── Generate each scene ───────────────────────────────────
 results = []
@@ -88,12 +94,12 @@ for scene in scenes:
     print(f"  Scene {n}: '{prompt[:60]}' → {num_frames} frames")
     try:
         output = pipe(
-            prompt=f"masterpiece, best quality, ultra-detailed, anime style, 8k, vibrant colors, studio ghibli, dragon ball z style, {prompt}",
-            negative_prompt="deformed, distorted, disfigured, poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, mutation, ugly, low quality, worst quality, blurry, watermark, text",
+            prompt=f"masterpiece, best quality, ultra-detailed, {prompt}",
+            negative_prompt=ANTI_MUTATION_NEGATIVE,
             height=512,
             width=896,
             num_frames=num_frames,
-            guidance_scale=8.0,
+            guidance_scale=6.5,
             num_inference_steps=25,
             generator=torch.Generator().manual_seed(n * 17)
         ).frames[0]

@@ -670,7 +670,7 @@ Topic: "{topic}"
 STRICT RULES:
 - voiceover: HINGLISH vocabulary in Devanagari — "स्टॉक" not "शेयर", "क्रैश" not "दुर्घटना"
 - caption: Hinglish in Roman. MUST be actual dialogue/subtitles. NEVER write structural headers, tags, or metadata like "COLD WAR PEAK" in the caption. It is printed directly on screen for the viewer.
-- ai_prompt: ENGLISH ONLY. Must be highly descriptive and historically accurate (e.g., "1980s Soviet Serpukhov-15 military bunker, blinking computer consoles, cinematic lighting" instead of just "alarm blaring").
+- ai_prompt: ENGLISH ONLY. MUST follow this 4-part structure: [Simple Subject] + [Environment] + [Camera Movement] + [Art Style]. Example: "a lone officer sitting at a radar desk, dimly lit bunker, slow camera zoom in, retro 80s aesthetic". GOLDEN RULE: MOVE THE CAMERA, NOT THE SUBJECT (e.g. slow pan left, dolly zoom, static shot). Max 1 action verb per prompt to prevent AI morphing.
 - visual_search: ENGLISH ONLY. Keep it simple for stock footage searches (e.g. "military bunker").
 - visual_type: {vt_rule}
 - Each scene = ONE new fact or angle. NO repetition.
