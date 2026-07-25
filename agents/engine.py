@@ -14,7 +14,7 @@ def run_documentary_pipeline(cfg):
     Replaces the legacy Stage 1 and Stage 2 of the pipeline.
     """
     topic = cfg["topic"]
-    duration_minutes = int(cfg.get("duration", 1))
+    duration_minutes = int(cfg.get("duration_min") or cfg.get("duration") or 1)
     target_scenes = max(5, int(duration_minutes * 7)) # ~7 scenes per minute
     log.info(f"🎬 AI Studio Orchestrator starting for topic: {topic} ({duration_minutes}m -> target {target_scenes} scenes)")
     
