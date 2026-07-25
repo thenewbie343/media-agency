@@ -645,7 +645,15 @@ Return ONLY a JSON array of {num_beats} short strings, no markdown:
         )
 
         vt_rule = "Use 'stock_video' or 'broll_video' mostly."
-        if cfg.get("genre") in ("cartoon", "surreal"):
+        if cfg.get("genre") == "documentary":
+            vt_rule = (
+                "Distribute visual_type across the script using this exact ratio:\n"
+                "- 35% 'text_stat' or 'motion_graphics' (Remotion Motion Graphics: maps, timelines, UI overlays, text callouts)\n"
+                "- 30% 'ai_video' (AnimateDiff AI Video for atmospheric B-roll and hero shots)\n"
+                "- 20% 'stock_video' or 'broll_video' (Real stock / archival footage from Pexels/Pixabay for grounding real evidence)\n"
+                "- 15% 'ai_image' (Pollinations + Ken Burns FX for stylized illustrations or complex concepts)"
+            )
+        elif cfg.get("genre") in ("cartoon", "surreal", "anime"):
             vt_rule = "MUST use 'ai_video' or 'ai_image' for EVERY scene to generate visuals."
 
         prompt = f"""You are a world-class viral Hindi YouTube scriptwriter and documentary editor.
