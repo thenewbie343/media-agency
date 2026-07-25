@@ -647,12 +647,11 @@ Return ONLY a JSON array of {num_beats} short strings, no markdown:
         vt_rule = "Use 'stock_video' or 'broll_video' mostly."
         if cfg.get("genre") == "documentary":
             vt_rule = (
-                "Distribute visual_type across the script using this exact ratio:\n"
-                "- 30% 'text_stat' or 'motion_graphics' (Remotion Motion Graphics: maps, timelines, UI overlays, text callouts)\n"
-                "- 25% 'ai_video' (AnimateDiff AI Video for atmospheric B-roll and hero shots)\n"
-                "- 20% 'stock_video' (Real evidence / authentic archival historical footage on screen)\n"
-                "- 15% 'ai_image' (Pollinations + Ken Burns FX for stylized illustrations / complex concepts)\n"
-                "- 10% 'broll_video' (Real B-roll stock footage from Pexels/Pixabay)"
+                "PROGRESSIVE RHYTHM ARCHITECTURE (CRITICAL):\n"
+                "1. 0-30s HOOK: Use fast visual changes every 2-3s (Scenes 1-5). Use 'text_stat', 'motion_graphics', and high-impact 'stock_video' ONLY. NO slow static images!\n"
+                "2. NARRATIVE BUILD (Min 1-5): Widen spacing to 4-6s. Alternate 'ai_video' (AnimateDiff B-roll), 'stock_video' (real evidence), and 'ai_image' (Pollinations + Ken Burns).\n"
+                "3. BURST SEQUENCES (Pattern Interrupt): Every 15-20 scenes (~2 mins), inject a 3-scene burst sequence with 1.5s rapid cuts (data popups, zooms, flash cuts).\n"
+                "Ratios: 30% 'text_stat'/'motion_graphics', 25% 'ai_video', 20% 'stock_video', 15% 'ai_image', 10% 'broll_video'."
             )
         elif cfg.get("genre") in ("cartoon", "surreal", "anime"):
             vt_rule = "MUST use 'ai_video' or 'ai_image' for EVERY scene to generate visuals."
@@ -2044,13 +2043,17 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
     final_video = str(WORKSPACE / "final_documentary_mixed.mp4")
     
     if music_path and os.path.exists(music_path):
-        # 3-layer mix (video, voice, music)
+        # Professional 3-layer mix with sidechain compression audio ducking (-24dB voiceover, -12dB music swell)
         cmd = [
             "ffmpeg", "-y", 
             "-i", remotion_video, 
             "-i", voice_track, 
             "-i", os.path.abspath(music_path),
-            "-filter_complex", "[1:a]volume=1.0[v];[2:a]volume=0.08[m];[v][m]amix=inputs=2:duration=first[a]",
+            "-filter_complex", 
+            "[1:a]volume=1.0[v];"
+            "[2:a]volume=0.25[m_raw];"
+            "[m_raw][1:a]sidechaincompress=threshold=0.08:ratio=6:attack=100:release=400[m_ducked];"
+            "[v][m_ducked]amix=inputs=2:duration=first[a]",
             "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_video
         ]
     else:
