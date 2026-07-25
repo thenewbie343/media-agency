@@ -63,10 +63,32 @@ export const DocumentaryScene: React.FC<{
               <Img src={staticFile(`assets/${scene.video_file}`)} style={{ width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${parallaxFgScale / parallaxBgScale}) translateX(${translateX * 0.5}%)` }} />
             )
           ) : (
-            // Animated Fallback Grid Background
-            <div style={{ width: '100%', height: '100%', backgroundColor: '#0a0a0a', backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)', backgroundSize: '50px 50px' }} />
+            // 30% Remotion Motion Graphics Grid & Blueprint Card
+            <div style={{ width: '100%', height: '100%', backgroundColor: '#080c14', backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '40px 40px, 80px 80px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ width: '80%', height: '3px', backgroundColor: '#e2e8f0', boxShadow: '0 0 15px #38bdf8', marginBottom: '20px', transform: `scaleX(${Math.min(1, frame / 15)})` }} />
+              <span style={{ fontFamily: 'monospace', color: '#38bdf8', letterSpacing: '6px', fontSize: '24px', textTransform: 'uppercase' }}>[ SYSTEM DOCUMENTATION • HISTORICAL METRICS ]</span>
+            </div>
           )}
         </AbsoluteFill>
+
+        {/* 20% Real Evidence Archival Stamp */}
+        {(scene.visual_type === 'real_photo' || scene.visual_type === 'stock_video') && (
+          <div style={{ position: 'absolute', top: '40px', left: '40px', display: 'flex', alignItems: 'center', gap: '12px', zIndex: 10 }}>
+            <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 10px #ef4444', animation: 'pulse 1s infinite' }} />
+            <span style={{ fontFamily: 'Impact, sans-serif', fontSize: '24px', color: '#ffffff', letterSpacing: '3px', textShadow: '2px 2px 4px rgba(0,0,0,0.9)', textTransform: 'uppercase' }}>
+              ARCHIVAL EVIDENCE • DOCUMENTED RECORD
+            </span>
+          </div>
+        )}
+
+        {/* 30% Remotion Motion Graphics Animated Data Callout Card */}
+        {(scene.visual_type === 'motion_graphics' || scene.visual_type === 'text_stat') && (
+          <div style={{ position: 'absolute', bottom: '60px', left: '60px', padding: '16px 28px', backgroundColor: 'rgba(15, 23, 42, 0.85)', borderLeft: '6px solid #eab308', backdropFilter: 'blur(10px)', borderRadius: '4px', zIndex: 10 }}>
+            <span style={{ fontFamily: 'sans-serif', fontSize: '22px', fontWeight: 'bold', color: '#eab308', letterSpacing: '2px', textTransform: 'uppercase' }}>
+              KEY FACT • ANALYSIS
+            </span>
+          </div>
+        )}
 
         {/* VHS Scanline Overlay */}
         {isGlitch && (
