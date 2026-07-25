@@ -648,10 +648,11 @@ Return ONLY a JSON array of {num_beats} short strings, no markdown:
         if cfg.get("genre") == "documentary":
             vt_rule = (
                 "Distribute visual_type across the script using this exact ratio:\n"
-                "- 35% 'text_stat' or 'motion_graphics' (Remotion Motion Graphics: maps, timelines, UI overlays, text callouts)\n"
-                "- 30% 'ai_video' (AnimateDiff AI Video for atmospheric B-roll and hero shots)\n"
-                "- 20% 'stock_video' or 'broll_video' (Real stock / archival footage from Pexels/Pixabay for grounding real evidence)\n"
-                "- 15% 'ai_image' (Pollinations + Ken Burns FX for stylized illustrations or complex concepts)"
+                "- 30% 'text_stat' or 'motion_graphics' (Remotion Motion Graphics: maps, timelines, UI overlays, text callouts)\n"
+                "- 25% 'ai_video' (AnimateDiff AI Video for atmospheric B-roll and hero shots)\n"
+                "- 20% 'stock_video' (Real evidence / authentic archival historical footage on screen)\n"
+                "- 15% 'ai_image' (Pollinations + Ken Burns FX for stylized illustrations / complex concepts)\n"
+                "- 10% 'broll_video' (Real B-roll stock footage from Pexels/Pixabay)"
             )
         elif cfg.get("genre") in ("cartoon", "surreal", "anime"):
             vt_rule = "MUST use 'ai_video' or 'ai_image' for EVERY scene to generate visuals."
