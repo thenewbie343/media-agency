@@ -21,16 +21,17 @@ export const DocumentaryScene: React.FC<{
     scale = 1.15; // Zoom in to allow panning room
     translateX = interpolate(frame, [0, durationFrames], [0, -10], { extrapolateRight: 'clamp' });
   } else {
-    // Default dynamic movement (never static)
-    scale = interpolate(frame, [0, durationFrames], [1.05, 1.15], { extrapolateRight: 'clamp' });
+    // 2.5D Parallax Depth Engine
+    scale = interpolate(frame, [0, durationFrames], [1.05, 1.22], { extrapolateRight: 'clamp' });
+    translateX = interpolate(frame, [0, durationFrames], [0, -8], { extrapolateRight: 'clamp' });
   }
 
-  // 2. Cinematic Filters & LUTs mapping
-  let cssFilter = 'none';
+  // 2. Thugesh Cinematic Master Color Grade (Warm Golden Hour + High Contrast Shadows)
+  let cssFilter = 'sepia(0.18) saturate(1.25) contrast(1.15) brightness(0.95)';
   if (scene.lut === 'dark_noir') {
     cssFilter = 'grayscale(1) contrast(1.3) brightness(0.8)';
   } else if (scene.lut === 'neon_pink' || scene.lut === 'vintage') {
-    cssFilter = 'sepia(1) hue-rotate(-50deg) saturate(3) contrast(1.2)';
+    cssFilter = 'sepia(0.8) hue-rotate(-30deg) saturate(2.5) contrast(1.2)';
   }
 
   // 3. VHS Glitch / Scanline effect
@@ -39,16 +40,19 @@ export const DocumentaryScene: React.FC<{
   
   // 4. Kinetic Typography (Word-by-Word revealing)
   const words = scene.caption ? scene.caption.split(' ') : [];
-  // Calculate frames per word so they finish displaying slightly before the end of the scene
   const framesPerWord = words.length > 0 ? (durationFrames * 0.8) / words.length : 10;
+
+  // 2.5D Parallax background/foreground scale differential
+  const parallaxBgScale = scale * 0.96;
+  const parallaxFgScale = scale * 1.08;
 
   return (
       <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#000' }}>
         
-        {/* Visual Layer (Image/Video) with Camera Movement & Filter */}
+        {/* Visual Layer (Image/Video) with 2.5D Parallax Movement & Thugesh Golden-Hour Color Grade */}
         <AbsoluteFill 
           style={{ 
-            transform: `scale(${scale}) translateX(${translateX}%) translateY(${translateY}%)`,
+            transform: `scale(${parallaxBgScale}) translateX(${translateX * 0.5}%) translateY(${translateY}%)`,
             filter: cssFilter
           }}
         >
@@ -56,7 +60,7 @@ export const DocumentaryScene: React.FC<{
             scene.video_file.endsWith('.mp4') ? (
               <Video src={staticFile(`assets/${scene.video_file}`)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
-              <Img src={staticFile(`assets/${scene.video_file}`)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <Img src={staticFile(`assets/${scene.video_file}`)} style={{ width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${parallaxFgScale / parallaxBgScale}) translateX(${translateX * 0.5}%)` }} />
             )
           ) : (
             // Animated Fallback Grid Background
