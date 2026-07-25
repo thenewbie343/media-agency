@@ -14,7 +14,9 @@ def run_documentary_pipeline(cfg):
     Replaces the legacy Stage 1 and Stage 2 of the pipeline.
     """
     topic = cfg["topic"]
-    log.info(f"🎬 AI Studio Orchestrator starting for topic: {topic}")
+    duration_minutes = int(cfg.get("duration", 1))
+    target_scenes = max(5, int(duration_minutes * 7)) # ~7 scenes per minute
+    log.info(f"🎬 AI Studio Orchestrator starting for topic: {topic} ({duration_minutes}m -> target {target_scenes} scenes)")
     
     # 1. Initialization
     researcher = ResearcherAgent()
@@ -29,11 +31,11 @@ def run_documentary_pipeline(cfg):
     
     # 3. Outline (Head Writer)
     log.info("2/5: Head Writer drafting outline...")
-    outline = head_writer.write_outline(json.dumps(fact_sheet))
+    outline = head_writer.write_outline(json.dumps(fact_sheet), duration_minutes=duration_minutes, target_scenes=target_scenes)
     
     # 4. Scriptwriting (Scriptwriter)
     log.info("3/5: Scriptwriter writing Hindi VO & Hinglish captions...")
-    raw_script = scriptwriter.write_script(json.dumps(fact_sheet), json.dumps(outline))
+    raw_script = scriptwriter.write_script(json.dumps(fact_sheet), json.dumps(outline), duration_minutes=duration_minutes, target_scenes=target_scenes)
     
     # 5. Metadata (Director)
     log.info("4/5: Director adding cinematic visual metadata...")

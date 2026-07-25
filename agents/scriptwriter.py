@@ -5,38 +5,32 @@ class ScriptwriterAgent(BaseAgent):
     def __init__(self):
         super().__init__()
         
-    def write_script(self, fact_sheet, outline):
-        """Takes the fact sheet and outline and writes the voiceover & captions."""
-        print("[*] ScriptwriterAgent writing scene-by-scene script...")
+    def write_script(self, fact_sheet, outline, duration_minutes=1, target_scenes=8):
+        """Takes the fact sheet and outline and writes the voiceover & captions targeting specified duration."""
+        print(f"[*] ScriptwriterAgent writing scene-by-scene script ({duration_minutes}m -> {target_scenes} scenes)...")
         
-        system_prompt = """You are an elite YouTube Documentary Scriptwriter.
-Your job is to take a Fact Sheet and an Outline, and write the actual voiceover and captions for each scene.
+        system_prompt = f"""You are an elite YouTube Documentary Scriptwriter.
+Your job is to take a Fact Sheet and an Outline, and write the actual voiceover and captions for a {duration_minutes}-minute video.
 
 LANGUAGE:
 - The `voiceover` MUST BE IN PURE HINDI (Devanagari script), perfect for a Hindi TTS engine. Use dramatic tone.
 - The `caption` MUST BE IN HINGLISH (Roman script) (max 3-4 words per scene), to be displayed on screen.
 
 RULES:
-1. Break the video into 40 to 60 fast-paced micro-scenes (roughly 1 sentence or 4-5 seconds per scene).
+1. MUST output EXACTLY {target_scenes} scenes (roughly 1 sentence or 4-5 seconds per scene for a total of {duration_minutes} minutes).
 2. Follow the 3-Act structure from the Outline.
 3. Write highly engaging voiceover. Don't be boring.
 
-Output JSON strictly matching this schema (an array of scenes):
+Output JSON strictly matching this schema (an array of EXACTLY {target_scenes} scenes):
 [
-  {
+  {{
     "scene_number": 1,
     "purpose": "hook",
     "voiceover": "2018 में, मार्केट रातों-रात गिर गया...",
     "caption": "Market Collapsed Overnight"
-  },
-  {
-    "scene_number": 2,
-    "purpose": "context",
-    "voiceover": "लेकिन ये सब शुरू कैसे हुआ?",
-    "caption": "But How?"
-  }
+  }}
 ]"""
         
-        prompt = f"Fact Sheet:\n{fact_sheet}\n\nOutline:\n{outline}\n\nWrite the Script."
+        prompt = f"Fact Sheet:\n{fact_sheet}\n\nOutline:\n{outline}\n\nTarget Scenes: {target_scenes} ({duration_minutes} min).\nWrite ALL {target_scenes} Scenes."
         
         return self.call_llm(prompt, system_prompt)
