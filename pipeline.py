@@ -1237,10 +1237,17 @@ def fetch_duckduckgo_image(search, out):
 
 def fetch_pexels_video(search, out, dur):
     try:
+        if not PEXELS_KEY: return False
+        clean_search = " ".join([w for w in search.split() if len(w)>2][:2]) if len(search.split()) > 2 else search
         h={"Authorization":PEXELS_KEY}
         r=requests.get("https://api.pexels.com/videos/search",headers=h,
-            params={"query":search,"per_page":10,"orientation":"landscape"},timeout=15)
+            params={"query":clean_search,"per_page":10,"orientation":"landscape"},timeout=15)
         vids=r.json().get("videos",[])
+        if not vids:
+            clean_search = search.split()[0] if search.split() else "cinematic"
+            r=requests.get("https://api.pexels.com/videos/search",headers=h,
+                params={"query":clean_search,"per_page":10,"orientation":"landscape"},timeout=15)
+            vids=r.json().get("videos",[])
         if not vids: return False
         vid=random.choice(vids[:5])
         files=sorted(vid.get("video_files",[]),key=lambda x:x.get("width",0),reverse=True)
@@ -1257,9 +1264,11 @@ def fetch_pexels_video(search, out, dur):
 
 def fetch_pexels_image(search, out):
     try:
+        if not PEXELS_KEY: return False
+        clean_search = " ".join([w for w in search.split() if len(w)>2][:2]) if len(search.split()) > 2 else search
         h={"Authorization":PEXELS_KEY}
         r=requests.get("https://api.pexels.com/v1/search",headers=h,
-            params={"query":search,"per_page":10,"orientation":"landscape"},timeout=15)
+            params={"query":clean_search,"per_page":10,"orientation":"landscape"},timeout=15)
         photos=r.json().get("photos",[])
         if not photos: return False
         url=random.choice(photos[:5])["src"]["original"]
@@ -1870,7 +1879,9 @@ Return ONLY JSON:
   "hashtags":"#{topic.replace(' ','')} #{niche or 'viral'} #hindi"
 }}""", max_tokens=800)
         
-        meta = json.loads(extract_json_object(meta_text))
+        raw_json_str = extract_json_object(meta_text)
+        clean_json = re.sub(r'[\x00-\x1F\x7F]', ' ', raw_json_str)
+        meta = json.loads(clean_json, strict=False)
         log.info(f"Generated metadata: {meta}")
     except Exception as e:
         log.warning(f"Metadata generation failed: {e}")

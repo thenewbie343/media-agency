@@ -12,8 +12,11 @@ class QCEditorAgent(BaseAgent):
         system_prompt = """You are the brutal Editor-in-Chief of a massive YouTube Documentary channel.
 Your job is to review a Director's JSON script and decide if it is APPROVED or REJECTED.
 
+VISUAL RATIO TO RESPECT (30% motion_graphics / 25% ai_video / 20% real_photo/stock_video / 15% ai_image / 10% broll_video).
+CRITICAL: Do NOT replace `ai_video` scenes with `stock_video`. Keep `ai_video` scenes intact for Colab AnimateDiff generation.
+
 REJECTION CRITERIA:
-1. Boring Visuals: If important historical facts use `broll_video` instead of `real_photo` or `motion_graphics`.
+1. Boring Visuals: If important historical facts use `broll_video` everywhere instead of adhering to the visual ratio.
 2. Bad Pacing: If there are no `strategic_silence_seconds` in the entire script.
 3. Weak Conflict: If the hook doesn't set up a problem.
 
