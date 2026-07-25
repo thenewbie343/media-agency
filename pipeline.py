@@ -846,8 +846,8 @@ def generate_kokoro_voice(text, out_path, lang, emotion):
     """Generate voice using Kokoro TTS — FIXED for proper Hindi audio"""
     # FIXED: Use actual Hindi voices for Hindi, not American fallback
     voice_map = {
-        "hindi": "hm_omega",      # Hindi Male — natural, authoritative
-        # "hindi": "hf_alpha",    # Hindi Female — alternative
+        "hindi": "hf_alpha",     # Hindi Female — natural, clear
+        # "hindi": "hm_omega",   # Hindi Male — alternative
         "english": "af_heart",    # American Female
         "spanish": "af_heart",    # Fallback
         "french": "af_heart",     # Fallback
