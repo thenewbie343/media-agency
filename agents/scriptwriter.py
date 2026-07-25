@@ -17,9 +17,9 @@ LANGUAGE:
 - The `caption` MUST BE IN HINGLISH (Roman script) (max 3-4 words per scene), to be displayed on screen.
 
 RULES:
-1. MUST output EXACTLY {target_scenes} scenes (roughly 1 sentence or 4-5 seconds per scene for a total of {duration_minutes} minutes).
+1. MUST output EXACTLY {target_scenes} scenes. Write detailed, immersive Hindi voiceover (2-3 full sentences, ~8-10 seconds of narration per scene) so that all {target_scenes} scenes combined reach a total duration of EXACTLY {duration_minutes} minutes!
 2. Follow the 3-Act structure from the Outline.
-3. Write highly engaging voiceover. Don't be boring.
+3. Write highly engaging voiceover. Don't be short or rushed. Provide rich story details in every scene.
 
 Output JSON strictly matching this schema (an array of EXACTLY {target_scenes} scenes):
 [
