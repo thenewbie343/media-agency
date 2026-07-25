@@ -59,10 +59,11 @@ subprocess.run([sys.executable, "-m", "pip", "install", "-q",
 import torch
 from diffusers import AnimateDiffPipeline, MotionAdapter, DDIMScheduler
 
-# ── Load AnimateDiff (SD1.5 - T4 compatible, ~3.5GB RAM) ──
-print("Loading AnimateDiff (SD1.5)...")
+# ── Load AnimateDiff (SD1.5 Anime Model - T4 compatible) ──
+print("Loading AnimateDiff (Anime Model)...")
 adapter_id = "guoyww/animatediff-motion-adapter-v1-5-2"
-model_id   = "emilianJR/epiCRealism"
+# High quality anime checkpoint
+model_id   = "stablediffusionapi/anything-v5"
 
 adapter = MotionAdapter.from_pretrained(adapter_id, torch_dtype=torch.float16)
 pipe    = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
@@ -71,7 +72,7 @@ pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config, clip_sample=Fa
 pipe.enable_vae_slicing()
 pipe.enable_model_cpu_offload()
 
-print("AnimateDiff loaded with CPU offloading and VAE slicing")
+print("AnimateDiff Anime Engine loaded successfully")
 
 # ── Generate each scene ───────────────────────────────────
 results = []
@@ -81,25 +82,26 @@ for scene in scenes:
     dur    = float(scene.get("duration_hint", 4))
     out    = str(output_dir / f"scene_{n:03d}.mp4")
 
-    num_frames = 16
+    # 24 frames = ~3 seconds at 8fps
+    num_frames = 24
 
     print(f"  Scene {n}: '{prompt[:60]}' → {num_frames} frames")
     try:
         output = pipe(
-            prompt=f"cinematic 4k, detailed, anime studio ghibli style, {prompt}",
-            negative_prompt="blurry, low quality, text, watermark, ugly, deformed, extra limbs",
+            prompt=f"masterpiece, best quality, ultra-detailed, anime style, 8k, vibrant colors, studio ghibli, dragon ball z style, {prompt}",
+            negative_prompt="deformed, distorted, disfigured, poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, mutation, ugly, low quality, worst quality, blurry, watermark, text",
             height=512,
             width=896,
             num_frames=num_frames,
-            guidance_scale=7.5,
-            num_inference_steps=20,
+            guidance_scale=8.0,
+            num_inference_steps=25,
             generator=torch.Generator().manual_seed(n * 17)
         ).frames[0]
 
         import numpy as np
         import imageio
         frames_np = [np.array(f) for f in output]
-        imageio.mimwrite(out, frames_np, fps=8, quality=8)
+        imageio.mimwrite(out, frames_np, fps=8, quality=9)
 
         if os.path.exists(out) and os.path.getsize(out) > 1000:
             print(f"  Scene {n}: ✓ ({os.path.getsize(out)//1024}KB)")

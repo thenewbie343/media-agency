@@ -1351,6 +1351,12 @@ def stage_6_visuals(script, cfg):
 
         dur = (get_dur(scene["audio_file"]) + 0.5) if scene.get("audio_file") else float(scene.get("duration_hint",4))
         scene["actual_duration"] = dur - 0.5 if scene.get("audio_file") else dur
+
+        # If a video clip was already generated (e.g. by Colab / Wan2.1 / AnimateDiff), preserve it!
+        if scene.get("video_file") and os.path.exists(scene["video_file"]) and os.path.getsize(scene["video_file"]) > 1000:
+            log.info(f"  {n}: Using pre-generated clip ({scene.get('visual_source', 'Colab')}) ✓")
+            continue
+
         success=False
 
         if vtype=="text_stat":
