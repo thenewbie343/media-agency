@@ -1317,37 +1317,40 @@ HF_TOKENS = [t for t in HF_TOKENS if t.strip()]
 
 def fetch_hf_image(prompt, out_path):
     if not HF_TOKENS: return False
-    url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
+    urls = [
+        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+        "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
+    ]
     for attempt in range(3):
         token = random.choice(HF_TOKENS)
         headers = {"Authorization": f"Bearer {token}"}
-        try:
-            r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=30)
-            if r.status_code == 200:
-                with open(out_path, "wb") as f: f.write(r.content)
-                return True
-            log.warning(f"HF Image failed (Attempt {attempt+1}): {r.status_code} {r.text[:100]}")
-            if r.status_code == 503: # Model loading
-                time.sleep(3)
-        except Exception as e:
-            log.warning(f"HF Image Exception (Attempt {attempt+1}): {e}")
-            time.sleep(3)
+        for url in urls:
+            try:
+                r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=30)
+                if r.status_code == 200:
+                    with open(out_path, "wb") as f: f.write(r.content)
+                    return True
+            except Exception as e:
+                pass
+        time.sleep(2)
     return False
 
 def fetch_hf_video(prompt, out_path):
     if not HF_TOKENS: return False
-    # Use a fast video model, timeout=55s to avoid crashing action
-    url = "https://api-inference.huggingface.co/models/damo-vilab/text-to-video-ms-1.7b"
+    urls = [
+        "https://router.huggingface.co/hf-inference/models/damo-vilab/text-to-video-ms-1.7b",
+        "https://api-inference.huggingface.co/models/damo-vilab/text-to-video-ms-1.7b"
+    ]
     token = random.choice(HF_TOKENS)
     headers = {"Authorization": f"Bearer {token}"}
-    try:
-        r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=55)
-        if r.status_code == 200:
-            with open(out_path, "wb") as f: f.write(r.content)
-            return True
-        log.warning(f"HF Video failed: {r.status_code} {r.text[:100]}")
-    except Exception as e:
-        log.warning(f"HF Video Exception (timeout likely): {e}")
+    for url in urls:
+        try:
+            r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=55)
+            if r.status_code == 200:
+                with open(out_path, "wb") as f: f.write(r.content)
+                return True
+        except Exception as e:
+            pass
     return False
 
 def stage_6_visuals(script, cfg):
@@ -1376,12 +1379,12 @@ def stage_6_visuals(script, cfg):
 
         success=False
 
-        if vtype=="text_stat":
+        if vtype in ["text_stat", "motion_graphics"]:
             display_text = scene.get("caption", scene.get("voiceover", ""))
             if make_text_stat(display_text,out,dur,cfg["lang"]):
-                scene["video_file"]=out; log.info(f"  {n}: text_stat ✓"); continue
+                scene["video_file"]=out; log.info(f"  {n}: text_stat/motion_graphics ✓"); continue
 
-        elif vtype in ["intro_video", "ai_video"]:
+        if vtype in ["intro_video", "ai_video"]:
             if not skip_ai(prompt):
                 if fetch_hf_video(prompt, out):
                     scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Video ✓")
@@ -1394,7 +1397,7 @@ def stage_6_visuals(script, cfg):
             if not success and fetch_pexels_video(search, out, dur):
                 scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels fallback ✓")
 
-        elif vtype in ["ai_image", "motion_graphics"]:
+        elif vtype in ["ai_image", "motion_graphics", "real_photo"]:
             if not skip_ai(prompt):
                 if fetch_hf_image(prompt, img):
                     if img_to_vid(img, out, dur, anim):
