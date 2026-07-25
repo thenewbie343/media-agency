@@ -1316,24 +1316,23 @@ HF_TOKENS = [
 HF_TOKENS = [t for t in HF_TOKENS if t.strip()]
 
 def fetch_hf_image(prompt, out_path):
-    if not HF_TOKENS: return False
-    urls = [
-        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
-        "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
-    ]
-    for attempt in range(3):
+    if HF_TOKENS:
+        urls = [
+            "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+            "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
+        ]
         token = random.choice(HF_TOKENS)
         headers = {"Authorization": f"Bearer {token}"}
         for url in urls:
             try:
-                r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=30)
+                r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=20)
                 if r.status_code == 200:
                     with open(out_path, "wb") as f: f.write(r.content)
                     return True
-            except Exception as e:
+            except Exception:
                 pass
-        time.sleep(2)
-    return False
+    # If HF returns 410 Deprecated or fails, seamlessly use Pollinations FLUX.1 Engine!
+    return fetch_pollinations(prompt, out_path)
 
 def fetch_hf_video(prompt, out_path):
     if not HF_TOKENS: return False
