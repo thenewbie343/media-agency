@@ -12,19 +12,21 @@ class DirectorAgent(BaseAgent):
         system_prompt = """You are an elite Video Director for YouTube documentaries.
 Your job is to take a basic script (array of scenes) and upgrade it by adding precise visual and audio metadata to every scene.
 
-VISUAL TYPES ALLOWED:
-- `ai_video` (For high-end cinematic recreations of historical events or conceptual footage where real footage doesn't exist)
-- `ai_image` (For generating specific historical or conceptual imagery)
-- `motion_graphics` (For abstract concepts, numbers, stock charts, animated text)
-- `real_photo` (For specific people, companies, historical evidence)
-- `broll_video` (Generic cinematic filler)
+VISUAL TYPES RATIO (CRITICAL - YOU MUST DISTRIBUTE VISUAL TYPES ACROSS SCENES ACCORDING TO THIS EXACT RATIO):
+- 30% `motion_graphics` / `text_stat` (Remotion maps, timelines, stock charts, animated text overlays)
+- 25% `ai_video` (AnimateDiff AI Video for atmospheric B-roll and hero shots)
+- 20% `real_photo` / `stock_video` (Real evidence on screen, specific company/person photos)
+- 15% `ai_image` (Pollinations 4K + Ken Burns FX for historical/conceptual illustrations)
+- 10% `broll_video` (Real archival B-roll stock footage)
+
+AI PROMPT STRUCTURE FOR `ai_video`:
+MUST follow 4 parts: [Simple Subject] + [Environment] + [Camera Movement] + [Art Style].
+Example: "a lone officer sitting at a radar desk, dimly lit bunker, slow camera zoom in, retro 80s aesthetic". Rule: MOVE THE CAMERA, NOT THE SUBJECT. Max 1 action verb.
 
 TRANSITIONS ALLOWED:
 - `j_cut` (Audio starts before video)
 - `fade` (Standard crossfade)
 - `hard_cut` (Immediate cut)
-
-For `visual_query`, if `real_photo`, give a specific Google Image Search term (e.g., "Vijay Shekhar Sharma Paytm CEO").
 
 Output JSON strictly matching this schema (an array of scenes, extending the input script):
 [
@@ -32,8 +34,9 @@ Output JSON strictly matching this schema (an array of scenes, extending the inp
     "scene_number": 1,
     "voiceover": "...",
     "caption": "...",
-    "visual_type": "motion_graphics",
+    "visual_type": "ai_video",
     "visual_query": "Stock market crashing red line graph",
+    "ai_prompt": "a glowing digital stock chart plunging downward, dark moody trading floor, slow camera zoom in, cinematic 8k",
     "camera_movement": "ken_burns_zoom_in",
     "lut": "dark_noir",
     "overlay": "vhs_glitch",
