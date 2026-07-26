@@ -901,6 +901,11 @@ def generate_kokoro_voice(text, out_path, lang, emotion):
         # FIX 1: Remove NaN/Inf that corrupt output
         full_audio = np.nan_to_num(full_audio, nan=0.0, posinf=0.0, neginf=0.0)
 
+        # FIX 1b: Peak Normalization for crisp, loud voiceover
+        max_val = np.max(np.abs(full_audio))
+        if max_val > 1e-5:
+            full_audio = (full_audio / max_val) * 0.96
+
         # FIX 2: float32 [-1.0, 1.0] → int16 [-32768, 32767] with clipping
         audio_int16 = np.clip(full_audio * 32767, -32768, 32767).astype(np.int16)
 
@@ -909,9 +914,10 @@ def generate_kokoro_voice(text, out_path, lang, emotion):
         wav_path = out_path.replace('.mp3', '.wav')
         sf.write(wav_path, audio_int16, sample_rate, subtype='PCM_16')
 
-        # FIX 4: Convert to MP3 with ffmpeg
+        # FIX 4: Convert to MP3 with ffmpeg + volume boost
         result = subprocess.run([
             "ffmpeg", "-y", "-i", wav_path,
+            "-filter:a", "volume=1.8,loudnorm=I=-14:TP=-1.5:LRA=7",
             "-codec:a", "libmp3lame", "-qscale:a", "2",
             "-ar", str(sample_rate),
             out_path
@@ -2067,19 +2073,20 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
             "-i", voice_track, 
             "-i", os.path.abspath(music_path),
             "-filter_complex", 
-            "[1:a]volume=1.0[v];"
-            "[2:a]volume=0.25[m_raw];"
-            "[m_raw][1:a]sidechaincompress=threshold=0.08:ratio=6:attack=100:release=400[m_ducked];"
+            "[1:a]volume=2.2,loudnorm=I=-14:TP=-1.5:LRA=7[v];"
+            "[2:a]volume=0.15[m_raw];"
+            "[m_raw][1:a]sidechaincompress=threshold=0.08:ratio=8:attack=50:release=300[m_ducked];"
             "[v][m_ducked]amix=inputs=2:duration=first[a]",
             "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_video
         ]
     else:
-        # Just Voice + Video
+        # Just Voice + Video with volume boost
         cmd = [
             "ffmpeg", "-y", 
             "-i", remotion_video, 
             "-i", voice_track, 
-            "-c:v", "copy", "-c:a", "aac", "-map", "0:v:0", "-map", "1:a:0", "-shortest", final_video
+            "-filter_complex", "[1:a]volume=2.2,loudnorm=I=-14:TP=-1.5:LRA=7[a]",
+            "-c:v", "copy", "-c:a", "aac", "-map", "0:v:0", "-map", "[a]", "-shortest", final_video
         ]
         
     res = subprocess.run(cmd, capture_output=True, text=True)
