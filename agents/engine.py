@@ -47,7 +47,12 @@ def run_documentary_pipeline(cfg):
     
     if qc_result.get("status") == "REJECTED":
         log.warning(f"QC Rejected! Reason: {qc_result.get('feedback')}. Applying fixes...")
-        final_script = qc_result.get("fixed_script", director_script)
+        fixed = qc_result.get("fixed_script")
+        if fixed and isinstance(fixed, list) and len(fixed) >= len(director_script):
+            final_script = fixed
+        else:
+            log.warning(f"QC fixed_script dropped scenes ({len(fixed) if fixed else 0}/{len(director_script)}). Retaining full director_script to preserve full duration!")
+            final_script = director_script
     else:
         log.info("QC Approved script!")
         final_script = director_script
