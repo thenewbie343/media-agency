@@ -1379,9 +1379,13 @@ def stage_6_visuals(script, cfg):
         success=False
 
         if vtype in ["text_stat", "motion_graphics"]:
-            display_text = scene.get("caption", scene.get("voiceover", ""))
-            if make_text_stat(display_text,out,dur,cfg["lang"]):
-                scene["video_file"]=out; log.info(f"  {n}: text_stat/motion_graphics ✓"); continue
+            # Remotion handles native Motion Graphics UI overlays, maps, timelines, and typography!
+            # We fetch a dramatic visual background (Pollinations 4K or Pexels) for Remotion to layer over
+            if not skip_ai(prompt) and fetch_pollinations(prompt, img, seed=n*17+i):
+                if img_to_vid(img, out, dur, anim):
+                    scene["video_file"]=out; log.info(f"  {n}: motion_graphics 4K background ✓"); continue
+            if fetch_pexels_video(search, out, dur):
+                scene["video_file"]=out; log.info(f"  {n}: motion_graphics video background ✓"); continue
 
         if vtype in ["intro_video", "ai_video"]:
             if not skip_ai(prompt):

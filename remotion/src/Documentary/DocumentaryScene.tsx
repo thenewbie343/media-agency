@@ -81,13 +81,39 @@ export const DocumentaryScene: React.FC<{
           </div>
         )}
 
-        {/* 30% Remotion Motion Graphics Animated Data Callout Card */}
+        {/* 30% Remotion Motion Graphics: Custom Maps, Timelines & UI Overlays */}
         {(scene.visual_type === 'motion_graphics' || scene.visual_type === 'text_stat') && (
-          <div style={{ position: 'absolute', bottom: '60px', left: '60px', padding: '16px 28px', backgroundColor: 'rgba(15, 23, 42, 0.85)', borderLeft: '6px solid #eab308', backdropFilter: 'blur(10px)', borderRadius: '4px', zIndex: 10 }}>
-            <span style={{ fontFamily: 'sans-serif', fontSize: '22px', fontWeight: 'bold', color: '#eab308', letterSpacing: '2px', textTransform: 'uppercase' }}>
-              KEY FACT • ANALYSIS
-            </span>
-          </div>
+          <Fragment>
+            {/* Custom Interactive Map Radar & Target Overlay */}
+            <div style={{ position: 'absolute', top: '40px', right: '40px', padding: '12px 20px', backgroundColor: 'rgba(8, 12, 20, 0.85)', border: '1px solid #38bdf8', borderRadius: '6px', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', gap: '12px', zIndex: 10 }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#38bdf8', boxShadow: '0 0 12px #38bdf8' }} />
+              <span style={{ fontFamily: 'monospace', fontSize: '18px', color: '#38bdf8', letterSpacing: '2px' }}>
+                GEOGRAPHIC RADAR • LOCATION MAP
+              </span>
+            </div>
+
+            {/* Animated Timeline & Progress Bar */}
+            <div style={{ position: 'absolute', bottom: '120px', left: '60px', right: '60px', height: '4px', backgroundColor: 'rgba(255, 255, 255, 0.15)', borderRadius: '2px', zIndex: 10 }}>
+              <div style={{ width: `${Math.min(100, (frame / durationFrames) * 100)}%`, height: '100%', backgroundColor: '#f59e0b', boxShadow: '0 0 12px #f59e0b', borderRadius: '2px' }} />
+            </div>
+
+            {/* Glassmorphic Data Callout Card & Metric Badge */}
+            <div style={{ position: 'absolute', bottom: '50px', left: '60px', padding: '14px 24px', backgroundColor: 'rgba(15, 23, 42, 0.9)', borderLeft: '6px solid #f59e0b', backdropFilter: 'blur(10px)', borderRadius: '4px', zIndex: 10, display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <span style={{ fontFamily: 'sans-serif', fontSize: '20px', fontWeight: 'bold', color: '#f59e0b', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                DOCUMENTARY CHRONOLOGY • KEY METRIC
+              </span>
+            </div>
+
+            {/* High-Impact CTA Bell & Subscribe Popup (triggers on scene 5+) */}
+            {scene.scene_number && scene.scene_number >= 5 && (
+              <div style={{ position: 'absolute', top: '40px', left: '40px', padding: '10px 20px', backgroundColor: 'rgba(220, 38, 38, 0.9)', borderRadius: '30px', boxShadow: '0 0 15px rgba(220, 38, 38, 0.6)', zIndex: 10, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '18px' }}>🔔</span>
+                <span style={{ fontFamily: 'Impact, sans-serif', fontSize: '20px', color: '#ffffff', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                  SUBSCRIBE FOR PART 2
+                </span>
+              </div>
+            )}
+          </Fragment>
         )}
 
         {/* VHS Scanline Overlay */}
