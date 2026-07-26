@@ -2073,9 +2073,9 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
             "-i", voice_track, 
             "-i", os.path.abspath(music_path),
             "-filter_complex", 
-            "[1:a]volume=2.2,loudnorm=I=-14:TP=-1.5:LRA=7[v];"
+            "[1:a]volume=2.2,loudnorm=I=-14:TP=-1.5:LRA=7,asplit=2[v][v_trig];"
             "[2:a]volume=0.15[m_raw];"
-            "[m_raw][1:a]sidechaincompress=threshold=0.08:ratio=8:attack=50:release=300[m_ducked];"
+            "[m_raw][v_trig]sidechaincompress=threshold=0.08:ratio=8:attack=50:release=300[m_ducked];"
             "[v][m_ducked]amix=inputs=2:duration=first[a]",
             "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_video
         ]
