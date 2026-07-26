@@ -2155,6 +2155,23 @@ def stage_wan21_colab(scenes_needing_video, topic):
         log.warning("Colab CLI token not found — skipping Wan2.1")
         return {}
 
+    # Permanently patch colab_cli in site-packages to prevent AttributeError: module 'jupyter_kernel_client' has no attribute 'KernelClient'
+    try:
+        import site
+        for sp in site.getsitepackages():
+            rpath = os.path.join(sp, "colab_cli", "runtime.py")
+            if os.path.exists(rpath):
+                with open(rpath, "r") as f: content = f.read()
+                if "import jupyter_kernel_client" in content and "from jupyter_kernel_client.client import KernelClient" not in content:
+                    content = content.replace(
+                        "import jupyter_kernel_client",
+                        "import jupyter_kernel_client\nfrom jupyter_kernel_client.client import KernelClient\nsetattr(jupyter_kernel_client, 'KernelClient', KernelClient)"
+                    )
+                    with open(rpath, "w") as f: f.write(content)
+                    log.info("✅ Successfully patched colab_cli KernelClient binding!")
+    except Exception as patch_err:
+        log.warning(f"colab_cli patch notice: {patch_err}")
+
     log.info(f"Wan2.1 via Colab CLI: {len(scenes_needing_video)} scenes")
     tg(f"🎨 Wan2.1 GPU generation: {len(scenes_needing_video)} animated clips...")
 
