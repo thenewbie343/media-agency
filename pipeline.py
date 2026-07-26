@@ -2406,13 +2406,13 @@ def run_pipeline_v52():
         script = stage_3_voice(script, cfg)
         music_path = stage_4_music(cfg)
 
-        # Wan2.1 for high-end AI visuals across ALL genres
+        # Route ONLY ai_video (25%) scenes to Colab AnimateDiff
         wan_scenes = []
         if os.path.exists(os.path.expanduser("~/.config/colab-cli/token.json")):
             wan_scenes = [s for s in script
-                          if s.get("visual_type") in ("ai_video", "ai_image")
+                          if s.get("visual_type") == "ai_video"
                           and not skip_ai(s.get("ai_prompt",""))]
-            log.info(f"Routing {len(wan_scenes)} scenes to Wan2.1")
+            log.info(f"Routing {len(wan_scenes)} scenes to Wan2.1 (Colab AnimateDiff 25% target)")
 
         wan_clips = {}
         if wan_scenes:
