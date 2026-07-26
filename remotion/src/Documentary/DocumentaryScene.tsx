@@ -150,22 +150,28 @@ export const DocumentaryScene: React.FC<{
           }}
         />
 
-        {/* Word-by-Word Kinetic Typography */}
+        {/* Modern Non-Intrusive Lower-Third Captions */}
         {scene.caption && (
-          <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ position: 'absolute', bottom: '70px', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 30, pointerEvents: 'none' }}>
             <div
               style={{
-                fontFamily: 'Impact, sans-serif',
-                fontSize: '130px',
-                fontWeight: '900',
+                fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+                fontSize: '44px',
+                fontWeight: '800',
                 textTransform: 'uppercase',
                 textAlign: 'center',
-                maxWidth: '90%',
+                maxWidth: '85%',
                 display: 'flex',
                 flexWrap: 'wrap',
                 justifyContent: 'center',
                 alignItems: 'center',
-                gap: '20px',
+                gap: '12px',
+                backgroundColor: 'rgba(5, 8, 16, 0.85)',
+                padding: '12px 32px',
+                borderRadius: '40px',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.8)',
+                backdropFilter: 'blur(8px)',
               }}
             >
               {words.map((word, index) => {
@@ -183,26 +189,25 @@ export const DocumentaryScene: React.FC<{
                   return <div key={index} style={{ opacity: 0 }}>{word}</div>;
                 }
 
-                // Alternate colors for emphasis (Yellow vs White)
+                // Highlight key emphasis words in gold vs white
                 const isYellow = index % 2 === 0;
 
                 return (
-                  <div
+                  <span
                     key={index}
                     style={{
                       transform: `scale(${wordScale})`,
-                      color: isYellow ? '#ffcc00' : '#ffffff',
-                      textShadow: '6px 6px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000, 2px 2px 0px #000, 15px 15px 30px rgba(0,0,0,0.9)',
-                      WebkitTextStroke: '4px black',
-                      lineHeight: '1.2'
+                      color: isYellow ? '#f59e0b' : '#ffffff',
+                      textShadow: '0 2px 8px rgba(0,0,0,0.9)',
+                      letterSpacing: '1px'
                     }}
                   >
                     {word}
-                  </div>
+                  </span>
                 );
               })}
             </div>
-          </AbsoluteFill>
+          </div>
         )}
       </AbsoluteFill>
   );

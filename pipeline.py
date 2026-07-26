@@ -914,10 +914,10 @@ def generate_kokoro_voice(text, out_path, lang, emotion):
         wav_path = out_path.replace('.mp3', '.wav')
         sf.write(wav_path, audio_int16, sample_rate, subtype='PCM_16')
 
-        # FIX 4: Convert to MP3 with ffmpeg + volume boost
+        # FIX 4: Convert to MP3 with ffmpeg + clean steady volume
         result = subprocess.run([
             "ffmpeg", "-y", "-i", wav_path,
-            "-filter:a", "volume=1.8,loudnorm=I=-14:TP=-1.5:LRA=7",
+            "-filter:a", "volume=1.3",
             "-codec:a", "libmp3lame", "-qscale:a", "2",
             "-ar", str(sample_rate),
             out_path
@@ -2073,19 +2073,19 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
             "-i", voice_track, 
             "-i", os.path.abspath(music_path),
             "-filter_complex", 
-            "[1:a]volume=2.2,loudnorm=I=-14:TP=-1.5:LRA=7,asplit=2[v][v_trig];"
+            "[1:a]volume=1.35,asplit=2[v][v_trig];"
             "[2:a]volume=0.15[m_raw];"
             "[m_raw][v_trig]sidechaincompress=threshold=0.08:ratio=8:attack=50:release=300[m_ducked];"
             "[v][m_ducked]amix=inputs=2:duration=first[a]",
             "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_video
         ]
     else:
-        # Just Voice + Video with volume boost
+        # Just Voice + Video with steady gain
         cmd = [
             "ffmpeg", "-y", 
             "-i", remotion_video, 
             "-i", voice_track, 
-            "-filter_complex", "[1:a]volume=2.2,loudnorm=I=-14:TP=-1.5:LRA=7[a]",
+            "-filter_complex", "[1:a]volume=1.35[a]",
             "-c:v", "copy", "-c:a", "aac", "-map", "0:v:0", "-map", "[a]", "-shortest", final_video
         ]
         
