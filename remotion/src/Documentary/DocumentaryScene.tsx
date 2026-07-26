@@ -1,6 +1,5 @@
-import { AbsoluteFill, useVideoConfig, useCurrentFrame, interpolate, spring, Img, Video, staticFile } from 'remotion';
-import { SceneData } from './DocumentaryVideo';
-import { Fragment } from 'react';
+import { MapMotionGraphic } from './MapMotionGraphic';
+import { TimelineMotionGraphic } from './TimelineMotionGraphic';
 
 // Advanced Motion Graphic Engine for YouTube Documentaries
 export const DocumentaryScene: React.FC<{
@@ -9,6 +8,9 @@ export const DocumentaryScene: React.FC<{
 }> = ({ scene, durationFrames }) => {
   const { fps } = useVideoConfig();
   const frame = useCurrentFrame();
+
+  const isMotionGraphics = scene.visual_type === 'motion_graphics' || scene.visual_type === 'text_stat';
+  const isMapScene = isMotionGraphics && (scene.visual_search?.toLowerCase().includes('map') || scene.visual_search?.toLowerCase().includes('location') || (scene.scene_number && scene.scene_number % 2 === 0));
 
   // 1. Dynamic Camera Movement (Ken Burns System)
   let scale = 1;
@@ -49,25 +51,27 @@ export const DocumentaryScene: React.FC<{
   return (
       <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#000' }}>
         
-        {/* Visual Layer (Image/Video) with 2.5D Parallax Movement & Thugesh Golden-Hour Color Grade */}
+        {/* Visual Layer (Image/Video or Full-Screen Remotion Motion Graphics Canvas) */}
         <AbsoluteFill 
           style={{ 
             transform: `scale(${parallaxBgScale}) translateX(${translateX * 0.5}%) translateY(${translateY}%)`,
             filter: cssFilter
           }}
         >
-          {scene.video_file ? (
+          {isMotionGraphics ? (
+            isMapScene ? (
+              <MapMotionGraphic title={scene.caption?.slice(0, 30) || 'TACTICAL MAP TARGET'} />
+            ) : (
+              <TimelineMotionGraphic title={scene.caption?.slice(0, 30) || 'CHRONOLOGY ANALYSIS'} />
+            )
+          ) : scene.video_file ? (
             scene.video_file.endsWith('.mp4') ? (
               <Video src={staticFile(`assets/${scene.video_file}`)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
               <Img src={staticFile(`assets/${scene.video_file}`)} style={{ width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${parallaxFgScale / parallaxBgScale}) translateX(${translateX * 0.5}%)` }} />
             )
           ) : (
-            // 30% Remotion Motion Graphics Grid & Blueprint Card
-            <div style={{ width: '100%', height: '100%', backgroundColor: '#080c14', backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '40px 40px, 80px 80px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{ width: '80%', height: '3px', backgroundColor: '#e2e8f0', boxShadow: '0 0 15px #38bdf8', marginBottom: '20px', transform: `scaleX(${Math.min(1, frame / 15)})` }} />
-              <span style={{ fontFamily: 'monospace', color: '#38bdf8', letterSpacing: '6px', fontSize: '24px', textTransform: 'uppercase' }}>[ SYSTEM DOCUMENTATION • HISTORICAL METRICS ]</span>
-            </div>
+            <TimelineMotionGraphic title="SYSTEM DATA METRICS" />
           )}
         </AbsoluteFill>
 
