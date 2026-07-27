@@ -2440,12 +2440,52 @@ def run_pipeline_v52():
             public_dir.mkdir(parents=True, exist_ok=True)
             
             import shutil
+            import re
+            
+            try:
+                from rembg import remove
+                from PIL import Image
+            except ImportError:
+                remove = None
+
+            def clean_caption_text(text):
+                if not text: return ""
+                # Remove anything in brackets or parentheses
+                t = re.sub(r'\[.*?\]', '', text)
+                t = re.sub(r'\(.*?\)', '', text)
+                # Remove speaker tags like "Narrator:" or "Voiceover:"
+                t = re.sub(r'^[A-Za-z\s]+:', '', t)
+                # Clean up multiple spaces and strip
+                t = re.sub(r'\s+', ' ', t).strip()
+                return t
+
             for scene in script:
+                # Clean the caption to only contain actual spoken text equivalent
+                raw_cap = scene.get("caption", scene.get("voiceover", ""))
+                scene["caption"] = clean_caption_text(raw_cap)
+
                 vid = scene.get("video_file")
                 if vid and os.path.exists(vid):
                     dest = public_dir / os.path.basename(vid)
                     shutil.copy2(vid, dest)
                     scene["video_file"] = os.path.basename(vid)
+                    
+                    # 2.5D Parallax Foreground Extraction
+                    if remove and scene.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
+                        try:
+                            scene["bg_file"] = os.path.basename(vid)
+                            fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
+                            fg_path = public_dir / fg_name
+                            
+                            if not os.path.exists(fg_path):
+                                log.info(f"Generating 2.5D Foreground for {vid}...")
+                                input_img = Image.open(vid)
+                                output_img = remove(input_img)
+                                output_img.save(fg_path)
+                                
+                            scene["fg_file"] = fg_name
+                        except Exception as e:
+                            log.error(f"Failed to generate foreground for {vid}: {e}")
             
             _save({"scenes": script}, "script_remotion.json")
             script_path = str((WORKSPACE / "script_remotion.json").resolve())

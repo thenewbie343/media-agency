@@ -14,20 +14,21 @@ Your job is to take a Fact Sheet and an Outline, and write the actual voiceover 
 
 LANGUAGE:
 - The `voiceover` MUST BE IN PURE HINDI (Devanagari script), perfect for a Hindi TTS engine. Use dramatic tone.
-- The `caption` MUST BE IN HINGLISH (Roman script) (max 3-4 words per scene), to be displayed on screen.
+- The `caption` MUST BE the FULL Romanized Hinglish equivalent of the voiceover, to be displayed on screen as subtitles.
 
 RULES:
-1. MUST output EXACTLY {target_scenes} scenes. Write detailed, immersive Hindi voiceover (2-3 full sentences, ~8-10 seconds of narration per scene) so that all {target_scenes} scenes combined reach a total duration of EXACTLY {duration_minutes} minutes!
-2. Follow the 3-Act structure from the Outline.
-3. Write highly engaging voiceover. Don't be short or rushed. Provide rich story details in every scene.
+1. MUST output EXACTLY {target_scenes} scenes. Write detailed, immersive Hindi voiceover (3-4 full sentences, ~10-12 seconds of narration per scene) so that all {target_scenes} scenes combined reach a total duration of EXACTLY {duration_minutes} minutes!
+2. NARRATIVE FLOW (CRITICAL): Do NOT write bullet points, fragmented keywords, or "word salad". You MUST write a cohesive story, connecting one idea to the next using logic, cause, and effect.
+3. Follow the 3-Act structure from the Outline.
+4. Write highly engaging voiceover. Don't be short or rushed. Provide rich story details in every scene.
 
 Output JSON strictly matching this schema (an array of EXACTLY {target_scenes} scenes):
 [
   {{
     "scene_number": 1,
     "purpose": "hook",
-    "voiceover": "2018 में, मार्केट रातों-रात गिर गया...",
-    "caption": "Market Collapsed Overnight"
+    "voiceover": "2018 में, मार्केट रातों-रात गिर गया। किसी को समझ नहीं आया कि यह कैसे हुआ।",
+    "caption": "2018 mein, market raaton-raat gir gaya. Kisi ko samajh nahi aaya ki yeh kaise hua."
   }}
 ]"""
         

@@ -28,6 +28,9 @@ TRANSITIONS ALLOWED:
 - `fade` (Standard crossfade)
 - `hard_cut` (Immediate cut)
 
+ANCHOR VISUAL GROUPS (CRITICAL):
+- Group adjacent scenes by location to prevent visual whiplash. Keep the base environment prompt identical for consecutive scenes (e.g., if Scene 1 is in a 'dimly lit bunker', Scenes 2 and 3 should also be in that bunker). Vary only the camera angles (Wide shot -> Close-up -> Medium shot).
+
 Output JSON strictly matching this schema (an array of scenes, extending the input script):
 [
   {

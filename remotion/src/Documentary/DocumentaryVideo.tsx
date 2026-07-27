@@ -10,7 +10,15 @@ export type SceneData = {
   voiceover: string;
   caption: string;
   visual_type: string;
+  visual_search?: string;
+  ai_prompt?: string;
+  camera_movement?: string;
+  overlay?: string;
+  lut?: string;
   video_file?: string;
+  fg_file?: string;
+  bg_file?: string;
+  scene_number?: number;
   actual_duration?: number;
   duration_hint: number;
 };

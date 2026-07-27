@@ -15,7 +15,7 @@ def run_documentary_pipeline(cfg):
     """
     topic = cfg["topic"]
     duration_minutes = int(cfg.get("duration_min") or cfg.get("duration") or 1)
-    target_scenes = max(6, int(duration_minutes * 10)) # ~10 scenes per minute
+    target_scenes = max(6, int(duration_minutes * 6)) # ~6 scenes per minute for better pacing
     log.info(f"🎬 AI Studio Orchestrator starting for topic: {topic} ({duration_minutes}m -> target {target_scenes} scenes)")
     
     # 1. Initialization

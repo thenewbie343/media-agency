@@ -1,5 +1,8 @@
+import React, { Fragment } from 'react';
+import { useVideoConfig, useCurrentFrame, interpolate, spring, AbsoluteFill, Img, Video, staticFile } from 'remotion';
 import { MapMotionGraphic } from './MapMotionGraphic';
 import { TimelineMotionGraphic } from './TimelineMotionGraphic';
+import { SceneData } from './DocumentaryVideo';
 
 // Advanced Motion Graphic Engine for YouTube Documentaries
 export const DocumentaryScene: React.FC<{
@@ -10,7 +13,13 @@ export const DocumentaryScene: React.FC<{
   const frame = useCurrentFrame();
 
   const isMotionGraphics = scene.visual_type === 'motion_graphics' || scene.visual_type === 'text_stat';
-  const isMapScene = isMotionGraphics && (scene.visual_search?.toLowerCase().includes('map') || scene.visual_search?.toLowerCase().includes('location') || (scene.scene_number && scene.scene_number % 2 === 0));
+  
+  const searchStr = (scene.visual_search || '') + ' ' + (scene.ai_prompt || '');
+  const searchLower = searchStr.toLowerCase();
+  
+  const isMapScene = isMotionGraphics && (searchLower.includes('map') || searchLower.includes('location') || searchLower.includes('geograph'));
+  const isTimelineScene = isMotionGraphics && !isMapScene && (searchLower.includes('timeline') || searchLower.includes('chronolog') || searchLower.includes('history') || searchLower.includes('date'));
+  const isDataScene = isMotionGraphics && !isMapScene && !isTimelineScene;
 
   // 1. Dynamic Camera Movement (Ken Burns System)
   let scale = 1;
@@ -28,13 +37,10 @@ export const DocumentaryScene: React.FC<{
     translateX = interpolate(frame, [0, durationFrames], [0, -8], { extrapolateRight: 'clamp' });
   }
 
-  // 2. Thugesh Cinematic Master Color Grade (Warm Golden Hour + High Contrast Shadows)
-  let cssFilter = 'sepia(0.18) saturate(1.25) contrast(1.15) brightness(0.95)';
-  if (scene.lut === 'dark_noir') {
-    cssFilter = 'grayscale(1) contrast(1.3) brightness(0.8)';
-  } else if (scene.lut === 'neon_pink' || scene.lut === 'vintage') {
-    cssFilter = 'sepia(0.8) hue-rotate(-30deg) saturate(2.5) contrast(1.2)';
-  }
+  // 2. Universal Master Filter (Global Color Grade)
+  // Instead of conditional LUTs per scene that break unity, we apply one universal cinematic grade.
+  const isColdTheme = searchLower.includes('thriller') || searchLower.includes('history') || searchLower.includes('dark');
+  const cssFilter = isColdTheme ? 'sepia(0.2) saturate(1.1) contrast(1.15) brightness(0.9) hue-rotate(-15deg)' : 'sepia(0.25) saturate(1.2) contrast(1.15) brightness(0.9) hue-rotate(5deg)';
 
   // 3. VHS Glitch / Scanline effect
   const isGlitch = scene.overlay === 'vhs_glitch';
@@ -67,6 +73,13 @@ export const DocumentaryScene: React.FC<{
           ) : scene.video_file ? (
             scene.video_file.endsWith('.mp4') ? (
               <Video src={staticFile(`assets/${scene.video_file}`)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : scene.fg_file && scene.bg_file ? (
+              <Fragment>
+                {/* 2.5D Parallax Background */}
+                <Img src={staticFile(`assets/${scene.bg_file}`)} style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${parallaxBgScale}) translateX(${translateX * 0.3}%)` }} />
+                {/* 2.5D Parallax Foreground Subject */}
+                <Img src={staticFile(`assets/${scene.fg_file}`)} style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${parallaxFgScale}) translateX(${translateX * 0.8}%)` }} />
+              </Fragment>
             ) : (
               <Img src={staticFile(`assets/${scene.video_file}`)} style={{ width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${parallaxFgScale / parallaxBgScale}) translateX(${translateX * 0.5}%)` }} />
             )
@@ -75,48 +88,35 @@ export const DocumentaryScene: React.FC<{
           )}
         </AbsoluteFill>
 
-        {/* 20% Real Evidence Archival Stamp */}
-        {(scene.visual_type === 'real_photo' || scene.visual_type === 'stock_video') && (
-          <div style={{ position: 'absolute', top: '40px', left: '40px', display: 'flex', alignItems: 'center', gap: '12px', zIndex: 10 }}>
-            <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 10px #ef4444', animation: 'pulse 1s infinite' }} />
-            <span style={{ fontFamily: 'Impact, sans-serif', fontSize: '24px', color: '#ffffff', letterSpacing: '3px', textShadow: '2px 2px 4px rgba(0,0,0,0.9)', textTransform: 'uppercase' }}>
-              ARCHIVAL EVIDENCE • DOCUMENTED RECORD
-            </span>
-          </div>
-        )}
-
         {/* 30% Remotion Motion Graphics: Custom Maps, Timelines & UI Overlays */}
         {(scene.visual_type === 'motion_graphics' || scene.visual_type === 'text_stat') && (
           <Fragment>
             {/* Custom Interactive Map Radar & Target Overlay */}
-            <div style={{ position: 'absolute', top: '40px', right: '40px', padding: '12px 20px', backgroundColor: 'rgba(8, 12, 20, 0.85)', border: '1px solid #38bdf8', borderRadius: '6px', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', gap: '12px', zIndex: 10 }}>
-              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#38bdf8', boxShadow: '0 0 12px #38bdf8' }} />
-              <span style={{ fontFamily: 'monospace', fontSize: '18px', color: '#38bdf8', letterSpacing: '2px' }}>
-                GEOGRAPHIC RADAR • LOCATION MAP
-              </span>
-            </div>
-
-            {/* Animated Timeline & Progress Bar */}
-            <div style={{ position: 'absolute', bottom: '120px', left: '60px', right: '60px', height: '4px', backgroundColor: 'rgba(255, 255, 255, 0.15)', borderRadius: '2px', zIndex: 10 }}>
-              <div style={{ width: `${Math.min(100, (frame / durationFrames) * 100)}%`, height: '100%', backgroundColor: '#f59e0b', boxShadow: '0 0 12px #f59e0b', borderRadius: '2px' }} />
-            </div>
-
-            {/* Glassmorphic Data Callout Card & Metric Badge */}
-            <div style={{ position: 'absolute', bottom: '50px', left: '60px', padding: '14px 24px', backgroundColor: 'rgba(15, 23, 42, 0.9)', borderLeft: '6px solid #f59e0b', backdropFilter: 'blur(10px)', borderRadius: '4px', zIndex: 10, display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <span style={{ fontFamily: 'sans-serif', fontSize: '20px', fontWeight: 'bold', color: '#f59e0b', letterSpacing: '2px', textTransform: 'uppercase' }}>
-                DOCUMENTARY CHRONOLOGY • KEY METRIC
-              </span>
-            </div>
-
-            {/* High-Impact CTA Bell & Subscribe Popup (triggers on scene 5+) */}
-            {scene.scene_number && scene.scene_number >= 5 && (
-              <div style={{ position: 'absolute', top: '40px', left: '40px', padding: '10px 20px', backgroundColor: 'rgba(220, 38, 38, 0.9)', borderRadius: '30px', boxShadow: '0 0 15px rgba(220, 38, 38, 0.6)', zIndex: 10, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '18px' }}>🔔</span>
-                <span style={{ fontFamily: 'Impact, sans-serif', fontSize: '20px', color: '#ffffff', letterSpacing: '2px', textTransform: 'uppercase' }}>
-                  SUBSCRIBE FOR PART 2
+            {isMapScene && (
+              <div style={{ position: 'absolute', top: '40px', right: '40px', padding: '12px 20px', backgroundColor: 'rgba(8, 12, 20, 0.85)', border: '1px solid #38bdf8', borderRadius: '6px', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', gap: '12px', zIndex: 10 }}>
+                <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#38bdf8', boxShadow: '0 0 12px #38bdf8' }} />
+                <span style={{ fontFamily: 'monospace', fontSize: '18px', color: '#38bdf8', letterSpacing: '2px' }}>
+                  GEOGRAPHIC RADAR • LOCATION MAP
                 </span>
               </div>
             )}
+
+            {/* Animated Timeline & Progress Bar */}
+            {isTimelineScene && (
+              <div style={{ position: 'absolute', bottom: '120px', left: '60px', right: '60px', height: '4px', backgroundColor: 'rgba(255, 255, 255, 0.15)', borderRadius: '2px', zIndex: 10 }}>
+                <div style={{ width: `${Math.min(100, (frame / durationFrames) * 100)}%`, height: '100%', backgroundColor: '#f59e0b', boxShadow: '0 0 12px #f59e0b', borderRadius: '2px' }} />
+              </div>
+            )}
+
+            {/* Glassmorphic Data Callout Card & Metric Badge */}
+            {(isDataScene || isTimelineScene) && (
+              <div style={{ position: 'absolute', bottom: '50px', left: '60px', padding: '14px 24px', backgroundColor: 'rgba(15, 23, 42, 0.9)', borderLeft: '6px solid #f59e0b', backdropFilter: 'blur(10px)', borderRadius: '4px', zIndex: 10, display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <span style={{ fontFamily: 'sans-serif', fontSize: '20px', fontWeight: 'bold', color: '#f59e0b', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                  {isTimelineScene ? 'DOCUMENTARY CHRONOLOGY' : 'SYSTEM DATA METRICS'}
+                </span>
+              </div>
+            )}
+
           </Fragment>
         )}
 
@@ -132,20 +132,46 @@ export const DocumentaryScene: React.FC<{
           />
         )}
 
-        {/* Film Grain Overlay */}
+        {/* Atmospheric Layering (Dust Motes) */}
+        <AbsoluteFill style={{ pointerEvents: 'none', opacity: 0.6, zIndex: 20 }}>
+          {Array.from({ length: 20 }).map((_, i) => {
+            const startX = (i * 17) % 100;
+            const delay = (i * 13) % 100;
+            const size = 2 + (i % 4);
+            const moveY = interpolate(frame - delay, [0, 300], [100, -20], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+            return (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: `${startX}%`,
+                  bottom: `${moveY}%`,
+                  width: `${size}px`,
+                  height: `${size}px`,
+                  backgroundColor: 'rgba(255,255,255,0.4)',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 10px rgba(255,255,255,0.5)',
+                  transform: `translateX(${Math.sin((frame + delay) / 30) * 20}px)`,
+                }}
+              />
+            );
+          })}
+        </AbsoluteFill>
+
+        {/* Film Grain Overlay - 3% Master Filter */}
         <AbsoluteFill
           style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E")`,
             pointerEvents: 'none',
             mixBlendMode: 'overlay',
-            opacity: 0.5,
+            opacity: 1,
           }}
         />
 
-        {/* Cinematic Vignette */}
+        {/* Cinematic Vignette - Outer 15% Darkened */}
         <AbsoluteFill
           style={{
-            background: 'radial-gradient(circle, rgba(0,0,0,0) 30%, rgba(0,0,0,0.9) 100%)',
+            background: 'radial-gradient(circle, rgba(0,0,0,0) 65%, rgba(0,0,0,0.85) 100%)',
             pointerEvents: 'none',
           }}
         />
@@ -166,12 +192,12 @@ export const DocumentaryScene: React.FC<{
                 justifyContent: 'center',
                 alignItems: 'center',
                 gap: '12px',
-                backgroundColor: 'rgba(5, 8, 16, 0.85)',
-                padding: '12px 32px',
-                borderRadius: '40px',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.8)',
-                backdropFilter: 'blur(8px)',
+                backgroundColor: 'rgba(5, 8, 16, 0.65)',
+                padding: '16px 36px',
+                borderRadius: '8px',
+                border: 'none',
+                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.9)',
+                backdropFilter: 'blur(4px)',
               }}
             >
               {words.map((word, index) => {
