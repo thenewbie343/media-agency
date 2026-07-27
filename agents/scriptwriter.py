@@ -14,7 +14,7 @@ Your job is to take a Fact Sheet and an Outline, and write the actual voiceover 
 
 LANGUAGE:
 - The `voiceover` MUST BE IN PURE HINDI (Devanagari script), perfect for a Hindi TTS engine. Use dramatic tone.
-- The `caption` MUST BE the FULL Romanized Hinglish equivalent of the voiceover, to be displayed on screen as subtitles.
+- The `caption` MUST BE the FULL Romanized Hinglish equivalent of the voiceover, to be displayed on screen as subtitles. (CRITICAL: USE ENGLISH ALPHABET ONLY. NO DEVANAGARI. NO EMOJIS. If you use Hindi script in the caption, the font will render as boxes).
 
 RULES:
 1. MUST output EXACTLY {target_scenes} scenes. Write detailed, immersive Hindi voiceover (3-4 full sentences, ~10-12 seconds of narration per scene) so that all {target_scenes} scenes combined reach a total duration of EXACTLY {duration_minutes} minutes!

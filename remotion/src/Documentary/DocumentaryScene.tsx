@@ -110,7 +110,7 @@ export const DocumentaryScene: React.FC<{
 
             {/* Glassmorphic Data Callout Card & Metric Badge */}
             {(isDataScene || isTimelineScene) && (
-              <div style={{ position: 'absolute', bottom: '50px', left: '60px', padding: '14px 24px', backgroundColor: 'rgba(15, 23, 42, 0.9)', borderLeft: '6px solid #f59e0b', backdropFilter: 'blur(10px)', borderRadius: '4px', zIndex: 10, display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ position: 'absolute', top: '40px', left: '40px', padding: '14px 24px', backgroundColor: 'rgba(15, 23, 42, 0.9)', borderLeft: '6px solid #f59e0b', backdropFilter: 'blur(10px)', borderRadius: '4px', zIndex: 10, display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <span style={{ fontFamily: 'sans-serif', fontSize: '20px', fontWeight: 'bold', color: '#f59e0b', letterSpacing: '2px', textTransform: 'uppercase' }}>
                   {isTimelineScene ? 'DOCUMENTARY CHRONOLOGY' : 'SYSTEM DATA METRICS'}
                 </span>
@@ -178,11 +178,11 @@ export const DocumentaryScene: React.FC<{
 
         {/* Modern Non-Intrusive Lower-Third Captions */}
         {scene.caption && (
-          <div style={{ position: 'absolute', bottom: '70px', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 30, pointerEvents: 'none' }}>
+          <div style={{ position: 'absolute', bottom: '30px', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 30, pointerEvents: 'none' }}>
             <div
               style={{
-                fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
-                fontSize: '44px',
+                fontFamily: '"Noto Sans Devanagari", Inter, system-ui, -apple-system, sans-serif',
+                fontSize: '32px',
                 fontWeight: '800',
                 textTransform: 'uppercase',
                 textAlign: 'center',
@@ -191,9 +191,9 @@ export const DocumentaryScene: React.FC<{
                 flexWrap: 'wrap',
                 justifyContent: 'center',
                 alignItems: 'center',
-                gap: '12px',
+                gap: '8px',
                 backgroundColor: 'rgba(5, 8, 16, 0.65)',
-                padding: '16px 36px',
+                padding: '10px 24px',
                 borderRadius: '8px',
                 border: 'none',
                 boxShadow: '0 10px 40px rgba(0, 0, 0, 0.9)',
