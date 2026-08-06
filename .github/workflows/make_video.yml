@@ -124,7 +124,7 @@ jobs:
           if [ -n "${{ secrets.COLAB_TOKEN }}" ]; then
             mkdir -p ~/.config/colab-cli
             echo '${{ secrets.COLAB_TOKEN }}' > ~/.config/colab-cli/token.json
-            pip install "google-colab-cli==0.6.0" "jupyter-kernel-client>=1.0.0" || echo "google-colab-cli install failed — Wan2.1 will be skipped this run, Pollinations fallback will be used instead"
+            pip install "google-colab-cli==0.6.0" "jupyter-kernel-client==0.15.0" || echo "google-colab-cli install failed — Wan2.1 will be skipped this run, Pollinations fallback will be used instead"
           else
             echo "COLAB_TOKEN not set — skipping Colab CLI setup, cartoon genre will use Pollinations"
           fi

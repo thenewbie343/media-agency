@@ -2165,7 +2165,7 @@ def stage_wan21_colab(scenes_needing_video, topic):
     # Enforce pinned compatible versions of colab-cli and jupyter-kernel-client
     try:
         import sys
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "google-colab-cli==0.6.0", "jupyter-kernel-client>=1.0.0"], capture_output=True, timeout=40)
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "google-colab-cli==0.6.0", "jupyter-kernel-client==0.15.0"], capture_output=True, timeout=40)
     except Exception as sync_err:
         log.warning(f"colab_cli version sync notice: {sync_err}")
 
