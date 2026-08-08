@@ -1961,9 +1961,9 @@ def get_drive_service():
         return _drive_service
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
-    token_data = os.environ.get("YOUTUBE_TOKEN_JSON", "")
+    token_data = os.environ.get("DRIVE_TOKEN_JSON", "")
     if not token_data:
-        raise ValueError("YOUTUBE_TOKEN_JSON empty")
+        raise ValueError("DRIVE_TOKEN_JSON empty")
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
         tmp.write(token_data); token_path = tmp.name
     creds = Credentials.from_authorized_user_file(token_path)
