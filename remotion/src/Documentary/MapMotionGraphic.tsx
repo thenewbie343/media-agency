@@ -1,86 +1,303 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, spring } from 'remotion';
+import { colors, typography, fontWeights, borders, shadows } from '../editorialTheme';
 
-export const MapMotionGraphic: React.FC<{ title?: string }> = ({ title }) => {
+const hashString = (str: string) => {
+  if (!str) return 0;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash);
+};
+
+export const MapMotionGraphic: React.FC<{ shot: any }> = ({ shot }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width } = useVideoConfig();
 
-  // Animated Radar Rotation
-  const radarRotation = (frame * 2) % 360;
+  // 1. Resolve Location Name
+  const locationName = shot.continuity?.location || shot.visual_query || 'TACTICAL POSITION';
+  const seed = hashString(locationName);
 
-  // Route Draw Animation (0 to 100%)
-  const routeProgress = interpolate(frame, [0, 60], [1000, 0], { extrapolateRight: 'clamp' });
+  // 2. Generate Coordinates based on Location Name
+  const lat = ((seed % 700000) / 10000 + 8.0).toFixed(4); // India Latitude range: 8N to 37N
+  const lon = ((seed % 300000) / 10000 + 68.0).toFixed(4); // India Longitude range: 68E to 97E
 
-  // Spring scale for target pin
-  const pinScale = spring({ frame: frame - 15, fps, config: { damping: 12 } });
+  // 3. Calculate unique start/end points for the route
+  const startX = 200 + (seed % 300);
+  const startY = 600 + ((seed >> 2) % 200);
+  
+  const endX = 1000 + ((seed >> 4) % 500);
+  const endY = 300 + ((seed >> 6) % 300);
+  
+  const ctrlX = (startX + endX) / 2 + ((seed >> 8) % 300 - 150);
+  const ctrlY = Math.min(startY, endY) - 150 - ((seed >> 10) % 100);
+
+  // Route drawing progression (frames 0 to 60)
+  const routeProgress = interpolate(frame, [0, 60], [1200, 0], { extrapolateRight: 'clamp' });
+
+  // Compass Rotation
+  const compassRotation = (frame * 0.4) % 360;
+
+  // Spring animations for Pin and Compass Rose
+  const pinScale = spring({ frame: frame - 45, fps, config: { damping: 11, stiffness: 80 } });
+  const compassScale = spring({ frame, fps, config: { damping: 15, stiffness: 50 } });
+
+  // Generate unique topographical contour lines using SVG curves based on seed
+  const generateContour = (offsetY: number, amplitude: number, index: number) => {
+    const waveSeed = (seed + index * 12345) % 1000;
+    const y1 = offsetY + (waveSeed % amplitude);
+    const y2 = offsetY - ((waveSeed >> 2) % amplitude);
+    const y3 = offsetY + ((waveSeed >> 4) % amplitude);
+    const controlX1 = width * 0.25;
+    const controlX2 = width * 0.75;
+    return `M 0,${y1} C ${controlX1},${y1 + 100} ${controlX2},${y2 - 100} ${width},${y3}`;
+  };
 
   return (
-    <AbsoluteFill style={{ backgroundColor: '#050811', overflow: 'hidden' }}>
-      {/* 1. Animated Tech Grid */}
+    <AbsoluteFill style={{ backgroundColor: colors.darkCharcoal, overflow: 'hidden' }}>
+      
+      {/* 1. Topographical Contour Lines (Seeded Background) */}
+      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.15 }}>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <path
+            key={i}
+            d={generateContour(150 + i * 180, 80, i)}
+            fill="none"
+            stroke={colors.warmGold}
+            strokeWidth={1 + i * 0.5}
+            strokeDasharray="6 4"
+          />
+        ))}
+      </svg>
+
+      {/* 2. Grid Network (Parchment Overlay) */}
       <div
         style={{
-          width: '100%',
-          height: '100%',
-          backgroundImage: 'radial-gradient(rgba(56, 189, 248, 0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
-          backgroundSize: '50px 50px, 100px 100px',
-          opacity: 0.8,
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `radial-gradient(rgba(212, 175, 55, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(140, 123, 107, 0.03) 1px, transparent 1px), linear-gradient(0deg, rgba(140, 123, 107, 0.03) 1px, transparent 1px)`,
+          backgroundSize: '80px 80px, 80px 80px, 80px 80px',
+          opacity: 0.85,
         }}
       />
 
-      {/* 2. Top-Right Strategic Coordinates HUD */}
-      <div style={{ position: 'absolute', top: '50px', right: '60px', color: '#38bdf8', fontFamily: 'monospace', fontSize: '20px', letterSpacing: '4px', textAlign: 'right' }}>
-        <div>[ GEOGRAPHIC TACTICAL RADAR ]</div>
-        <div style={{ fontSize: '14px', opacity: 0.7, marginTop: '4px' }}>LAT: 19.8136° N | LON: 85.8312° E</div>
+      {/* Elegant Editorial Outer Frame Border */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: '24px',
+          border: borders.goldThin,
+          pointerEvents: 'none',
+          opacity: 0.3,
+        }}
+      />
+
+      {/* Outer corner notches to enhance the premium HUD look */}
+      <div style={{ position: 'absolute', top: '24px', left: '24px', width: '20px', height: '20px', borderTop: borders.goldMedium, borderLeft: borders.goldMedium, opacity: 0.6 }} />
+      <div style={{ position: 'absolute', top: '24px', right: '24px', width: '20px', height: '20px', borderTop: borders.goldMedium, borderRight: borders.goldMedium, opacity: 0.6 }} />
+      <div style={{ position: 'absolute', bottom: '24px', left: '24px', width: '20px', height: '20px', borderBottom: borders.goldMedium, borderLeft: borders.goldMedium, opacity: 0.6 }} />
+      <div style={{ position: 'absolute', bottom: '24px', right: '24px', width: '20px', height: '20px', borderBottom: borders.goldMedium, borderRight: borders.goldMedium, opacity: 0.6 }} />
+
+      {/* 3. Coordinates & Location Info Box (Header HUD) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '50px',
+          left: '60px',
+          display: 'flex',
+          flexDirection: 'column',
+          zIndex: 5,
+        }}
+      >
+        <span
+          style={{
+            fontFamily: typography.serifHeader,
+            fontWeight: fontWeights.serifHeaderMin,
+            color: colors.warmGold,
+            fontSize: '22px',
+            letterSpacing: '2px',
+            textTransform: 'uppercase',
+          }}
+        >
+          {locationName}
+        </span>
+        <span
+          style={{
+            fontFamily: typography.body,
+            fontSize: '13px',
+            color: colors.mutedSepia,
+            marginTop: '4px',
+            letterSpacing: '1px',
+          }}
+        >
+          COORD: {lat}° N / {lon}° E | RELIABILITY: 98.4%
+        </span>
       </div>
 
-      {/* 3. Central Rotating Tactical Radar Reticle */}
-      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '600px', height: '600px', borderRadius: '50%', border: '1px solid rgba(56, 189, 248, 0.3)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <div style={{ width: '400px', height: '400px', borderRadius: '50%', border: '1px dashed rgba(56, 189, 248, 0.5)', transform: `rotate(${radarRotation}deg)` }} />
+      <div
+        style={{
+          position: 'absolute',
+          top: '50px',
+          right: '60px',
+          color: colors.mutedSepia,
+          fontFamily: typography.serifHeader,
+          fontWeight: fontWeights.serifHeaderMin,
+          fontSize: '14px',
+          letterSpacing: '3px',
+          textTransform: 'uppercase',
+        }}
+      >
+        Strategic Cartography
+      </div>
+
+      {/* 4. Animated Route Trajectory */}
+      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 3 }}>
+        <defs>
+          <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#8c7b6b" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#d4af37" stopOpacity="1" />
+          </linearGradient>
+        </defs>
         
-        {/* Radar Sweep Line */}
+        {/* Shadow glow under path */}
+        <path
+          d={`M ${startX},${startY} Q ${ctrlX},${ctrlY} ${endX},${endY}`}
+          fill="none"
+          stroke="rgba(212,175,55,0.25)"
+          strokeWidth="6"
+          strokeLinecap="round"
+        />
+        
+        {/* Animated main route */}
+        <path
+          d={`M ${startX},${startY} Q ${ctrlX},${ctrlY} ${endX},${endY}`}
+          fill="none"
+          stroke="url(#goldGrad)"
+          strokeWidth="3"
+          strokeDasharray="1200"
+          strokeDashoffset={routeProgress}
+          strokeLinecap="round"
+        />
+      </svg>
+
+      {/* 5. Start Point (Origin Marker) */}
+      <div
+        style={{
+          position: 'absolute',
+          left: startX,
+          top: startY,
+          transform: 'translate(-50%, -50%)',
+          width: '10px',
+          height: '10px',
+          borderRadius: '50%',
+          backgroundColor: '#8c7b6b',
+          border: '2px solid rgba(245, 242, 235, 0.6)',
+          zIndex: 4,
+        }}
+      />
+
+      {/* 6. Compass Rose (Positioned on the side, scaling up elegantly) */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: '60px',
+          left: '60px',
+          width: '140px',
+          height: '140px',
+          opacity: 0.45,
+          transform: `scale(${compassScale})`,
+          zIndex: 2,
+        }}
+      >
+        <svg
+          width="100%"
+          height="100%"
+          viewBox="0 0 200 200"
+          style={{ transform: `rotate(${compassRotation}deg)` }}
+        >
+          <circle cx="100" cy="100" r="90" fill="none" stroke={colors.warmGold} strokeWidth="1" />
+          <circle cx="100" cy="100" r="82" fill="none" stroke={colors.mutedSepia} strokeWidth="0.5" strokeDasharray="2 2" />
+          
+          {/* Compass Needles */}
+          <polygon points="100,15 106,100 100,110 94,100" fill={colors.warmGold} />
+          <polygon points="100,185 106,100 100,90 94,100" fill={colors.mutedSepia} />
+          <polygon points="15,100 100,106 110,100 100,94" fill={colors.warmGold} />
+          <polygon points="185,100 100,106 90,100 100,94" fill={colors.mutedSepia} />
+          
+          <text x="100" y="32" textAnchor="middle" fill={colors.warmGold} fontSize="12" fontFamily={typography.serifHeader}>N</text>
+        </svg>
+      </div>
+
+      {/* 7. Target Destination Pin (Spring scales in at target endX, endY) */}
+      <div
+        style={{
+          position: 'absolute',
+          left: endX,
+          top: endY,
+          transform: `translate(-50%, -50%) scale(${Math.max(0, pinScale)})`,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          zIndex: 10,
+        }}
+      >
+        {/* Pulsing Gold Glow behind Pin */}
         <div
           style={{
             position: 'absolute',
-            width: '300px',
-            height: '300px',
-            top: '0',
-            left: '300px',
-            background: 'conic-gradient(from 0deg, rgba(56, 189, 248, 0.4) 0deg, transparent 60deg)',
-            transformOrigin: '0% 100%',
-            transform: `rotate(${radarRotation}deg)`,
-            borderRadius: '0 100% 0 0',
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            backgroundColor: colors.warmGold,
+            opacity: 0.35 + Math.sin(frame * 0.15) * 0.15,
+            transform: 'scale(1.3)',
+            boxShadow: shadows.goldGlow,
           }}
         />
 
-        {/* Pulsating Target Pin */}
+        {/* Gold Pin Outer */}
         <div
           style={{
-            transform: `scale(${Math.max(0, pinScale)})`,
-            position: 'absolute',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
+            width: '18px',
+            height: '18px',
+            borderRadius: '50%',
+            backgroundColor: colors.warmGold,
+            border: `3px solid ${colors.darkCharcoal}`,
+            boxShadow: shadows.deepSoft,
+          }}
+        />
+
+        {/* Gold Dropdown Line */}
+        <div
+          style={{
+            width: '1.5px',
+            height: '30px',
+            backgroundColor: colors.warmGold,
+          }}
+        />
+
+        {/* Location Text Banner Box */}
+        <div
+          style={{
+            padding: '6px 14px',
+            backgroundColor: colors.charcoal,
+            color: colors.parchment,
+            fontFamily: typography.serifHeader,
+            fontWeight: fontWeights.serifHeaderMin,
+            fontSize: '15px',
+            letterSpacing: '1px',
+            borderRadius: '4px',
+            border: borders.goldMedium,
+            boxShadow: shadows.deepSoft,
+            whiteSpace: 'nowrap',
+            marginTop: '-5px',
           }}
         >
-          <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 25px #ef4444' }} />
-          <div style={{ marginTop: '10px', padding: '6px 14px', backgroundColor: 'rgba(239, 68, 68, 0.9)', color: '#ffffff', fontFamily: 'Impact, sans-serif', fontSize: '18px', letterSpacing: '2px', borderRadius: '4px' }}>
-            {title || 'TARGET LOCATION DETECTED'}
-          </div>
+          {locationName}
         </div>
       </div>
 
-      {/* 4. Animated Connecting Map Route Line SVG */}
-      <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
-        <path
-          d="M 300 700 Q 600 300 960 540 T 1600 300"
-          fill="none"
-          stroke="#38bdf8"
-          strokeWidth="4"
-          strokeDasharray="1000"
-          strokeDashoffset={routeProgress}
-          style={{ filter: 'drop-shadow(0px 0px 8px #38bdf8)' }}
-        />
-      </svg>
     </AbsoluteFill>
   );
 };

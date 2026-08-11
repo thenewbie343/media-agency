@@ -8,3 +8,10 @@ kokoro-tts
 ffmpeg-python
 numpy
 soundfile
+rembg
+pillow
+scipy
+duckduckgo-search
+gtts
+google-api-python-client
+

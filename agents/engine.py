@@ -15,7 +15,7 @@ def run_documentary_pipeline(cfg):
     """
     topic = cfg["topic"]
     duration_minutes = int(cfg.get("duration_min") or cfg.get("duration") or 1)
-    target_scenes = max(10, int(duration_minutes * 10)) # 10 scenes per minute ensures enough script length
+    target_scenes = max(6, int(duration_minutes * 6)) # 6 scenes per minute (10s per scene) ensures accurate duration without token limits
     log.info(f"🎥 AI Studio Orchestrator starting for topic: {topic} ({duration_minutes}m -> target {target_scenes} scenes)")
     
     # 1. Initialization
@@ -42,25 +42,14 @@ def run_documentary_pipeline(cfg):
     director_script = director.add_metadata(raw_script)
     
     # 6. Quality Control (QC Editor)
-    log.info("5/5: QC Editor reviewing...")
+    log.info("5/5: QC Editor reviewing (Python Validator)...")
     qc_result = qc_editor.review_script(director_script)
     
     if qc_result.get("status") == "REJECTED":
-        log.warning(f"QC Rejected! Reason: {qc_result.get('feedback')}. Applying fixes...")
-        fixed = qc_result.get("fixed_script")
-        if fixed and isinstance(fixed, list) and len(fixed) >= len(director_script):
-            final_script = fixed
-        else:
-            log.warning(f"QC fixed_script dropped scenes ({len(fixed) if fixed else 0}/{len(director_script)}). Retaining full director_script to preserve full duration!")
-            final_script = director_script
+        log.warning(f"QC Rejected! Reason: {qc_result.get('feedback')}.")
     else:
         log.info("QC Approved script!")
-        final_script = director_script
         
-    # Ensure scene keys exist just in case QC LLM dropped them
-    for i, scene in enumerate(final_script):
-        if "scene" not in scene:
-            scene["scene"] = i + 1
-            
-    return final_script
+    final_script = director_script
+    return final_script, fact_sheet
 

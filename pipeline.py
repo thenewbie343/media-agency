@@ -769,35 +769,31 @@ EMOTION_VOICE_MAP = {
     "energetic":  ("+18%", "+20Hz"),
 }
 
-def stage_3_voice(script, cfg):
+def stage_3_voice(manifest, cfg):
     lang = cfg["lang"]
     use_kokoro = os.environ.get("USE_KOKORO", "true").lower() in ("true", "1", "yes")
     log.info(f"Stage 3: Voice (Kokoro: {use_kokoro})...")
     tg(f"🎙️ Generating voice...")
     audio_dir = WORKSPACE / "audio"
     audio_dir.mkdir(exist_ok=True)
-    failed_scenes = 0
+    failed_blocks = 0
+    total_blocks = 0
 
-    for idx, scene in enumerate(script):
-        n = scene["scene"]
-        # Use voiceover (Devanagari) for TTS audio generation
-        text = scene.get("voiceover", "").strip()
+    def _generate_voice(text, b_id, emotion="dramatic"):
         if not text:
-            scene["audio_file"] = None
-            continue
-        emotion = scene.get("emotion", "dramatic")
-        out = str(audio_dir / f"scene_{n:03d}.mp3")
+            return None, 0.0
+            
+        out = str(audio_dir / f"block_{b_id}.mp3")
         done = False
-
+        
         # Try Kokoro first if enabled
         if use_kokoro:
             try:
                 done = generate_kokoro_voice(text, out, lang, emotion)
                 if done:
-                    scene["audio_file"] = out
-                    log.info(f"  Scene {n}: Kokoro TTS ✓")
+                    log.info(f"  Block {b_id}: Kokoro TTS ✓")
             except Exception as e:
-                log.warning(f"  Scene {n}: Kokoro failed: {e}")
+                log.warning(f"  Block {b_id}: Kokoro failed: {e}")
 
         # Fallback to Edge-TTS
         if not done:
@@ -809,11 +805,10 @@ def stage_3_voice(script, cfg):
                     try:
                         asyncio.run(_edge_tts(text, out, v, rate=rate, pitch=pitch))
                         if os.path.exists(out) and os.path.getsize(out) > 500:
-                            scene["audio_file"] = out
                             done = True
                         break
                     except Exception as e:
-                        log.warning(f"  Scene {n} {v} attempt {attempt+1}: {e}")
+                        log.warning(f"  Block {b_id} {v} attempt {attempt+1}: {e}")
                         time.sleep(1.5)
                 if done:
                     break
@@ -825,21 +820,69 @@ def stage_3_voice(script, cfg):
                 lc = {"hindi":"hi","english":"en","spanish":"es","french":"fr","german":"de"}.get(lang,"hi")
                 gTTS(text=text,lang=lc).save(out)
                 if os.path.exists(out) and os.path.getsize(out) > 500:
-                    scene["audio_file"] = out
                     done = True
             except Exception as e:
-                log.error(f"  Scene {n}: gTTS also failed: {e}")
+                log.error(f"  Block {b_id}: gTTS also failed: {e}")
 
         if not done:
-            failed_scenes += 1
-            scene["audio_file"] = None
+            return None, 0.0
+            
+        # MEASURE ACTUAL DURATION AS SOURCE OF TRUTH
+        try:
+            r = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration",
+                "-of","default=noprint_wrappers=1:nokey=1", out], capture_output=True, text=True, timeout=10)
+            dur = float(r.stdout.strip())
+            return out, dur
+        except:
+            return out, 4.0
 
-        if idx % 5 == 4:
-            time.sleep(1)
+    if isinstance(manifest, dict) and "story_beats" in manifest:
+        for beat in manifest.get("story_beats", []):
+            for block in beat.get("narration_blocks", []):
+                total_blocks += 1
+                b_id = block.get("block_id", f"b{total_blocks}")
+                text = block.get("voiceover", "").strip()
+                
+                out_file, dur = _generate_voice(text, b_id)
+                
+                if not out_file:
+                    failed_blocks += 1
+                    block["audio_file"] = None
+                    block["actual_voice_duration"] = float(block.get("duration_hint", 4.0))
+                else:
+                    block["audio_file"] = out_file
+                    block["actual_voice_duration"] = dur
+                    
+                # Calculate total duration
+                silence_dur = block.get("strategic_silence", {}).get("duration_seconds", 0.0)
+                block["total_block_duration"] = block["actual_voice_duration"] + silence_dur
 
-    if failed_scenes:
-        log.warning(f"Stage 3: {failed_scenes}/{len(script)} scenes have NO audio")
-    return script
+                if total_blocks % 5 == 4:
+                    time.sleep(1)
+    else:
+        # Legacy flat list support
+        for i, scene in enumerate(manifest):
+            total_blocks += 1
+            b_id = f"scene_{i}"
+            text = scene.get("voiceover", "").strip()
+            emotion = scene.get("emotion", "dramatic")
+            
+            out_file, dur = _generate_voice(text, b_id, emotion)
+            
+            if not out_file:
+                failed_blocks += 1
+                scene["audio_file"] = None
+                scene["actual_duration"] = float(scene.get("duration_hint", 4.0))
+            else:
+                scene["audio_file"] = out_file
+                scene["actual_duration"] = dur
+
+            if total_blocks % 5 == 4:
+                time.sleep(1)
+
+    if failed_blocks:
+        log.warning(f"Stage 3: {failed_blocks}/{total_blocks} blocks have NO audio")
+    return manifest
 
 
 def generate_kokoro_voice(text, out_path, lang, emotion):
@@ -1221,7 +1264,28 @@ def fetch_pollinations(prompt, out, seed=None):
     return False
 
 def fetch_duckduckgo_image(search, out):
-    # Replaced DuckDuckGo with Wikimedia Commons API due to aggressive anti-bot protection on GitHub Actions
+    # Try DuckDuckGo first (rich web images)
+    try:
+        from duckduckgo_search import DDGS
+        import requests, random
+        clean_search = " ".join([w for w in search.split() if len(w)>2][:3])
+        with DDGS() as ddgs:
+            results = list(ddgs.images(clean_search, max_results=10))
+            if results:
+                urls = [r.get("image") for r in results if r.get("image")]
+                if urls:
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                    }
+                    img_r = requests.get(random.choice(urls), headers=headers, timeout=15)
+                    if img_r.status_code == 200:
+                        with open(out, "wb") as f:
+                            f.write(img_r.content)
+                        return True
+    except Exception as e:
+        log.warning(f"DuckDuckGo image search failed: {e}. Falling back to Wikimedia Commons.")
+
+    # Fallback to Wikimedia Commons API
     try:
         import requests, random
         url = "https://commons.wikimedia.org/w/api.php"
@@ -1358,89 +1422,154 @@ def fetch_hf_video(prompt, out_path):
             pass
     return False
 
-def stage_6_visuals(script, cfg):
-    topic   = cfg["topic"]
+def stage_6_visuals(manifest, cfg):
+    if not isinstance(manifest, dict) or "project_meta" not in manifest:
+        log.error("Invalid ScriptManifest in stage_6_visuals")
+        return manifest
+        
+    topic = manifest.get("project_meta", {}).get("topic", cfg.get("topic", ""))
     vprefix = cfg.get("visual_prefix", topic)
-    log.info(f"Stage 6: Visuals for {len(script)} scenes...")
+    
+    # Flatten shots for processing
+    all_shots = []
+    for beat in manifest.get("story_beats", []):
+        for block in beat.get("narration_blocks", []):
+            block_dur = block.get("total_block_duration", 4.0)
+            for shot in block.get("shots", []):
+                # Compute absolute duration
+                mode = shot.get("duration_mode", "ratio")
+                if mode == "fixed" and shot.get("duration_seconds"):
+                    shot["computed_duration"] = float(shot.get("duration_seconds"))
+                else:
+                    ratio = float(shot.get("duration_ratio", 1.0))
+                    shot["computed_duration"] = block_dur * ratio
+                    
+                all_shots.append(shot)
+                
+    log.info(f"Stage 6: Visuals for {len(all_shots)} shots...")
     tg(f"🎨 Creating visuals...")
-    vis=WORKSPACE/"visuals"; vis.mkdir(exist_ok=True)
+    vis = WORKSPACE / "visuals"
+    vis.mkdir(exist_ok=True)
 
-    for i,scene in enumerate(script):
-        n     = scene["scene"]
-        vtype = scene.get("visual_type","ai_image")
-        prompt= scene.get("ai_prompt",f"cinematic dramatic {topic} scene no faces no text")
-        search= scene.get("visual_search",f"{vprefix} cinematic")
-        out   = str(vis/f"scene_{n:03d}.mp4")
-        img   = str(vis/f"scene_{n:03d}.jpg")
-        anim  = ANIMS[i%len(ANIMS)]
+    for i, shot in enumerate(all_shots):
+        n_id = shot.get("shot_id", f"s{i}")
+        vtype = shot.get("visual_type", "ai_image")
+        prompt = shot.get("ai_prompt", f"cinematic dramatic {topic} scene no faces no text")
+        search = shot.get("visual_query", f"{vprefix} cinematic")
+        out = str(vis / f"shot_{n_id}.mp4")
+        img = str(vis / f"shot_{n_id}.jpg")
+        
+        # Determine camera motion for Ken Burns fallback
+        motion_map = {
+            "zoom_in": "zoom_in",
+            "slow_push_in": "zoom_in",
+            "pan_right": "pan_right",
+            "slow_lateral": "pan_right",
+            "zoom_out": "zoom_out",
+            "top_down": "pan_up",
+            "pan_left": "pan_left"
+        }
+        anim = motion_map.get(shot.get("camera_motion", "zoom_in"), "zoom_in")
 
-        dur = (get_dur(scene["audio_file"]) + 0.5) if scene.get("audio_file") else float(scene.get("duration_hint",4))
-        scene["actual_duration"] = dur - 0.5 if scene.get("audio_file") else dur
+        dur = shot.get("computed_duration", 4.0)
+        shot["actual_duration"] = dur
 
         # If a video clip was already generated (e.g. by Colab / Wan2.1 / AnimateDiff), preserve it!
-        if scene.get("video_file") and os.path.exists(scene["video_file"]) and os.path.getsize(scene["video_file"]) > 1000:
-            log.info(f"  {n}: Using pre-generated clip ({scene.get('visual_source', 'Colab')}) ✓")
+        if shot.get("asset", {}).get("path") and os.path.exists(shot["asset"]["path"]) and os.path.getsize(shot["asset"]["path"]) > 1000:
+            log.info(f"  {n_id}: Using pre-generated clip ({shot.get('asset', {}).get('source', 'Colab')}) ✓")
             continue
+            
+        if "asset" not in shot:
+            shot["asset"] = {}
 
-        success=False
+        success = False
 
         if vtype in ["text_stat", "motion_graphics"]:
             # Remotion handles native Motion Graphics UI overlays, maps, timelines, and typography!
             # We fetch a dramatic visual background (Pollinations 4K or Pexels) for Remotion to layer over
-            if not skip_ai(prompt) and fetch_pollinations(prompt, img, seed=n*17+i):
+            if not skip_ai(prompt) and fetch_pollinations(prompt, img, seed=i*17):
                 if img_to_vid(img, out, dur, anim):
-                    scene["video_file"]=out; log.info(f"  {n}: motion_graphics 4K background ✓"); continue
+                    shot["asset"]["path"] = out
+                    shot["asset"]["source"] = "pollinations"
+                    log.info(f"  {n_id}: motion_graphics 4K background ✓")
+                    continue
             if fetch_pexels_video(search, out, dur):
-                scene["video_file"]=out; log.info(f"  {n}: motion_graphics video background ✓"); continue
+                shot["asset"]["path"] = out
+                shot["asset"]["source"] = "pexels"
+                log.info(f"  {n_id}: motion_graphics video background ✓")
+                continue
 
         if vtype in ["intro_video", "ai_video"]:
             if not skip_ai(prompt):
                 if fetch_hf_video(prompt, out):
-                    scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Video ✓")
+                    shot["asset"]["path"] = out; shot["asset"]["source"] = "hf_video"; success = True; log.info(f"  {n_id}: HF_Video ✓")
             if not success and fetch_hf_image(prompt, img):
                 if img_to_vid(img, out, dur, anim):
-                    scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Image+KenBurns fallback ✓")
-            if not success and fetch_pollinations(prompt, img, seed=n*17+i):
+                    shot["asset"]["path"] = out; shot["asset"]["source"] = "hf_image"; success = True; log.info(f"  {n_id}: HF_Image+KenBurns fallback ✓")
+            if not success and fetch_pollinations(prompt, img, seed=i*17):
                 if img_to_vid(img, out, dur, anim):
-                    scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations fallback ✓")
+                    shot["asset"]["path"] = out; shot["asset"]["source"] = "pollinations"; success = True; log.info(f"  {n_id}: Pollinations fallback ✓")
             if not success and fetch_pexels_video(search, out, dur):
-                scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels fallback ✓")
+                shot["asset"]["path"] = out; shot["asset"]["source"] = "pexels"; success = True; log.info(f"  {n_id}: Pexels fallback ✓")
 
-        elif vtype in ["ai_image", "motion_graphics", "real_photo"]:
+        elif vtype == "real_photo":
+            # Prioritize fetching authentic web images for real photos
+            if fetch_duckduckgo_image(search, img):
+                if img_to_vid(img, out, dur, anim):
+                    shot["asset"]["path"] = out; shot["asset"]["source"] = "ddg"; success = True; log.info(f"  {n_id}: DDG Real Photo ✓")
+            if not success and fetch_pexels_image(search, img):
+                if img_to_vid(img, out, dur, anim):
+                    shot["asset"]["path"] = out; shot["asset"]["source"] = "pexels"; success = True; log.info(f"  {n_id}: Pexels image ✓")
+            if not success and not skip_ai(prompt):
+                if fetch_hf_image(prompt, img):
+                    if img_to_vid(img, out, dur, anim):
+                        shot["asset"]["path"] = out; shot["asset"]["source"] = "hf_image"; success = True; log.info(f"  {n_id}: HF_Image fallback ✓")
+                if not success and fetch_pollinations(prompt, img, seed=i*17):
+                    if img_to_vid(img, out, dur, anim):
+                        shot["asset"]["path"] = out; shot["asset"]["source"] = "pollinations"; success = True; log.info(f"  {n_id}: Pollinations fallback ✓")
+
+        elif vtype in ["ai_image", "motion_graphics"]:
             if not skip_ai(prompt):
                 if fetch_hf_image(prompt, img):
                     if img_to_vid(img, out, dur, anim):
-                        scene["video_file"]=out; success=True; log.info(f"  {n}: HF_Image ✓")
-                if not success and fetch_pollinations(prompt, img, seed=n*17+i):
+                        shot["asset"]["path"] = out; shot["asset"]["source"] = "hf_image"; success = True; log.info(f"  {n_id}: HF_Image ✓")
+                if not success and fetch_pollinations(prompt, img, seed=i*17):
                     if img_to_vid(img, out, dur, anim):
-                        scene["video_file"]=out; success=True; log.info(f"  {n}: Pollinations fallback ✓")
+                        shot["asset"]["path"] = out; shot["asset"]["source"] = "pollinations"; success = True; log.info(f"  {n_id}: Pollinations fallback ✓")
             if not success and fetch_pexels_image(search, img):
                 if img_to_vid(img, out, dur, anim):
-                    scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels image fallback ✓")
+                    shot["asset"]["path"] = out; shot["asset"]["source"] = "pexels"; success = True; log.info(f"  {n_id}: Pexels image fallback ✓")
 
         elif vtype in ["stock_video", "broll_video"]:
             if fetch_pexels_video(search, out, dur):
-                scene["video_file"]=out; success=True; log.info(f"  {n}: Pexels video ✓")
+                shot["asset"]["path"] = out; shot["asset"]["source"] = "pexels"; success = True; log.info(f"  {n_id}: Pexels video ✓")
             if not success and fetch_pixabay(search, out, dur):
-                scene["video_file"]=out; success=True; log.info(f"  {n}: Pixabay video fallback ✓")
+                shot["asset"]["path"] = out; shot["asset"]["source"] = "pixabay"; success = True; log.info(f"  {n_id}: Pixabay video fallback ✓")
 
         # Global Fallbacks if everything above failed
         if not success and fetch_duckduckgo_image(search, img):
-            if img_to_vid(img, out, dur, anim): scene["video_file"]=out; success=True
+            if img_to_vid(img, out, dur, anim): shot["asset"]["path"] = out; shot["asset"]["source"] = "ddg"; success = True
         
         if not success:
-            log.warning(f"  {n}: ALL standard visuals failed. Falling back to generic cinematic Pexels video.")
+            log.warning(f"  {n_id}: ALL standard visuals failed. Falling back to generic cinematic Pexels video.")
             if fetch_pexels_video("cinematic documentary abstract", out, dur):
-                scene["video_file"]=out; success=True
+                shot["asset"]["path"] = out; shot["asset"]["source"] = "pexels_fallback"; success = True
             elif fetch_pixabay("cinematic documentary abstract", out, dur):
-                scene["video_file"]=out; success=True
+                shot["asset"]["path"] = out; shot["asset"]["source"] = "pixabay_fallback"; success = True
             else:
-                log.warning(f"  {n}: Generic stock fallback failed. Falling back to dynamic text-stat as LAST resort.")
-                display_text = scene.get("caption", scene.get("voiceover", ""))
-                if make_text_stat(display_text,out,dur,cfg["lang"]):
-                    scene["video_file"]=out; success=True
+                log.warning(f"  {n_id}: Generic stock fallback failed. Falling back to dynamic text-stat as LAST resort.")
+                # We do not use make_text_stat anymore, Remotion will use fallback_type (e.g. MapFallback, ClassifiedFile)
+                shot["asset"]["path"] = None
+                shot["asset"]["source"] = "react_fallback_only"
+                shot["asset"]["fallback_used"] = True
+                
+        if success:
+            shot["asset"]["status"] = "success"
+        else:
+            shot["asset"]["status"] = "failed"
+            shot["asset"]["fallback_used"] = True
 
-    return script
+    return manifest
 
 # ═══════════════════════════════════════════════════════════
 #  STAGE 7 — ASSEMBLY
@@ -1700,6 +1829,7 @@ def stage_7_assemble(script, cfg, music_path):
         out = str(asm/f"merged_{n:03d}.mp4")
         sfx_file = fetch_sfx(sfx_t) if sfx_t and sfx_t!="none" else None
 
+        mixed_audio = None
         if audio and sfx_file:
             mixed_audio = str(asm/f"audio_{n:03d}.m4a")
             mix_r = subprocess.run(["ffmpeg","-y",
@@ -1710,23 +1840,30 @@ def stage_7_assemble(script, cfg, music_path):
             if mix_r.returncode != 0 or not os.path.exists(mixed_audio):
                 log.warning(f"  SFX mix failed for scene {n}, using voice only")
                 mixed_audio = audio
-            cmd=["ffmpeg","-y","-i",os.path.abspath(video),"-i",mixed_audio,
-                 "-c:v","copy","-c:a","aac",
-                 "-map","0:v:0","-map","1:a:0","-shortest",out]
-        elif audio:
-            cmd=["ffmpeg","-y","-i",os.path.abspath(video),"-i",os.path.abspath(audio),
-                 "-c:v","copy","-c:a","aac",
-                 "-map","0:v:0","-map","1:a:0","-shortest",out]
+
+        aud_track = mixed_audio if (audio and sfx_file) else os.path.abspath(audio) if audio else None
+        video_dur = get_dur(video)
+        audio_dur = get_dur(aud_track) if aud_track else dur
+
+        if aud_track and video_dur < audio_dur - 0.5:
+            # Video is shorter than audio, loop video to match audio length
+            cmd = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", os.path.abspath(video), "-i", aud_track,
+                   "-c:v", "libx264", "-c:a", "aac",
+                   "-map", "0:v:0", "-map", "1:a:0", "-shortest", out]
+        elif aud_track:
+            cmd = ["ffmpeg", "-y", "-i", os.path.abspath(video), "-i", aud_track,
+                   "-c:v", "copy", "-c:a", "aac",
+                   "-map", "0:v:0", "-map", "1:a:0", "-shortest", out]
         else:
-            cmd=["ffmpeg","-y","-i",os.path.abspath(video),
-                 "-c:v","copy","-an",out]
+            cmd = ["ffmpeg", "-y", "-i", os.path.abspath(video),
+                   "-c:v", "copy", "-an", out]
 
         r=subprocess.run(cmd,capture_output=True,timeout=60)
         if r.returncode==0 and os.path.exists(out):
             scene_files.append(out); cur_time+=dur
         else:
             log.warning(f"Scene {n} copy-merge failed, retrying with encode")
-            cmd2=["ffmpeg","-y","-i",os.path.abspath(video)] + \
+            cmd2=["ffmpeg","-y","-stream_loop","-1","-i",os.path.abspath(video)] + \
                  (["-i",os.path.abspath(audio if not (audio and sfx_file) else mixed_audio)] if audio else []) + \
                  (["-map","0:v:0","-map","1:a:0","-shortest"] if audio else ["-an"]) + \
                  ["-c:v","libx264","-preset","ultrafast","-c:a","aac",out]
@@ -2031,30 +2168,151 @@ def stage_10_drive_backup(video_path, script, research, cfg, verdict, score):
 # ═══════════════════════════════════════════════════════════
 #  STAGE 7.5 — DOCUMENTARY AUDIO ASSEMBLY (PHASE 4)
 # ═══════════════════════════════════════════════════════════
+def get_foley_sfx_path(sfx_key, asm_dir):
+    """
+    Locates or synthesizes subtle Foley sound effects (paper rustles, marker swooshes, page turns, whooshes, impacts).
+    """
+    if not sfx_key or sfx_key == "none":
+        return None
+        
+    sfx_lower = str(sfx_key).lower().strip()
+    
+    # 1. Search in assets/sfx for matching files
+    sfx_dir = ASSETS_DIR / "sfx"
+    if sfx_dir.exists():
+        for root, _, files in os.walk(sfx_dir):
+            for file in files:
+                file_lower = file.lower()
+                if (sfx_lower in file_lower or 
+                    ("whoosh" in sfx_lower and "whoosh" in file_lower) or
+                    ("impact" in sfx_lower and "impact" in file_lower) or
+                    ("riser" in sfx_lower and "riser" in file_lower)):
+                    return str(Path(root) / file)
+                    
+    # 2. Synthesize specific Foley effects if missing from assets
+    out_file = asm_dir / f"foley_{sfx_lower}.wav"
+    if out_file.exists():
+        return str(out_file)
+        
+    try:
+        if "marker" in sfx_lower or "swoosh" in sfx_lower or "whoosh" in sfx_lower:
+            cmd = [
+                "ffmpeg", "-y", "-f", "lavfi",
+                "-i", "anoisesrc=color=white:r=24000,bandpass=f=1200:width_type=h:w=800",
+                "-t", "0.3", "-af", "afreqshift=100,volume=enable='between(t,0,0.3)':volume='sin(3.14159*t/0.3)'",
+                "-c:a", "pcm_s16le", str(out_file)
+            ]
+        elif "paper" in sfx_lower or "rustle" in sfx_lower:
+            cmd = [
+                "ffmpeg", "-y", "-f", "lavfi",
+                "-i", "anoisesrc=color=pink:r=24000,bandpass=f=2500:width_type=h:w=1500",
+                "-t", "0.25", "-af", "volume=enable='between(t,0,0.25)':volume='sin(3.14159*t/0.25)'",
+                "-c:a", "pcm_s16le", str(out_file)
+            ]
+        elif "page" in sfx_lower or "turn" in sfx_lower:
+            cmd = [
+                "ffmpeg", "-y", "-f", "lavfi",
+                "-i", "anoisesrc=color=brown:r=24000,bandpass=f=1800:width_type=h:w=1200",
+                "-t", "0.2", "-af", "volume=enable='between(t,0,0.2)':volume='sin(3.14159*t/0.2)'",
+                "-c:a", "pcm_s16le", str(out_file)
+            ]
+        else:
+            cmd = [
+                "ffmpeg", "-y", "-f", "lavfi",
+                "-i", "anoisesrc=color=pink:r=24000,bandpass=f=1500:width_type=h:w=1000",
+                "-t", "0.2", "-af", "volume=enable='between(t,0,0.2)':volume='sin(3.14159*t/0.2)'",
+                "-c:a", "pcm_s16le", str(out_file)
+            ]
+            
+        res = subprocess.run(cmd, capture_output=True)
+        if res.returncode == 0 and os.path.exists(out_file):
+            return str(out_file)
+    except Exception as e:
+        log.warning(f"Failed synthesizing Foley SFX {sfx_key}: {e}")
+        
+    return None
+
+# ═══════════════════════════════════════════════════════════
+#  STAGE 7.5 — DOCUMENTARY AUDIO ASSEMBLY (PHASE 4)
+# ═══════════════════════════════════════════════════════════
 def stage_assemble_documentary(script, cfg, remotion_video, music_path):
-    log.info("Stage 7.5: Assembling Documentary Audio & Muxing...")
+    log.info("Stage 7.5: Assembling Documentary Audio & Muxing (Strategic Silence & Foley)...")
     tg("🎞️ Assembling final documentary audio...")
     asm = WORKSPACE / "assembly"
     asm.mkdir(exist_ok=True)
     
-    # 1. Concatenate all voiceover and SFX clips, inserting J-Cuts / silence gaps
-    # For simplicity, we create an ffmpeg concat file for the audio tracks
     concat_file = asm / "audio_concat.txt"
     lines = []
     
-    current_time = 0.0
-    for scene in script:
+    silence_intervals = []
+    foley_inputs = []
+    
+    is_v2 = isinstance(script, dict) and "story_beats" in script
+    flat_scenes = []
+    
+    if is_v2:
+        scene_counter = 0
+        for beat in script.get("story_beats", []):
+            for block in beat.get("narration_blocks", []):
+                foley_val = "none"
+                for shot in block.get("shots", []):
+                    sfx = shot.get("sound_design")
+                    if sfx and sfx != "none":
+                        foley_val = sfx
+                        break
+                
+                aud_file = block.get("audio_file")
+                audio_path = None
+                if aud_file:
+                    audio_path = str(WORKSPACE / "audio" / aud_file)
+                
+                flat_scenes.append({
+                    "scene": scene_counter,
+                    "audio_file": audio_path,
+                    "actual_duration": block.get("actual_voice_duration") or block.get("duration_hint", 4.0),
+                    "strategic_silence_seconds": block.get("strategic_silence", {}).get("duration_seconds", 0.0),
+                    "foley": foley_val
+                })
+                scene_counter += 1
+    else:
+        flat_scenes = script
+        
+    for scene in flat_scenes:
         audio = scene.get("audio_file")
-        dur = scene.get("actual_duration", 4.0)
+        v_dur = float(scene.get("actual_duration", scene.get("duration_hint", 4.0)))
+        silence_dur = float(scene.get("strategic_silence_seconds", 0) or 0)
+        
+        scene_start_time = current_time
+        
         if audio and os.path.exists(audio):
             lines.append(f"file '{os.path.abspath(audio)}'")
         else:
-            # Insert silence if no audio
-            silence_path = asm / f"silence_{dur}.mp3"
-            if not os.path.exists(silence_path):
-                subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", str(dur), "-c:a", "libmp3lame", str(silence_path)], capture_output=True)
-            lines.append(f"file '{os.path.abspath(silence_path)}'")
-        current_time += dur
+            silence_voice_path = asm / f"silence_voice_{scene.get('scene', 0)}_{v_dur}.mp3"
+            if not os.path.exists(silence_voice_path):
+                subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", str(v_dur), "-c:a", "libmp3lame", str(silence_voice_path)], capture_output=True)
+            lines.append(f"file '{os.path.abspath(silence_voice_path)}'")
+            
+        current_time += v_dur
+        
+        if silence_dur > 0:
+            silence_gap_path = asm / f"silence_gap_{scene.get('scene', 0)}_{silence_dur}.mp3"
+            if not os.path.exists(silence_gap_path):
+                subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", str(silence_dur), "-c:a", "libmp3lame", str(silence_gap_path)], capture_output=True)
+            lines.append(f"file '{os.path.abspath(silence_gap_path)}'")
+            
+            silence_start = current_time
+            current_time += silence_dur
+            silence_end = current_time
+            silence_intervals.append((silence_start, silence_end))
+            
+        scene["actual_duration"] = v_dur + silence_dur
+        
+        sfx_key = scene.get("foley") or scene.get("sfx") or scene.get("foley_sfx")
+        if sfx_key and sfx_key != "none":
+            foley_file = get_foley_sfx_path(sfx_key, asm)
+            if foley_file and os.path.exists(foley_file):
+                delay_ms = int(scene_start_time * 1000)
+                foley_inputs.append((foley_file, delay_ms))
             
     with open(concat_file, "w") as f:
         f.write("\n".join(lines))
@@ -2062,39 +2320,99 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
     voice_track = str(asm / "voice_track.mp3")
     subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file), "-c", "copy", voice_track], capture_output=True)
     
-    # 2. Mix Voice + Music + (Optional ambient texture)
+    total_dur = max(current_time, 1.0)
+    
+    # Ambient Room Tone Track at -35dB (volume=0.0178)
+    room_tone_track = str(asm / "room_tone_track.wav")
+    subprocess.run([
+        "ffmpeg", "-y", "-f", "lavfi",
+        "-i", "anoisesrc=color=pink:r=24000,lowpass=f=400,volume=0.0178",
+        "-t", str(total_dur),
+        "-c:a", "pcm_s16le", room_tone_track
+    ], capture_output=True)
+    
+    # Foley SFX Track (-16dB to -20dB, volume=0.12)
+    foley_track = None
+    if foley_inputs:
+        foley_cmd = ["ffmpeg", "-y"]
+        filter_parts = []
+        for i, (fpath, delay_ms) in enumerate(foley_inputs):
+            foley_cmd.extend(["-i", os.path.abspath(fpath)])
+            filter_parts.append(f"[{i}:a]adelay={delay_ms}|{delay_ms},volume=0.12[f{i}]")
+        
+        inputs_str = "".join(f"[f{i}]" for i in range(len(foley_inputs)))
+        filter_parts.append(f"{inputs_str}amix=inputs={len(foley_inputs)}:duration=first[fa]")
+        
+        foley_track = str(asm / "foley_track.wav")
+        foley_cmd.extend([
+            "-filter_complex", ";".join(filter_parts),
+            "-map", "[fa]", "-c:a", "pcm_s16le", foley_track
+        ])
+        res_fol = subprocess.run(foley_cmd, capture_output=True)
+        if res_fol.returncode != 0 or not os.path.exists(foley_track):
+            foley_track = None
+
     final_video = str(WORKSPACE / "final_documentary_mixed.mp4")
     
+    music_silence_filter = ""
+    if silence_intervals:
+        vol_drops = ",".join([f"volume=enable='between(t,{start:.3f},{end:.3f})':volume=0" for start, end in silence_intervals])
+        music_silence_filter = f",{vol_drops}"
+
     if music_path and os.path.exists(music_path):
-        # Professional 3-layer mix with sidechain compression audio ducking (-24dB voiceover, -12dB music swell)
         cmd = [
-            "ffmpeg", "-y", 
-            "-i", remotion_video, 
-            "-i", voice_track, 
+            "ffmpeg", "-y",
+            "-i", remotion_video,
+            "-i", voice_track,
             "-i", os.path.abspath(music_path),
-            "-filter_complex", 
+            "-i", room_tone_track,
+        ]
+        if foley_track:
+            cmd.extend(["-i", foley_track])
+            
+        filter_complex = (
             "[1:a]volume=1.35,asplit=2[v][v_trig];"
-            "[2:a]volume=0.15[m_raw];"
+            f"[2:a]volume=0.14{music_silence_filter}[m_raw];"
             "[m_raw][v_trig]sidechaincompress=threshold=0.08:ratio=8:attack=50:release=300[m_ducked];"
-            "[v][m_ducked]amix=inputs=2:duration=first[a]",
+            "[3:a]volume=1.0[rt];"
+        )
+        
+        if foley_track:
+            filter_complex += "[4:a]volume=1.0[fol];[v][m_ducked][rt][fol]amix=inputs=4:duration=first[a]"
+        else:
+            filter_complex += "[v][m_ducked][rt]amix=inputs=3:duration=first[a]"
+            
+        cmd.extend([
+            "-filter_complex", filter_complex,
             "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_video
-        ]
+        ])
     else:
-        # Just Voice + Video with steady gain
         cmd = [
-            "ffmpeg", "-y", 
-            "-i", remotion_video, 
-            "-i", voice_track, 
-            "-filter_complex", "[1:a]volume=1.35[a]",
-            "-c:v", "copy", "-c:a", "aac", "-map", "0:v:0", "-map", "[a]", "-shortest", final_video
+            "ffmpeg", "-y",
+            "-i", remotion_video,
+            "-i", voice_track,
+            "-i", room_tone_track,
         ]
+        if foley_track:
+            cmd.extend(["-i", foley_track])
+            
+        filter_complex = "[1:a]volume=1.35[v];[2:a]volume=1.0[rt];"
+        if foley_track:
+            filter_complex += "[3:a]volume=1.0[fol];[v][rt][fol]amix=inputs=3:duration=first[a]"
+        else:
+            filter_complex += "[v][rt]amix=inputs=2:duration=first[a]"
+            
+        cmd.extend([
+            "-filter_complex", filter_complex,
+            "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_video
+        ])
         
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
         log.error(f"Audio mix failed: {res.stderr}")
-        return remotion_video # fallback
+        return remotion_video
         
-    log.info("✅ Documentary assembly complete!")
+    log.info("✅ Documentary audio assembly complete with Strategic Silence ducking & Foley mixing!")
     return final_video
 
 # ═══════════════════════════════════════════════════════════
@@ -2241,10 +2559,18 @@ def stage_wan21_colab(scenes_needing_video, topic):
             clip_map = {}
             for r in results:
                 if r.get("success"):
-                    local_path = str(clips_dir / f"scene_{r['scene']:03d}.mp4")
+                    scene_id = r["scene"]
+                    is_num = False
+                    try:
+                        int(scene_id)
+                        is_num = True
+                    except:
+                        pass
+                    filename = f"scene_{int(scene_id):03d}.mp4" if is_num else f"scene_{scene_id}.mp4"
+                    local_path = str(clips_dir / filename)
                     if os.path.exists(local_path):
-                        clip_map[r["scene"]] = local_path
-                        log.info(f"  Scene {r['scene']}: Wan2.1 clip ✓")
+                        clip_map[scene_id] = local_path
+                        log.info(f"  Scene {scene_id}: Wan2.1 clip ✓")
             log.info(f"Wan2.1: {len(clip_map)}/{len(scenes_needing_video)} clips generated")
             tg(f"✅ Wan2.1: {len(clip_map)} animated clips ready")
             return clip_map
@@ -2389,7 +2715,7 @@ def run_pipeline_v52():
         if genre == "documentary":
             log.info("🎯 Routing to new AI Studio Documentary Engine (Phase 2 Integration)...")
             from agents.engine import run_documentary_pipeline
-            script = run_documentary_pipeline(cfg)
+            script, research = run_documentary_pipeline(cfg)
             _save(script, "script_ai_studio.json")
             tg(f"✍️ {len(script)} scenes generated via AI Studio")
         else:
@@ -2399,6 +2725,12 @@ def run_pipeline_v52():
             script = stage_2_script(research, cfg)
             _save(script, "script.json")
             tg(f"✍️ {len(script)} scenes (Devanagari + Hinglish)")
+            
+            if genre == "documentary":
+                log.info("Upgrading legacy flat script to v2.0 hierarchy using DirectorAgent...")
+                from agents.director import DirectorAgent
+                director = DirectorAgent()
+                script = director.add_metadata(script)
 
         script = stage_3_voice(script, cfg)
         music_path = stage_4_music(cfg)
@@ -2406,23 +2738,61 @@ def run_pipeline_v52():
         # Route ONLY ai_video (25%) scenes to Colab AnimateDiff
         wan_scenes = []
         if os.path.exists(os.path.expanduser("~/.config/colab-cli/token.json")):
-            wan_scenes = [s for s in script
+            is_v2 = isinstance(script, dict) and "story_beats" in script
+            flat_shots = []
+            if is_v2:
+                for beat in script.get("story_beats", []):
+                    for block in beat.get("narration_blocks", []):
+                        for shot in block.get("shots", []):
+                            flat_shots.append({
+                                "scene": shot.get("shot_id"),
+                                "visual_type": shot.get("visual_type"),
+                                "ai_prompt": shot.get("ai_prompt"),
+                                "duration_hint": shot.get("duration_seconds") or 4.0,
+                            })
+            else:
+                for i, scene in enumerate(script):
+                    flat_shots.append({
+                        "scene": i,
+                        "visual_type": scene.get("visual_type"),
+                        "ai_prompt": scene.get("ai_prompt"),
+                        "duration_hint": scene.get("duration_hint", 4.0),
+                    })
+            wan_scenes = [s for s in flat_shots
                           if s.get("visual_type") == "ai_video"
                           and not skip_ai(s.get("ai_prompt",""))]
-            log.info(f"Routing {len(wan_scenes)} scenes to Wan2.1 (Colab AnimateDiff 25% target)")
+            log.info(f"Routing {len(wan_scenes)} ai_video shots to Wan2.1 (Colab GPU generator)")
 
         wan_clips = {}
         if wan_scenes:
             wan_clips = stage_wan21_colab(wan_scenes, cfg["topic"])
 
-        for scene in script:
-            if scene["scene"] in wan_clips:
-                scene["video_file"] = wan_clips[scene["scene"]]
-                scene["visual_source"] = "wan2.1"
-                if scene.get("audio_file"):
-                    scene["actual_duration"] = get_dur(scene["audio_file"])
-                else:
-                    scene["actual_duration"] = float(scene.get("duration_hint",4))
+        is_v2 = isinstance(script, dict) and "story_beats" in script
+        if is_v2:
+            for beat in script.get("story_beats", []):
+                for block in beat.get("narration_blocks", []):
+                    for shot in block.get("shots", []):
+                        s_id = shot.get("shot_id")
+                        if s_id in wan_clips:
+                            shot.setdefault("asset", {})["path"] = wan_clips[s_id]
+                            shot["asset"]["source"] = "wan2.1"
+                            shot["asset"]["status"] = "success"
+                            # Resolve duration for the shot
+                            v_dur = shot.get("duration_seconds")
+                            if not v_dur:
+                                # ratio mode
+                                ratio = shot.get("duration_ratio", 1.0)
+                                v_dur = float(block.get("actual_voice_duration") or block.get("duration_hint", 4.0)) * ratio
+                            shot["actual_duration"] = v_dur
+        else:
+            for scene in script:
+                if scene["scene"] in wan_clips:
+                    scene["video_file"] = wan_clips[scene["scene"]]
+                    scene["visual_source"] = "wan2.1"
+                    if scene.get("audio_file"):
+                        scene["actual_duration"] = get_dur(scene["audio_file"])
+                    else:
+                        scene["actual_duration"] = float(scene.get("duration_hint",4))
 
         # Kling removed per user request
         
@@ -2444,7 +2814,7 @@ def run_pipeline_v52():
             
             try:
                 from rembg import remove
-                from PIL import Image
+                from PIL import Image, ImageFilter
             except ImportError:
                 remove = None
 
@@ -2458,36 +2828,48 @@ def run_pipeline_v52():
                 # Clean up multiple spaces and strip
                 t = re.sub(r'\s+', ' ', t).strip()
                 return t
-
-            for scene in script:
-                # Clean the caption to only contain actual spoken text equivalent
-                raw_cap = scene.get("caption", scene.get("voiceover", ""))
-                scene["caption"] = clean_caption_text(raw_cap)
-
-                vid = scene.get("video_file")
-                if vid and os.path.exists(vid):
-                    dest = public_dir / os.path.basename(vid)
-                    shutil.copy2(vid, dest)
-                    scene["video_file"] = os.path.basename(vid)
+                
+            # Clean Narration Captions
+            for beat in script.get("story_beats", []):
+                for block in beat.get("narration_blocks", []):
+                    raw_cap = block.get("caption", block.get("voiceover", ""))
+                    block["caption"] = clean_caption_text(raw_cap)
                     
-                    # 2.5D Parallax Foreground Extraction
-                    if remove and scene.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
-                        try:
-                            scene["bg_file"] = os.path.basename(vid)
-                            fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
-                            fg_path = public_dir / fg_name
+                    # Copy audio file to public_dir for Remotion
+                    aud = block.get("audio_file")
+                    if aud and os.path.exists(aud):
+                        dest_aud = public_dir / os.path.basename(aud)
+                        shutil.copy2(aud, dest_aud)
+                        block["audio_file"] = os.path.basename(aud)
+
+                    for shot in block.get("shots", []):
+                        vid = shot.get("asset", {}).get("path")
+                        if vid and os.path.exists(vid):
+                            dest = public_dir / os.path.basename(vid)
+                            shutil.copy2(vid, dest)
+                            shot["asset"]["path"] = os.path.basename(vid)
                             
-                            if not os.path.exists(fg_path):
-                                log.info(f"Generating 2.5D Foreground for {vid}...")
-                                input_img = Image.open(vid)
-                                output_img = remove(input_img)
-                                output_img.save(fg_path)
-                                
-                            scene["fg_file"] = fg_name
-                        except Exception as e:
-                            log.error(f"Failed to generate foreground for {vid}: {e}")
+                            # 2.5D Parallax Foreground Extraction
+                            if remove and shot.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
+                                try:
+                                    shot["asset"]["bg_file"] = os.path.basename(vid)
+                                    fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
+                                    fg_path = public_dir / fg_name
+                                    
+                                    if not os.path.exists(fg_path):
+                                        log.info(f"Generating 2.5D Foreground for {vid}...")
+                                        input_img = Image.open(vid)
+                                        output_img = remove(input_img).convert("RGBA")
+                                        r, g, b, alpha = output_img.split()
+                                        blurred_alpha = alpha.filter(ImageFilter.GaussianBlur(radius=1))
+                                        output_img = Image.merge("RGBA", (r, g, b, blurred_alpha))
+                                        output_img.save(fg_path)
+                                        
+                                    shot["asset"]["fg_file"] = fg_name
+                                except Exception as e:
+                                    log.error(f"Failed to generate foreground for {vid}: {e}")
             
-            _save({"scenes": script}, "script_remotion.json")
+            _save(script, "script_remotion.json")
             script_path = str((WORKSPACE / "script_remotion.json").resolve())
             final_video_abs = str((WORKSPACE / "final_documentary.mp4").resolve())
 

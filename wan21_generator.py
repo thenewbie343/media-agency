@@ -59,19 +59,30 @@ subprocess.run([sys.executable, "-m", "pip", "install", "-q",
 import torch
 from diffusers import AnimateDiffPipeline, MotionAdapter, DPMSolverMultistepScheduler
 
-# ── Load AnimateDiff (SD1.5 Anime Model - T4 compatible) ──
-print("Loading AnimateDiff (Anime Model)...")
+# ── Load AnimateDiff (SD1.5 Realistic/Artistic Model - T4 compatible) ──
+print("Loading AnimateDiff (DreamShaper v8)...")
 adapter_id = "guoyww/animatediff-motion-adapter-v1-5-2"
-model_id   = "stablediffusionapi/anything-v5"
+model_id   = "Lykon/DreamShaper_v8"
 
 adapter = MotionAdapter.from_pretrained(adapter_id, torch_dtype=torch.float16)
 pipe    = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
-pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, algorithm_type="dpmsolver++", use_karras_sigmas=True)
+
+# CRITICAL: Force linear beta schedule for AnimateDiff compatibility to prevent noise
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+    pipe.scheduler.config,
+    beta_schedule="linear",
+    algorithm_type="dpmsolver++",
+    use_karras_sigmas=True
+)
+
+# Disable safety checker to prevent false positives (black frames) on historical content
+pipe.safety_checker = None
+pipe.requires_safety_checker = False
 
 pipe.enable_vae_slicing()
 pipe.enable_model_cpu_offload()
 
-print("AnimateDiff Anime Engine loaded successfully with DPM++ 2M Karras")
+print("AnimateDiff Engine loaded successfully with DreamShaper v8 & DPM++ 2M Karras")
 
 ANTI_MUTATION_NEGATIVE = (
     "flickering, frame boiling, morphing, shape shifting, unstable background, "
@@ -86,22 +97,39 @@ for scene in scenes:
     n      = scene["scene"]
     prompt = scene.get("ai_prompt", "cinematic dramatic scene")
     dur    = float(scene.get("duration_hint", 4))
-    out    = str(output_dir / f"scene_{n:03d}.mp4")
+    
+    # Reconcile numeric/string scene ID
+    is_num = False
+    try:
+        int(n)
+        is_num = True
+    except:
+        pass
+        
+    filename = f"scene_{int(n):03d}.mp4" if is_num else f"scene_{n}.mp4"
+    out    = str(output_dir / filename)
 
     # 24 frames = ~3 seconds at 8fps
     num_frames = 24
 
-    print(f"  Scene {n}: '{prompt[:60]}' → {num_frames} frames")
+    # Calculate a stable numeric seed
+    if is_num:
+        seed_val = int(n) * 17
+    else:
+        import zlib
+        seed_val = zlib.adler32(str(n).encode('utf-8'))
+
+    print(f"  Scene {n}: '{prompt[:60]}' → {num_frames} frames (seed: {seed_val})")
     try:
         output = pipe(
             prompt=f"masterpiece, best quality, ultra-detailed, {prompt}",
             negative_prompt=ANTI_MUTATION_NEGATIVE,
-            height=512,
-            width=896,
+            height=448,
+            width=768,
             num_frames=num_frames,
             guidance_scale=6.5,
             num_inference_steps=25,
-            generator=torch.Generator().manual_seed(n * 17)
+            generator=torch.Generator().manual_seed(seed_val)
         ).frames[0]
 
         import numpy as np
@@ -113,9 +141,9 @@ for scene in scenes:
             print(f"  Scene {n}: ✓ ({os.path.getsize(out)//1024}KB)")
             with open(out, "rb") as vf:
                 b64_data = base64.b64encode(vf.read()).decode('utf-8')
-            print(f"<<FILE:scene_{n:03d}.mp4>>\n{b64_data}\n<<EOF>>")
+            print(f"<<FILE:{filename}>>\n{b64_data}\n<<EOF>>")
             
-            results.append({"scene": n, "file": f"./wan_clips/scene_{n:03d}.mp4", "success": True})
+            results.append({"scene": n, "file": f"./wan_clips/{filename}", "success": True})
         else:
             print(f"  Scene {n}: ✗ empty file")
             results.append({"scene": n, "file": None, "success": False})
