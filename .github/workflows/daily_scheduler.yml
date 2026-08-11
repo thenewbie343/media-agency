@@ -9,9 +9,7 @@
 name: Daily Auto Videos
 
 on:
-  schedule:
-    - cron: '0 6 * * *'   # 6:00 AM UTC = 11:30 AM IST
-  workflow_dispatch:        # manual test trigger
+  workflow_dispatch:        # manual trigger only
 
 jobs:
   schedule_videos:

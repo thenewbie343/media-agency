@@ -5,7 +5,9 @@
 name: Telegram Listener
 
 on:
-  workflow_dispatch:   # called by cron-job.org every minute
+  schedule:
+    - cron: '*/5 * * * *'   # Runs automatically every 5 minutes on GitHub Actions
+  workflow_dispatch:        # manual test trigger
 
 jobs:
   listen:
