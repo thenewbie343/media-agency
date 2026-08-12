@@ -2246,6 +2246,7 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
     
     silence_intervals = []
     foley_inputs = []
+    current_time = 0.0
     
     is_v2 = isinstance(script, dict) and "story_beats" in script
     flat_scenes = []
