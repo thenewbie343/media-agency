@@ -17,10 +17,11 @@ LANGUAGE:
 - The `caption` MUST BE the FULL Romanized Hinglish equivalent of the voiceover, to be displayed on screen as subtitles. (CRITICAL: USE ENGLISH ALPHABET ONLY. NO DEVANAGARI. NO EMOJIS. If you use Hindi script in the caption, the font will render as boxes).
 
 RULES:
-1. MUST output EXACTLY {target_scenes} scenes. Write detailed, immersive Hindi voiceover (3-4 full sentences, ~10-12 seconds of narration per scene) so that all {target_scenes} scenes combined reach a total duration of EXACTLY {duration_minutes} minutes!
-2. NARRATIVE FLOW (CRITICAL): Do NOT write bullet points, fragmented keywords, or "word salad". You MUST write a cohesive story, connecting one idea to the next using logic, cause, and effect.
-3. Follow the 3-Act structure from the Outline.
-4. Write highly engaging voiceover. Don't be short or rushed. Provide rich story details in every scene.
+1. MUST output EXACTLY {target_scenes} scenes. Write detailed, immersive Hindi voiceover so that all {target_scenes} scenes combined reach a total duration of EXACTLY {duration_minutes} minutes!
+2. MINIMUM WORD COUNT (CRITICAL): Each `voiceover` MUST be at least 45 words (3-5 full sentences). If you write short 1-sentence voiceovers, the final video will be way too short and the viewer will be disappointed.
+3. NARRATIVE FLOW: Do NOT write bullet points, fragmented keywords, or "word salad". You MUST write a cohesive story, connecting one idea to the next using logic, cause, and effect.
+4. Follow the 3-Act structure from the Outline.
+5. Write highly engaging voiceover. Don't be short or rushed. Provide rich story details in every scene.
 
 Output JSON strictly matching this schema (an array of EXACTLY {target_scenes} scenes):
 [

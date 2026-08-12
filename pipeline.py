@@ -861,7 +861,8 @@ def stage_3_voice(manifest, cfg):
                     time.sleep(1)
     else:
         # Legacy flat list support
-        for i, scene in enumerate(manifest):
+        scenes = extract_scenes_list(manifest)
+        for i, scene in enumerate(scenes):
             total_blocks += 1
             b_id = f"scene_{i}"
             text = scene.get("voiceover", "").strip()
@@ -1590,8 +1591,9 @@ def build_caption_drawtext(script):
     """Build FFmpeg drawtext filter using HINGLISH caption field."""
     filters = []
     font_list = get_caption_fonts()
+    scenes = extract_scenes_list(script)
 
-    for scene in script:
+    for scene in scenes:
         # FIXED: Use caption (Hinglish) for on-screen text, not voiceover (Devanagari)
         text = scene.get("caption", scene.get("voiceover", "")).strip()
         dur = scene.get("actual_duration", 4.0)
@@ -1798,8 +1800,9 @@ def stage_7_assemble(script, cfg, music_path):
 
     scene_files=[]
     cur_time=0.0
+    scenes = extract_scenes_list(script)
 
-    overlay_candidates = [s for s in script if s.get("sfx") in ("deep_impact","riser") and s.get("video_file")]
+    overlay_candidates = [s for s in scenes if s.get("sfx") in ("deep_impact","riser") and s.get("video_file")]
     overlay_scenes = random.sample(overlay_candidates, min(8, len(overlay_candidates))) if overlay_candidates else []
     if overlay_scenes:
         log.info(f"Applying overlay flash to {len(overlay_scenes)} high-impact scenes")
@@ -1807,7 +1810,7 @@ def stage_7_assemble(script, cfg, music_path):
         overlay_video = get_overlay_video()
         if not overlay_video:
             break
-        n = scene["scene"]
+        n = scene.get("scene", 0)
         dur = scene.get("actual_duration", float(scene.get("duration_hint",4)))
         composited = str(asm/f"overlay_{n:03d}.mp4")
         if apply_overlay_to_scene(scene["video_file"], overlay_video, dur, composited):
@@ -1816,8 +1819,8 @@ def stage_7_assemble(script, cfg, music_path):
         else:
             log.warning(f"  Scene {n}: overlay compositing failed")
 
-    for scene in script:
-        n     = scene["scene"]
+    for scene in scenes:
+        n     = scene.get("scene", 0)
         video = scene.get("video_file")
         audio = scene.get("audio_file")
         dur   = scene.get("actual_duration",4.0)
@@ -1895,7 +1898,7 @@ def stage_7_assemble(script, cfg, music_path):
     if final_dur < expected_dur * 0.8:
         log.warning(f"Concat output looks short ({final_dur:.0f}s actual vs {expected_dur:.0f}s expected)")
 
-    total_dur = max(get_dur(raw), sum(s.get("actual_duration",4) for s in script))
+    total_dur = max(get_dur(raw), sum(s.get("actual_duration",4) for s in scenes) if scenes else 0.0)
     with_music=str(WORKSPACE/"with_music.mp4")
     if music_path and os.path.exists(music_path):
         r_mus = subprocess.run(["ffmpeg","-y","-i",raw,"-stream_loop","-1","-i",music_path,
@@ -1953,6 +1956,55 @@ def stage_7_assemble(script, cfg, music_path):
     log.info(f"Stage 7: {final} ({sz:.1f}MB, {total_dur:.0f}s)")
     return final
 
+def extract_scenes_list(script):
+    """Safely convert any script representation (list, dict with 'scenes', or dict with 'story_beats') into a flat list of scene dicts."""
+    raw_scenes = []
+    if isinstance(script, list):
+        raw_scenes = script
+    elif isinstance(script, str):
+        if script.strip():
+            raw_scenes = [script]
+    elif isinstance(script, dict):
+        if "scenes" in script and isinstance(script["scenes"], list):
+            raw_scenes = script["scenes"]
+        elif "story_beats" in script and isinstance(script["story_beats"], list):
+            flat_scenes = []
+            for beat in script.get("story_beats", []):
+                if isinstance(beat, dict):
+                    blocks = beat.get("narration_blocks", [])
+                    if isinstance(blocks, list):
+                        for block in blocks:
+                            if isinstance(block, dict):
+                                d = dict(block)
+                                if "actual_duration" not in d:
+                                    d["actual_duration"] = block.get("actual_voice_duration") or block.get("duration_hint", 4.0)
+                                flat_scenes.append(d)
+                            elif isinstance(block, str):
+                                flat_scenes.append(block)
+                    elif isinstance(blocks, str):
+                        flat_scenes.append(blocks)
+                elif isinstance(beat, (dict, str)):
+                    flat_scenes.append(beat)
+            raw_scenes = flat_scenes
+        else:
+            raw_scenes = []
+    else:
+        raw_scenes = []
+
+    normalized = []
+    for s in raw_scenes:
+        if isinstance(s, dict):
+            normalized.append(s)
+        elif isinstance(s, str):
+            if s.strip():
+                normalized.append({
+                    "caption": s,
+                    "voiceover": s,
+                    "actual_duration": 4.0,
+                    "duration_hint": 4.0,
+                })
+    return normalized
+
 # ═══════════════════════════════════════════════════════════
 #  STAGE 8 — QC
 # ═══════════════════════════════════════════════════════════
@@ -1960,18 +2012,19 @@ def stage_8_qc(video_path, script, cfg):
     log.info("Stage 8: QC...")
     tg("🔍 QC check...")
     try:
-        total=sum(s.get("actual_duration",4) for s in script)
-        avg=total/max(len(script),1)
-        hook=script[0].get("voiceover","") if script else ""
-        text=gemini(f"""Rate this {cfg['genre']} YouTube video in {cfg['lang']} about "{cfg['topic']}":
+        scenes = extract_scenes_list(script)
+        total = sum(s.get("actual_duration", 4) for s in scenes) if scenes else 0.0
+        avg = total / max(len(scenes), 1)
+        hook = scenes[0].get("voiceover", "") if scenes else ""
+        text = gemini(f"""Rate this {cfg['genre']} YouTube video in {cfg['lang']} about "{cfg['topic']}":
 Hook: "{hook}"
-Scenes: {len(script)}, Duration: {total:.0f}s, Avg cut: {avg:.1f}s
+Scenes: {len(scenes)}, Duration: {total:.0f}s, Avg cut: {avg:.1f}s
 Niche: {cfg.get('niche','general')}
 Return ONLY JSON:
 {{"score":8,"hook_score":9,"pacing_score":8,"verdict":"approved","reason":"brief","improvement":"one fix"}}
 verdict: "approved"(>=7),"drafts"(5-6),"retry"(<5)""")
-        text=text.strip().replace("```json","").replace("```","").strip()
-        r=json.loads(text)
+        text = text.strip().replace("```json","").replace("```","").strip()
+        r = json.loads(text)
         log.info(f"Stage 8: {r['score']}/10 — {r['verdict']}")
         return r
     except Exception as e:
@@ -1989,16 +2042,19 @@ def stage_9_publish(video_path, script, cfg):
     niche = cfg.get("niche","")
     genre = cfg["genre"]
 
+    scenes = extract_scenes_list(script)
+    num_scenes = len(scenes)
+    total_dur = sum(s.get('actual_duration', 4.0) for s in scenes) if scenes else 0.0
+
     try:
         # v5.3 FIX: Build title from actual video content, not random hook
         scene_summaries = []
-        for s in script[:8]:  # First 8 scenes = core content
+        for s in scenes[:8]:  # First 8 scenes = core content
             cap = s.get("caption", s.get("voiceover", ""))[:60]
-            scene_summaries.append(cap)
+            if cap:
+                scene_summaries.append(cap)
         
         actual_content = "\n".join(f"- {s}" for s in scene_summaries)
-        num_scenes = len(script)
-        total_dur = sum(s.get('actual_duration',4) for s in script)
         
         lang_hint = "Write title and description in HINGLISH (Roman script, no Devanagari)." if lang == "hindi" else f"Write in {lang}."
         
@@ -2276,7 +2332,7 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
                 })
                 scene_counter += 1
     else:
-        flat_scenes = script
+        flat_scenes = extract_scenes_list(script)
         
     for scene in flat_scenes:
         audio = scene.get("audio_file")
@@ -2459,9 +2515,10 @@ def run_pipeline():
 
         url=stage_9_publish(final_video,script,cfg)
         elapsed=int(time.time()-start)
-        total=sum(s.get("actual_duration",4) for s in script)
+        scenes=extract_scenes_list(script)
+        total=sum(s.get("actual_duration",4) for s in scenes) if scenes else 0.0
 
-        tg(f"✅ DONE!\n\n📺 {url}\n⏰ {cfg['schedule']} UTC\n🏆 QC: {score}/10\n🎬 {len(script)} scenes | {total:.0f}s\n✂️ Avg {total/max(len(script),1):.1f}s/cut\n⚡ {elapsed}s total{drive_note}")
+        tg(f"✅ DONE!\n\n📺 {url}\n⏰ {cfg['schedule']} UTC\n🏆 QC: {score}/10\n🎬 {len(scenes)} scenes | {total:.0f}s\n✂️ Avg {total/max(len(scenes),1):.1f}s/cut\n⚡ {elapsed}s total{drive_note}")
 
     except Exception as e:
         import traceback
@@ -2684,7 +2741,8 @@ def stage_kling_visuals(script, cfg, max_clips=2):
     log.info(f"Kling: generating up to {max_clips} cinematic hero shots...")
     tg(f"🎬 Kling AI: generating {max_clips} cinematic clips...")
 
-    candidates = [s for s in script
+    scenes = extract_scenes_list(script)
+    candidates = [s for s in scenes
                   if s.get("visual_type") in ("stock_video","ai_image")
                   and not s.get("video_file")][:max_clips]
 
@@ -2752,7 +2810,8 @@ def run_pipeline_v52():
                                 "duration_hint": shot.get("duration_seconds") or 4.0,
                             })
             else:
-                for i, scene in enumerate(script):
+                scenes = extract_scenes_list(script)
+                for i, scene in enumerate(scenes):
                     flat_shots.append({
                         "scene": i,
                         "visual_type": scene.get("visual_type"),
@@ -2786,8 +2845,9 @@ def run_pipeline_v52():
                                 v_dur = float(block.get("actual_voice_duration") or block.get("duration_hint", 4.0)) * ratio
                             shot["actual_duration"] = v_dur
         else:
-            for scene in script:
-                if scene["scene"] in wan_clips:
+            scenes = extract_scenes_list(script)
+            for scene in scenes:
+                if scene.get("scene") in wan_clips:
                     scene["video_file"] = wan_clips[scene["scene"]]
                     scene["visual_source"] = "wan2.1"
                     if scene.get("audio_file"):
@@ -2831,29 +2891,67 @@ def run_pipeline_v52():
                 return t
                 
             # Clean Narration Captions
-            for beat in script.get("story_beats", []):
-                for block in beat.get("narration_blocks", []):
-                    raw_cap = block.get("caption", block.get("voiceover", ""))
-                    block["caption"] = clean_caption_text(raw_cap)
-                    
-                    # Copy audio file to public_dir for Remotion
-                    aud = block.get("audio_file")
-                    if aud and os.path.exists(aud):
-                        dest_aud = public_dir / os.path.basename(aud)
-                        shutil.copy2(aud, dest_aud)
-                        block["audio_file"] = os.path.basename(aud)
+            if isinstance(script, dict) and "story_beats" in script:
+                for beat in script.get("story_beats", []):
+                    for block in beat.get("narration_blocks", []):
+                        raw_cap = block.get("caption", block.get("voiceover", ""))
+                        block["caption"] = clean_caption_text(raw_cap)
+                        
+                        # Copy audio file to public_dir for Remotion
+                        aud = block.get("audio_file")
+                        if aud and os.path.exists(aud):
+                            dest_aud = public_dir / os.path.basename(aud)
+                            shutil.copy2(aud, dest_aud)
+                            block["audio_file"] = os.path.basename(aud)
 
-                    for shot in block.get("shots", []):
-                        vid = shot.get("asset", {}).get("path")
+                        for shot in block.get("shots", []):
+                            vid = shot.get("asset", {}).get("path")
+                            if vid and os.path.exists(vid):
+                                dest = public_dir / os.path.basename(vid)
+                                shutil.copy2(vid, dest)
+                                shot["asset"]["path"] = os.path.basename(vid)
+                                
+                                # 2.5D Parallax Foreground Extraction
+                                if remove and shot.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
+                                    try:
+                                        shot["asset"]["bg_file"] = os.path.basename(vid)
+                                        fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
+                                        fg_path = public_dir / fg_name
+                                        
+                                        if not os.path.exists(fg_path):
+                                            log.info(f"Generating 2.5D Foreground for {vid}...")
+                                            input_img = Image.open(vid)
+                                            output_img = remove(input_img).convert("RGBA")
+                                            r, g, b, alpha = output_img.split()
+                                            blurred_alpha = alpha.filter(ImageFilter.GaussianBlur(radius=1))
+                                            output_img = Image.merge("RGBA", (r, g, b, blurred_alpha))
+                                            output_img.save(fg_path)
+                                            
+                                        shot["asset"]["fg_file"] = fg_name
+                                    except Exception as e:
+                                        log.error(f"Failed to generate foreground for {vid}: {e}")
+            else:
+                scenes = extract_scenes_list(script)
+                for s in scenes:
+                    if isinstance(s, dict):
+                        raw_cap = s.get("caption", s.get("voiceover", ""))
+                        s["caption"] = clean_caption_text(raw_cap)
+                        
+                        aud = s.get("audio_file")
+                        if aud and os.path.exists(aud):
+                            dest_aud = public_dir / os.path.basename(aud)
+                            shutil.copy2(aud, dest_aud)
+                            s["audio_file"] = os.path.basename(aud)
+                            
+                        vid = s.get("video_file") or s.get("image_file")
                         if vid and os.path.exists(vid):
                             dest = public_dir / os.path.basename(vid)
                             shutil.copy2(vid, dest)
-                            shot["asset"]["path"] = os.path.basename(vid)
+                            s["video_file"] = os.path.basename(vid)
                             
-                            # 2.5D Parallax Foreground Extraction
-                            if remove and shot.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
+                            if remove and s.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
                                 try:
-                                    shot["asset"]["bg_file"] = os.path.basename(vid)
+                                    s["bg_file"] = os.path.basename(vid)
                                     fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
                                     fg_path = public_dir / fg_name
                                     
@@ -2866,7 +2964,7 @@ def run_pipeline_v52():
                                         output_img = Image.merge("RGBA", (r, g, b, blurred_alpha))
                                         output_img.save(fg_path)
                                         
-                                    shot["asset"]["fg_file"] = fg_name
+                                    s["fg_file"] = fg_name
                                 except Exception as e:
                                     log.error(f"Failed to generate foreground for {vid}: {e}")
             
@@ -2904,17 +3002,18 @@ def run_pipeline_v52():
 
         url     = stage_9_publish(final_video, script, cfg)
         elapsed = int(time.time()-start)
-        total   = sum(s.get("actual_duration",4) for s in script)
-        wan_ct  = sum(1 for s in script if s.get("visual_source")=="wan2.1")
-        kling_ct= sum(1 for s in script if s.get("visual_source")=="kling")
+        scenes   = extract_scenes_list(script)
+        total    = sum(s.get("actual_duration",4) for s in scenes) if scenes else 0.0
+        wan_ct   = sum(1 for s in scenes if s.get("visual_source")=="wan2.1")
+        kling_ct = sum(1 for s in scenes if s.get("visual_source")=="kling")
 
         tg(
             f"✅ DONE!\n\n"
             f"📺 {url}\n"
             f"⏰ {cfg['schedule']} UTC\n"
             f"🏆 QC: {score}/10\n"
-            f"🎬 {len(script)} scenes | {total:.0f}s\n"
-            f"✂️ Avg {total/max(len(script),1):.1f}s/cut\n"
+            f"🎬 {len(scenes)} scenes | {total:.0f}s\n"
+            f"✂️ Avg {total/max(len(scenes),1):.1f}s/cut\n"
             f"🎥 Wan2.1: {wan_ct} clips | Kling: {kling_ct} clips\n"
             f"🌍 {cfg['lang']} | {cfg['genre']} | DUAL-SCRIPT\n"
             f"⚡ {elapsed}s total{drive_note}"

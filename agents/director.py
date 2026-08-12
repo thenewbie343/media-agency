@@ -39,6 +39,7 @@ CRITICAL DIRECTIVES:
    - SHOW_TIME -> Timeline
    - CREATE_MYSTERY -> CinematicText
 9. METAPHOR BAN: Do not literally translate metaphors (e.g., "financial meltdown" should be a panicked stock floor, not melting coins).
+10. AI VIDEO DURATION LIMIT (CRITICAL): The `ai_video` generator only creates ~3-second clips. Therefore, NO single `ai_video` shot may cover more than 4 seconds of screen time. If a narration block's `duration_hint` is greater than 4 seconds, you MUST define MULTIPLE shots for that block (using `duration_ratio` like 0.3, 0.3, 0.4) so that no single `ai_video` shot exceeds 4 seconds. Failure to do this will result in terrible looping videos!
 
 You must return a valid JSON object matching this exact JSON schema:
 {schema_json}
