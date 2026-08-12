@@ -149,7 +149,9 @@ for scene in scenes:
         import numpy as np
         import imageio
         frames_np = [np.array(f) for f in output]
-        imageio.mimwrite(out, frames_np, fps=8, quality=9)
+        # CRITICAL: Remotion uses Chrome which requires yuv420p pixel format for H264 MP4 videos.
+        # Default imageio RGB export uses yuv444p which causes delayRender() timeout failures!
+        imageio.mimwrite(out, frames_np, fps=8, quality=9, output_params=["-pix_fmt", "yuv420p"])
 
         if os.path.exists(out) and os.path.getsize(out) > 1000:
             print(f"  Scene {n}: ✓ ({os.path.getsize(out)//1024}KB)")
