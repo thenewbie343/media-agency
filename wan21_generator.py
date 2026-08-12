@@ -62,10 +62,24 @@ from diffusers import AnimateDiffPipeline, MotionAdapter, DPMSolverMultistepSche
 # ── Load AnimateDiff (SD1.5 Realistic/Artistic Model - T4 compatible) ──
 print("Loading AnimateDiff (DreamShaper v8)...")
 adapter_id = "guoyww/animatediff-motion-adapter-v1-5-2"
-model_id   = "Lykon/DreamShaper_v8"
+model_id   = "stablediffusionapi/dreamshaper-v8"
+fallback_model_id = "runwayml/stable-diffusion-v1-5"
 
-adapter = MotionAdapter.from_pretrained(adapter_id, torch_dtype=torch.float16)
-pipe    = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
+try:
+    adapter = MotionAdapter.from_pretrained(adapter_id, torch_dtype=torch.float16)
+except Exception as e:
+    print(f"MotionAdapter load notice ({e}). Retrying without HF_TOKEN...")
+    if "HF_TOKEN" in os.environ:
+        del os.environ["HF_TOKEN"]
+    adapter = MotionAdapter.from_pretrained(adapter_id, torch_dtype=torch.float16)
+
+try:
+    pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
+except Exception as e:
+    print(f"Primary model ({model_id}) load notice ({e}). Falling back to {fallback_model_id}...")
+    if "HF_TOKEN" in os.environ:
+        del os.environ["HF_TOKEN"]
+    pipe = AnimateDiffPipeline.from_pretrained(fallback_model_id, motion_adapter=adapter, torch_dtype=torch.float16)
 
 # CRITICAL: Force linear beta schedule for AnimateDiff compatibility to prevent noise
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(
