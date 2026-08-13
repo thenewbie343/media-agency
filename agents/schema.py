@@ -119,7 +119,7 @@ class NarrationBlock(BaseModel):
 
 class StoryBeat(BaseModel):
     beat_id: str = Field(..., description="Unique ID for this story beat (e.g., 'b001')")
-    narrative_intent: str = Field(..., description="The narrative purpose of this beat (e.g., HOOK, EVIDENCE, CONFLICT, EXPLANATION, BACKGROUND, THE_PROBLEM)")
+    narrative_intent: Literal["HOOK", "EVIDENCE", "MYSTERY", "EXPLANATION", "CONFLICT", "RESOLUTION", "LOCATION_ESTABLISH"] = Field(..., description="The narrative purpose of this beat")
     description: str = Field(..., description="Description of the story beat")
     attention_intensity: float = Field(default=0.5, description="Expected audience attention curve intensity (0.0 to 1.0). Hook=0.8, Revelation=1.0")
     narration_blocks: List[NarrationBlock] = Field(..., description="Narration blocks within this story beat")

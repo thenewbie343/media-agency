@@ -31,11 +31,27 @@ CRITICAL EDITORIAL RULES:
 
 Review the JSON manifest provided. If there are major editorial flaws (weak hooks, repetitive shots, missing cut_reasons, continuity breaks, or meaningless camera movement), you must REJECT it and provide specific feedback for the DirectorAgent to fix.
 
-Return a JSON object in this format:
+You must return a JSON object in this exact format:
 {
   "status": "APPROVED" | "REJECTED",
   "score": <1-10>,
-  "feedback": "Detailed explanation of why it passed or failed and what needs fixing."
+  "feedback": "Detailed explanation of why it passed or failed.",
+  "failures": [
+    {
+      "shot_id": "n005_s001",
+      "beat_id": "b001",
+      "failure_type": "VISUAL_REDUNDANCY",
+      "severity": "high",
+      "repair": {
+        "preserve_narration": true,
+        "preserve_timing": true,
+        "preserve_beat": true,
+        "preserve_ids": true,
+        "replace_visual_only": true,
+        "recommended_visual_job": "SHOW_EVIDENCE"
+      }
+    }
+  ]
 }
 """
         

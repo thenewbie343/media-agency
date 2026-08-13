@@ -2560,10 +2560,11 @@ def run_pipeline_v52():
 
     try:
         research = None
+        stats = {}
         if genre == "documentary":
             log.info("🎯 Routing to new AI Studio Documentary Engine (Phase 2 Integration)...")
             from agents.engine import run_documentary_pipeline
-            script, research = run_documentary_pipeline(cfg)
+            script, research, stats = run_documentary_pipeline(cfg)
             
             # V3 VISUAL INTELLIGENCE: Manifest Reviewer
             log.info("🔍 V3: Running Manifest Review before asset generation...")
@@ -2592,25 +2593,15 @@ def run_pipeline_v52():
                     truncated_beats = []
                     shot_count = 0
                     
-                    # Force variety in test mode by mutating the first few shots if necessary
-                    forced_roles = ["ESTABLISHING", "EVIDENCE", "EXPLANATION", "REVEAL"]
-                    forced_types = ["stock_video", "real_photo", "motion_graphics", "ai_video"]
-                    
                     for beat in script.get("story_beats", []):
                         if shot_count >= 15:
                             break
                         new_blocks = []
                         for block in beat.get("narration_blocks", []):
-                            if shot_count >= 8:
+                            if shot_count >= 15:
                                 break
                             
-                            # Inject forced diversity for QC testing
                             for i, shot in enumerate(block.get("shots", [])):
-                                if shot_count < 4 and test_mode == "grammar":
-                                    shot["shot_role"] = forced_roles[shot_count]
-                                    shot["visual_type"] = forced_types[shot_count]
-                                    if shot["visual_type"] == "real_photo":
-                                        shot["asset_provenance"] = "ARCHIVAL_FOOTAGE"
                                 shot_count += 1
                                 
                             new_blocks.append(block)
@@ -2621,7 +2612,7 @@ def run_pipeline_v52():
                     
                     script["story_beats"] = truncated_beats
                     _save(script, "test_manifest.json")
-                    log.info(f"Truncated to {shot_count} shots with forced grammar for regression testing.")
+                    log.info(f"Truncated to {shot_count} shots for natural TEST_MODE.")
 
         else:
             research = stage_1_research(cfg)
@@ -2914,36 +2905,42 @@ def run_pipeline_v52():
                 log.error('Max repair attempts reached. Failing.')
                 break
 
+
+
         if is_test_mode:
             log.info("🧪 TEST_MODE: Halting before publish. Test successful.")
             url = "TEST_MODE_NO_URL"
             elapsed = int(time.time()-start)
+            
+            report = {
+                "initial_manifest_status": stats.get("initial_status", "UNKNOWN"),
+                "qc_failures_count": stats.get("qc_failures_count", 0),
+                "repair_count": stats.get("repair_count", 0),
+                "repaired_shot_ids": stats.get("repaired_shot_ids", []),
+                "schema_repair_count": stats.get("schema_repair_count", 0),
+                "final_manifest_status": stats.get("final_status", "UNKNOWN"),
+                "final_shot_count": num_scenes,
+                "average_shot_duration": total_dur / max(num_scenes, 1)
+            }
+            
+            import shutil
+            import json
+            
+            with open("test_visual_report.json", "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=2)
+            
+            if os.path.exists("remotion/test_out.mp4"):
+                shutil.copy("remotion/test_out.mp4", "test_video.mp4")
+                
+            print("\n=== TEST_MODE REPORT ===")
+            print(json.dumps(report, indent=2))
+            print("========================\n")
+            
         else:
             url     = stage_9_publish(final_video, script, cfg)
             elapsed = int(time.time()-start)
 
-        
-        is_v2 = isinstance(script, dict) and "story_beats" in script
-        num_scenes = 0
-        total_dur = 0.0
-        wan_ct = 0
-        kling_ct = 0
-        
-        if is_v2:
-            for beat in script.get("story_beats", []):
-                for block in beat.get("narration_blocks", []):
-                    for shot in block.get("shots", []):
-                        num_scenes += 1
-                        total_dur += float(shot.get("actual_duration", shot.get("duration_seconds", 4.0)))
-                        src = shot.get("asset", {}).get("source")
-                        if src == "wan2.1": wan_ct += 1
-                        if src == "kling": kling_ct += 1
-        else:
-            scenes = extract_scenes_list(script)
-            num_scenes = len(scenes)
-            total_dur = sum(s.get("actual_duration", 4) for s in scenes) if scenes else 0.0
-            wan_ct = sum(1 for s in scenes if s.get("visual_source") == "wan2.1")
-            kling_ct = sum(1 for s in scenes if s.get("visual_source") == "kling")
+
 
         tg(
             f"✅ DONE!\n\n"
