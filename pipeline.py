@@ -2858,11 +2858,31 @@ def run_pipeline_v52():
                                     except Exception as e:
                                         log.error(f"Failed to generate foreground for {vid}: {e}")
 
+                # SFX Safety Check: strip missing sound_design files to prevent Remotion 404 crash
+                is_v2 = isinstance(script, dict) and "story_beats" in script
+                if is_v2:
+                    for beat in script.get("story_beats", []):
+                        for block in beat.get("narration_blocks", []):
+                            for s in block.get("shots", []):
+                                if s.get("sound_design"):
+                                    sfx_name = s["sound_design"]
+                                    if not os.path.exists(f"remotion/public/assets/{sfx_name}.mp3"):
+                                        log.warning(f"SFX file remotion/public/assets/{sfx_name}.mp3 not found. Stripping to prevent crash.")
+                                        s["sound_design"] = None
+                else:
+                    for s in extract_scenes_list(script):
+                        if s.get("sound_design"):
+                            sfx_name = s["sound_design"]
+                            if not os.path.exists(f"remotion/public/assets/{sfx_name}.mp3"):
+                                log.warning(f"SFX file remotion/public/assets/{sfx_name}.mp3 not found. Stripping to prevent crash.")
+                                s["sound_design"] = None
+
                 _save(script, "script_remotion.json")
                 script_path = str((WORKSPACE / "script_remotion.json").resolve())
                 final_video_abs = str((WORKSPACE / "final_documentary.mp4").resolve())
 
-                remotion_cmd = f"npx remotion render src/index.ts DocumentaryVideo {final_video_abs} --props={script_path} --concurrency=100% --gl=angle --crf=22"
+                # Prevent headless deadlock by lowering concurrency and removing strict angle GL
+                remotion_cmd = f"npx remotion render src/index.ts DocumentaryVideo {final_video_abs} --props={script_path} --concurrency=2 --log=verbose --crf=22"
                 log.info(f"Running Remotion: {remotion_cmd}")
                 import subprocess
                 res = subprocess.run(remotion_cmd, cwd="remotion", shell=True, capture_output=True, text=True)
