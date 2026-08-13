@@ -22,9 +22,13 @@ class HighlightMetadata(BaseModel):
 class ContinuityMetadata(BaseModel):
     group_id: str = Field(..., description="ID linking shots that occur in the same continuous scene")
     characters: List[str] = Field(default_factory=list, description="Characters present in the shot")
+    character_id: Optional[str] = Field(None, description="Unique ID for recurring character tracking")
     location: str = Field(..., description="Specific location for this shot")
     environment: str = Field(..., description="Specific environment details (e.g., 'dimly lit bunker')")
     time_period: str = Field(..., description="Time period for the shot")
+    start_year: Optional[int] = Field(None, description="Start year of the era (e.g., 2008)")
+    end_year: Optional[int] = Field(None, description="End year of the era (e.g., 2012)")
+    technology_level: Optional[str] = Field(None, description="Allowed tech level (e.g., 'no smartphones', '1990s tech')")
     weather: Optional[str] = Field(None, description="Weather conditions if applicable")
     lighting: str = Field(..., description="Specific lighting for this shot")
 
@@ -40,6 +44,24 @@ class Shot(BaseModel):
     duration_mode: Literal["ratio", "fixed"] = Field(default="ratio", description="Whether duration is calculated via ratio of parent block or a fixed seconds count")
     duration_ratio: float = Field(default=1.0, description="If ratio mode, proportion of the parent narration block this shot occupies (0.0 to 1.0)")
     duration_seconds: Optional[float] = Field(None, description="If fixed mode, exact duration in seconds")
+    
+    shot_role: Literal["ESTABLISHING", "ACTION", "REACTION", "DETAIL", "INSERT", "EVIDENCE", "EXPLANATION", "TRANSITION", "REVEAL", "HOLD"] = Field(default="EXPLANATION", description="The grammatical role of this shot")
+    asset_provenance: Literal["AUTHENTIC_PHOTO", "ARCHIVAL_FOOTAGE", "DOCUMENT", "STOCK", "AI_RECONSTRUCTION", "AI_ILLUSTRATION", "MOTION_GRAPHIC", "SEMANTIC_FALLBACK"] = Field(default="STOCK", description="The required provenance of the visual")
+    
+    shot_size: Literal["extreme_wide", "wide", "medium", "medium_close", "close", "extreme_close", "N/A"] = Field(default="N/A", description="Camera shot size")
+    camera_angle: Optional[str] = Field(None, description="Camera angle (e.g., low angle, eye level, bird's eye)")
+    lens: Optional[str] = Field(None, description="Lens type (e.g., wide angle, telephoto, macro)")
+    composition: Optional[str] = Field(None, description="Composition rule (e.g., rule of thirds, center framed, dynamic symmetry)")
+    foreground: Optional[str] = Field(None, description="What is in the foreground")
+    background: Optional[str] = Field(None, description="What is in the background")
+    subject_position: Optional[str] = Field(None, description="Position of the main subject")
+    depth: Optional[str] = Field(None, description="Depth of field (e.g., shallow, deep)")
+    
+    source_name: Optional[str] = Field(None, description="Source of evidence (e.g., 'The New York Times', 'Court Document')")
+    source_url: Optional[str] = Field(None, description="URL or reference for evidence")
+    source_date: Optional[str] = Field(None, description="Date of the evidence")
+    confidence: Optional[float] = Field(None, description="Confidence in authenticity of evidence (0.0 to 1.0)")
+    generation_priority: float = Field(default=0.5, description="Priority for expensive AI generation (0.0 to 1.0). AI video requires >= 0.8.")
     
     visual_job: Literal[
         "SHOW_LOCATION", "SHOW_SCALE", "SHOW_TIME", "SHOW_PERSON", 
@@ -97,8 +119,9 @@ class NarrationBlock(BaseModel):
 
 class StoryBeat(BaseModel):
     beat_id: str = Field(..., description="Unique ID for this story beat (e.g., 'b001')")
-    narrative_intent: Literal["HOOK", "EVIDENCE", "MYSTERY", "EXPLANATION", "CONFLICT", "RESOLUTION", "LOCATION_ESTABLISH"] = Field(..., description="The narrative purpose of this beat")
+    narrative_intent: str = Field(..., description="The narrative purpose of this beat (e.g., HOOK, EVIDENCE, CONFLICT, EXPLANATION, BACKGROUND, THE_PROBLEM)")
     description: str = Field(..., description="Description of the story beat")
+    attention_intensity: float = Field(default=0.5, description="Expected audience attention curve intensity (0.0 to 1.0). Hook=0.8, Revelation=1.0")
     narration_blocks: List[NarrationBlock] = Field(..., description="Narration blocks within this story beat")
 
 class ScriptManifest(BaseModel):
