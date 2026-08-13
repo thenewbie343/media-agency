@@ -17,21 +17,39 @@ Your job is to take a basic script (array of scenes) and upgrade it into a profe
 Story Beat -> Narration Block -> Shots[].
 
 CRITICAL DIRECTIVES:
-1. EVERY SHOT MUST HAVE A VISUAL JOB: First determine the `visual_job` (e.g. SHOW_LOCATION, SHOW_PERSON, SHOW_EVIDENCE, EXPLAIN_MECHANISM, SHOW_TIME, CREATE_TENSION), then choose the asset type.
-2. NARRATIVE INTENT: Map every story beat to an intent (HOOK, EVIDENCE, MYSTERY, etc.).
-3. HARD QC RULE: No shot may exist only because you want visual variety. Every shot must answer: "What does this shot communicate that the previous shot did not?" If the answer is "nothing", omit/delete the shot.
-4. SIX CONTINUITY LOCKS:
-   - ERA LOCK: Maintain consistent year/time tags across sequential historical shots.
-   - LOCATION LOCK: Sequential shots in the same place must share identical environment details.
-   - CHARACTER CONTINUITY: Keep physical descriptions and outfits identical for recurring figures.
-   - OBJECT CONTINUITY: Keep key items (weapons, documents, tools) visually identical.
-   - WEATHER CONTINUITY: Maintain consistent weather conditions within scenes.
-5. NO ANACHRONISTIC MODERN IMAGERY: Never use modern steel skyscrapers, digital gadgets, or 21st-century cars in historical settings unless explicitly representing present-day context.
-6. CINEMATOGRAPHY & DETAILED PROMPTS: `ai_prompt` MUST be formatted as: [SUBJECT], [ERA], [LOCATION], [ENVIRONMENT], [LIGHTING], [CAMERA ANGLE]. Every prompt MUST be highly specific and detailed (35-50 words).
-7. STOCK FOOTAGE QUERY: Provide a `visual_query` for every shot formatted as: [SUBJECT] + [ACTION] + [LOCATION] + [ERA]. (e.g. '1960s scientists working in underground bunker').
-7. CAMERA MOTION: Set `camera_motion` strictly based on the shot's need. Use 'none' for stable shots. Do NOT rely on global zoom loops!
-8. TRANSITIONS & CUT REASONS: Set `transition_in` to 'hard_cut' by default. Only use 'fade' or 'dissolve' when passing time or changing major locations. Ensure `cut_reason` explicitly justifies the edit!
-9. SEMANTIC FALLBACK MAPPING: Set `fallback_type` according to `visual_job`:
+
+1. VISUAL DIVERSITY & VISUAL_TYPE RULES (CRITICAL):
+   Do NOT default to `ai_video` for everything. You MUST select the most authentic and high-quality visual type:
+   - `real_photo`: Use this whenever the scene mentions a real-world historical figure (e.g., "Vijay Mallya", "Lalit Modi", "Richard Nixon", "Narendra Modi"), real companies, or real historical products. This triggers a web search to fetch their actual face! (Example: Depicting Vijay Mallya).
+   - `broll_video`: Use this for generic real-world actions, settings, or physical items (e.g., "aeroplane taking off", "pouring whiskey into a glass", "luxury yacht sailing", "courtroom gavel hitting", "stacking Indian Rupees", "spinning casino roulette", "crowd cheering", "police sirens flashing"). This downloads high-quality real stock video.
+   - `motion_graphics` or `text_stat`: Use this for maps (e.g., showing flight paths, escape routes), timelines of dates, lists, percentages, or major numbers (e.g., "9,000 Crores").
+   - `ai_video` or `ai_image`: Use ONLY for highly stylized, metaphorical, or hypothetical scenes (e.g., "secret meeting in a dark room", "a shadow falling over a map", "a businessman in handcuffs walking away in a dark alley") where real photos/videos absolutely do not exist.
+
+2. LOOPS & SHOT-SPLITTING LIMITS (CRITICAL):
+   No single shot of ANY type (ai_video, real_photo, broll_video) may cover more than 4.5 seconds of screen time.
+   If a narration block's `duration_hint` is greater than 4.5 seconds, you MUST define MULTIPLE shots for that block (using `duration_ratio` like 0.5, 0.5 or 0.3, 0.3, 0.4) so they alternate visuals.
+   For example, if a narration block is 9 seconds long, you must define at least 2 shots (e.g., Shot 1: `real_photo` of Mallya, Shot 2: `broll_video` of a private jet). If a block is 13 seconds, you must define 3-4 shots. NEVER leave a single shot to cover 5+ seconds, otherwise the video will loop terribly!
+
+3. DETAILED AI PROMPTS:
+   `ai_prompt` MUST be formatted exactly as: [SUBJECT], [ERA], [LOCATION], [ENVIRONMENT], [LIGHTING], [CAMERA ANGLE].
+   Every prompt MUST be highly specific and detailed (35-50 words). 
+   - BANNED: Short 3-word prompts like "Vijay Mallya in tuxedo" are strictly forbidden. 
+   - GOOD Example: "Close-up portrait of Vijay Mallya, 2000s, luxury yacht deck, warm sunset lighting, shallow depth of field, dramatic cinematic camera angle."
+
+4. STOCK FOOTAGE QUERY:
+   Provide a clean `visual_query` for every shot formatted as: [SUBJECT] + [ACTION] + [LOCATION] + [ERA]. (e.g., "private jet taking off airport runway runway sunset").
+
+5. NO ANACHRONISTIC MODERN IMAGERY:
+   Never use modern digital gadgets or 21st-century assets in historical settings unless explicitly representing present-day context.
+
+6. CAMERA MOTION:
+   Set `camera_motion` strictly based on the shot's need. Use 'none' for stable shots. Alternate motion vectors (e.g., pan_left, zoom_in, pan_right) between adjacent shots.
+
+7. TRANSITIONS & CUT REASONS:
+   Set `transition_in` to 'hard_cut' by default. Only use 'fade' or 'dissolve' when passing time or changing major locations. Ensure `cut_reason` explicitly justifies the edit!
+
+8. SEMANTIC FALLBACK MAPPING:
+   Set `fallback_type` according to `visual_job`:
    - SHOW_LOCATION -> MapFallback
    - SHOW_EVIDENCE -> ClassifiedFile or ArchivalDocument
    - SHOW_PERSON -> PortraitCard
@@ -39,8 +57,6 @@ CRITICAL DIRECTIVES:
    - EXPLAIN_MECHANISM / EXPLAIN_PROCESS -> AnimatedDiagram
    - SHOW_TIME -> Timeline
    - CREATE_MYSTERY -> CinematicText
-10. METAPHOR BAN: Do not literally translate metaphors (e.g., "financial meltdown" should be a panicked stock floor, not melting coins).
-11. AI VIDEO DURATION LIMIT (CRITICAL): The `ai_video` generator only creates ~3-second clips. Therefore, NO single `ai_video` shot may cover more than 4 seconds of screen time. If a narration block's `duration_hint` is greater than 4 seconds, you MUST define MULTIPLE shots for that block (using `duration_ratio` like 0.3, 0.3, 0.4) so that no single `ai_video` shot exceeds 4 seconds. Failure to do this will result in terrible looping videos!
 
 You must return a valid JSON object matching this exact JSON schema:
 {schema_json}
