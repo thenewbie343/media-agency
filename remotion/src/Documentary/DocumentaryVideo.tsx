@@ -100,15 +100,21 @@ export const DocumentaryVideo: React.FC<{ manifest: ScriptManifest }> = ({ manif
       {/* 1. VISUAL TIMELINE */}
       <TransitionSeries>
         {allShots.map((shot, index) => {
-          // Precise calculated shot duration
-          const durationFrames = Math.ceil((shot.actual_duration || 4) * 30);
+          // Only apply a transition if explicitly requested by Director
+          const isFade = shot.transition_in === 'fade' || shot.transition_in === 'dissolve' || shot.transition_in === 'crossfade';
+          const hasTransition = index > 0 && isFade;
+          const overlapFrames = hasTransition ? 15 : 0;
+          
+          // To preserve perfect audio sync, we must ADD the overlap back into the duration
+          // so that the net timeline advancement exactly equals actual_duration.
+          const durationFrames = Math.ceil((shot.actual_duration || 4) * 30) + overlapFrames;
 
           return (
             <Fragment key={shot.shot_id || index}>
-              {index > 0 && (
+              {hasTransition && (
                 <TransitionSeries.Transition
                   presentation={fade()}
-                  timing={linearTiming({ durationInFrames: 15 })}
+                  timing={linearTiming({ durationInFrames: overlapFrames })}
                 />
               )}
               <TransitionSeries.Sequence durationInFrames={durationFrames}>
@@ -173,21 +179,17 @@ export const RemotionRoot: React.FC = () => {
   const manifest = (inputProps.scenes ? { story_beats: [], ...inputProps, schema_version: "2.0" } : inputProps) as ScriptManifest;
   const activeManifest = manifest.story_beats ? manifest : defaultManifest;
 
-  // Calculate total duration (accounting for transitions overlap)
+  // Calculate total duration (without arbitrary overlaps reducing it)
   let baseDuration = 0;
-  let totalShotsCount = 0;
-  
   activeManifest.story_beats.forEach(beat => {
     beat.narration_blocks.forEach(block => {
       block.shots.forEach(shot => {
         baseDuration += Math.ceil((shot.actual_duration || 4) * 30);
-        totalShotsCount++;
       });
     });
   });
   
-  const transitionOverlap = totalShotsCount > 1 ? (totalShotsCount - 1) * 15 : 0;
-  const totalDuration = baseDuration - transitionOverlap;
+  const totalDuration = baseDuration;
 
   return (
     <>

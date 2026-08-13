@@ -2012,13 +2012,29 @@ def stage_8_qc(video_path, script, cfg):
     log.info("Stage 8: QC...")
     tg("🔍 QC check...")
     try:
-        scenes = extract_scenes_list(script)
-        total = sum(s.get("actual_duration", 4) for s in scenes) if scenes else 0.0
-        avg = total / max(len(scenes), 1)
-        hook = scenes[0].get("voiceover", "") if scenes else ""
+        is_v2 = isinstance(script, dict) and "story_beats" in script
+        if is_v2:
+            num_scenes = 0
+            total = 0.0
+            hook = ""
+            for beat in script.get("story_beats", []):
+                for block in beat.get("narration_blocks", []):
+                    if not hook:
+                        hook = block.get("voiceover", "")
+                    for shot in block.get("shots", []):
+                        num_scenes += 1
+                        total += float(shot.get("actual_duration", shot.get("duration_seconds", 4.0)))
+        else:
+            scenes = extract_scenes_list(script)
+            num_scenes = len(scenes)
+            total = sum(float(s.get("actual_duration", 4.0)) for s in scenes) if scenes else 0.0
+            hook = scenes[0].get("voiceover", "") if scenes else ""
+            
+        avg = total / max(num_scenes, 1)
+        
         text = gemini(f"""Rate this {cfg['genre']} YouTube video in {cfg['lang']} about "{cfg['topic']}":
 Hook: "{hook}"
-Scenes: {len(scenes)}, Duration: {total:.0f}s, Avg cut: {avg:.1f}s
+Shots: {num_scenes}, Duration: {total:.0f}s, Avg shot: {avg:.1f}s
 Niche: {cfg.get('niche','general')}
 Return ONLY JSON:
 {{"score":8,"hook_score":9,"pacing_score":8,"verdict":"approved","reason":"brief","improvement":"one fix"}}
@@ -2042,24 +2058,36 @@ def stage_9_publish(video_path, script, cfg):
     niche = cfg.get("niche","")
     genre = cfg["genre"]
 
-    scenes = extract_scenes_list(script)
-    num_scenes = len(scenes)
-    total_dur = sum(s.get('actual_duration', 4.0) for s in scenes) if scenes else 0.0
-
-    try:
-        # v5.3 FIX: Build title from actual video content, not random hook
-        scene_summaries = []
-        for s in scenes[:8]:  # First 8 scenes = core content
+    is_v2 = isinstance(script, dict) and "story_beats" in script
+    scene_summaries = []
+    num_scenes = 0
+    total_dur = 0.0
+    
+    if is_v2:
+        for beat in script.get("story_beats", []):
+            for block in beat.get("narration_blocks", []):
+                for shot in block.get("shots", []):
+                    num_scenes += 1
+                    total_dur += float(shot.get("actual_duration", shot.get("duration_seconds", 4.0)))
+                    if len(scene_summaries) < 8:
+                        cap = shot.get("caption", block.get("caption", ""))[:60]
+                        if cap:
+                            scene_summaries.append(cap)
+    else:
+        scenes = extract_scenes_list(script)
+        num_scenes = len(scenes)
+        total_dur = sum(s.get('actual_duration', 4.0) for s in scenes) if scenes else 0.0
+        for s in scenes[:8]:
             cap = s.get("caption", s.get("voiceover", ""))[:60]
             if cap:
                 scene_summaries.append(cap)
-        
-        actual_content = "\n".join(f"- {s}" for s in scene_summaries)
-        
-        lang_hint = "Write title and description in HINGLISH (Roman script, no Devanagari)." if lang == "hindi" else f"Write in {lang}."
-        
-        meta_text = groq(f"""YouTube metadata for a {genre} video about "{topic}".
-        
+                
+    actual_content = "\n".join(f"- {s}" for s in scene_summaries)
+    
+    lang_hint = "Write title and description in HINGLISH (Roman script, no Devanagari)." if lang == "hindi" else f"Write in {lang}."
+    
+    meta_text = groq(f"""YouTube metadata for a {genre} video about "{topic}".
+    
 ACTUAL VIDEO CONTENT:
 {actual_content}
 
@@ -2222,251 +2250,37 @@ def stage_10_drive_backup(video_path, script, research, cfg, verdict, score):
         return None
 
 # ═══════════════════════════════════════════════════════════
-#  STAGE 7.5 — DOCUMENTARY AUDIO ASSEMBLY (PHASE 4)
-# ═══════════════════════════════════════════════════════════
-def get_foley_sfx_path(sfx_key, asm_dir):
-    """
-    Locates or synthesizes subtle Foley sound effects (paper rustles, marker swooshes, page turns, whooshes, impacts).
-    """
-    if not sfx_key or sfx_key == "none":
-        return None
-        
-    sfx_lower = str(sfx_key).lower().strip()
-    
-    # 1. Search in assets/sfx for matching files
-    sfx_dir = ASSETS_DIR / "sfx"
-    if sfx_dir.exists():
-        for root, _, files in os.walk(sfx_dir):
-            for file in files:
-                file_lower = file.lower()
-                if (sfx_lower in file_lower or 
-                    ("whoosh" in sfx_lower and "whoosh" in file_lower) or
-                    ("impact" in sfx_lower and "impact" in file_lower) or
-                    ("riser" in sfx_lower and "riser" in file_lower)):
-                    return str(Path(root) / file)
-                    
-    # 2. Synthesize specific Foley effects if missing from assets
-    out_file = asm_dir / f"foley_{sfx_lower}.wav"
-    if out_file.exists():
-        return str(out_file)
-        
-    try:
-        if "marker" in sfx_lower or "swoosh" in sfx_lower or "whoosh" in sfx_lower:
-            cmd = [
-                "ffmpeg", "-y", "-f", "lavfi",
-                "-i", "anoisesrc=color=white:r=24000,bandpass=f=1200:width_type=h:w=800",
-                "-t", "0.3", "-af", "afreqshift=100,volume=enable='between(t,0,0.3)':volume='sin(3.14159*t/0.3)'",
-                "-c:a", "pcm_s16le", str(out_file)
-            ]
-        elif "paper" in sfx_lower or "rustle" in sfx_lower:
-            cmd = [
-                "ffmpeg", "-y", "-f", "lavfi",
-                "-i", "anoisesrc=color=pink:r=24000,bandpass=f=2500:width_type=h:w=1500",
-                "-t", "0.25", "-af", "volume=enable='between(t,0,0.25)':volume='sin(3.14159*t/0.25)'",
-                "-c:a", "pcm_s16le", str(out_file)
-            ]
-        elif "page" in sfx_lower or "turn" in sfx_lower:
-            cmd = [
-                "ffmpeg", "-y", "-f", "lavfi",
-                "-i", "anoisesrc=color=brown:r=24000,bandpass=f=1800:width_type=h:w=1200",
-                "-t", "0.2", "-af", "volume=enable='between(t,0,0.2)':volume='sin(3.14159*t/0.2)'",
-                "-c:a", "pcm_s16le", str(out_file)
-            ]
-        else:
-            cmd = [
-                "ffmpeg", "-y", "-f", "lavfi",
-                "-i", "anoisesrc=color=pink:r=24000,bandpass=f=1500:width_type=h:w=1000",
-                "-t", "0.2", "-af", "volume=enable='between(t,0,0.2)':volume='sin(3.14159*t/0.2)'",
-                "-c:a", "pcm_s16le", str(out_file)
-            ]
-            
-        res = subprocess.run(cmd, capture_output=True)
-        if res.returncode == 0 and os.path.exists(out_file):
-            return str(out_file)
-    except Exception as e:
-        log.warning(f"Failed synthesizing Foley SFX {sfx_key}: {e}")
-        
-    return None
 
 # ═══════════════════════════════════════════════════════════
 #  STAGE 7.5 — DOCUMENTARY AUDIO ASSEMBLY (PHASE 4)
 # ═══════════════════════════════════════════════════════════
 def stage_assemble_documentary(script, cfg, remotion_video, music_path):
-    log.info("Stage 7.5: Assembling Documentary Audio & Muxing (Strategic Silence & Foley)...")
-    tg("🎞️ Assembling final documentary audio...")
+    log.info("Stage 7.5: Mixing Background Music into Remotion Render...")
+    tg("🎞️ Mixing background music...")
     asm = WORKSPACE / "assembly"
     asm.mkdir(exist_ok=True)
     
-    concat_file = asm / "audio_concat.txt"
-    lines = []
-    
-    silence_intervals = []
-    foley_inputs = []
-    current_time = 0.0
-    
-    is_v2 = isinstance(script, dict) and "story_beats" in script
-    flat_scenes = []
-    
-    if is_v2:
-        scene_counter = 0
-        for beat in script.get("story_beats", []):
-            for block in beat.get("narration_blocks", []):
-                foley_val = "none"
-                for shot in block.get("shots", []):
-                    sfx = shot.get("sound_design")
-                    if sfx and sfx != "none":
-                        foley_val = sfx
-                        break
-                
-                aud_file = block.get("audio_file")
-                audio_path = None
-                if aud_file:
-                    audio_path = str(WORKSPACE / "audio" / aud_file)
-                
-                flat_scenes.append({
-                    "scene": scene_counter,
-                    "audio_file": audio_path,
-                    "actual_duration": block.get("actual_voice_duration") or block.get("duration_hint", 4.0),
-                    "strategic_silence_seconds": block.get("strategic_silence", {}).get("duration_seconds", 0.0),
-                    "foley": foley_val
-                })
-                scene_counter += 1
-    else:
-        flat_scenes = extract_scenes_list(script)
+    if not os.path.exists(remotion_video):
+        raise RuntimeError("Remotion video missing!")
         
-    for scene in flat_scenes:
-        audio = scene.get("audio_file")
-        v_dur = float(scene.get("actual_duration", scene.get("duration_hint", 4.0)))
-        silence_dur = float(scene.get("strategic_silence_seconds", 0) or 0)
-        
-        scene_start_time = current_time
-        
-        if audio and os.path.exists(audio):
-            lines.append(f"file '{os.path.abspath(audio)}'")
-        else:
-            silence_voice_path = asm / f"silence_voice_{scene.get('scene', 0)}_{v_dur}.mp3"
-            if not os.path.exists(silence_voice_path):
-                subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", str(v_dur), "-c:a", "libmp3lame", str(silence_voice_path)], capture_output=True)
-            lines.append(f"file '{os.path.abspath(silence_voice_path)}'")
-            
-        current_time += v_dur
-        
-        if silence_dur > 0:
-            silence_gap_path = asm / f"silence_gap_{scene.get('scene', 0)}_{silence_dur}.mp3"
-            if not os.path.exists(silence_gap_path):
-                subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", str(silence_dur), "-c:a", "libmp3lame", str(silence_gap_path)], capture_output=True)
-            lines.append(f"file '{os.path.abspath(silence_gap_path)}'")
-            
-            silence_start = current_time
-            current_time += silence_dur
-            silence_end = current_time
-            silence_intervals.append((silence_start, silence_end))
-            
-        scene["actual_duration"] = v_dur + silence_dur
-        
-        sfx_key = scene.get("foley") or scene.get("sfx") or scene.get("foley_sfx")
-        if sfx_key and sfx_key != "none":
-            foley_file = get_foley_sfx_path(sfx_key, asm)
-            if foley_file and os.path.exists(foley_file):
-                delay_ms = int(scene_start_time * 1000)
-                foley_inputs.append((foley_file, delay_ms))
-            
-    with open(concat_file, "w") as f:
-        f.write("\n".join(lines))
-        
-    voice_track = str(asm / "voice_track.mp3")
-    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file), "-c", "copy", voice_track], capture_output=True)
-    
-    total_dur = max(current_time, 1.0)
-    
-    # Ambient Room Tone Track at -35dB (volume=0.0178)
-    room_tone_track = str(asm / "room_tone_track.wav")
-    subprocess.run([
-        "ffmpeg", "-y", "-f", "lavfi",
-        "-i", "anoisesrc=color=pink:r=24000,lowpass=f=400,volume=0.0178",
-        "-t", str(total_dur),
-        "-c:a", "pcm_s16le", room_tone_track
-    ], capture_output=True)
-    
-    # Foley SFX Track (-16dB to -20dB, volume=0.12)
-    foley_track = None
-    if foley_inputs:
-        foley_cmd = ["ffmpeg", "-y"]
-        filter_parts = []
-        for i, (fpath, delay_ms) in enumerate(foley_inputs):
-            foley_cmd.extend(["-i", os.path.abspath(fpath)])
-            filter_parts.append(f"[{i}:a]adelay={delay_ms}|{delay_ms},volume=0.12[f{i}]")
-        
-        inputs_str = "".join(f"[f{i}]" for i in range(len(foley_inputs)))
-        filter_parts.append(f"{inputs_str}amix=inputs={len(foley_inputs)}:duration=first[fa]")
-        
-        foley_track = str(asm / "foley_track.wav")
-        foley_cmd.extend([
-            "-filter_complex", ";".join(filter_parts),
-            "-map", "[fa]", "-c:a", "pcm_s16le", foley_track
-        ])
-        res_fol = subprocess.run(foley_cmd, capture_output=True)
-        if res_fol.returncode != 0 or not os.path.exists(foley_track):
-            foley_track = None
-
-    final_video = str(WORKSPACE / "final_documentary_mixed.mp4")
-    
-    music_silence_filter = ""
-    if silence_intervals:
-        vol_drops = ",".join([f"volume=enable='between(t,{start:.3f},{end:.3f})':volume=0" for start, end in silence_intervals])
-        music_silence_filter = f",{vol_drops}"
+    final_output = str(asm / "final_documentary.mp4")
+    total_dur = get_dur(remotion_video)
 
     if music_path and os.path.exists(music_path):
+        # Mix the Remotion audio (TTS, Foley) with the background music
         cmd = [
-            "ffmpeg", "-y",
-            "-i", remotion_video,
-            "-i", voice_track,
-            "-i", os.path.abspath(music_path),
-            "-i", room_tone_track,
+            "ffmpeg", "-y", "-i", remotion_video, "-stream_loop", "-1", "-i", music_path,
+            "-filter_complex", f"[1:a]volume=0.06,atrim=0:{total_dur}[m];[0:a][m]amix=inputs=2:duration=first[a]",
+            "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_output
         ]
-        if foley_track:
-            cmd.extend(["-i", foley_track])
-            
-        filter_complex = (
-            "[1:a]volume=1.35,asplit=2[v][v_trig];"
-            f"[2:a]volume=0.14{music_silence_filter}[m_raw];"
-            "[m_raw][v_trig]sidechaincompress=threshold=0.08:ratio=8:attack=50:release=300[m_ducked];"
-            "[3:a]volume=1.0[rt];"
-        )
-        
-        if foley_track:
-            filter_complex += "[4:a]volume=1.0[fol];[v][m_ducked][rt][fol]amix=inputs=4:duration=first[a]"
+        r = subprocess.run(cmd, capture_output=True, timeout=300)
+        if r.returncode == 0 and os.path.exists(final_output):
+            return final_output
         else:
-            filter_complex += "[v][m_ducked][rt]amix=inputs=3:duration=first[a]"
-            
-        cmd.extend([
-            "-filter_complex", filter_complex,
-            "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_video
-        ])
+            log.warning("Music mix failed, using raw Remotion output")
+            return remotion_video
     else:
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", remotion_video,
-            "-i", voice_track,
-            "-i", room_tone_track,
-        ]
-        if foley_track:
-            cmd.extend(["-i", foley_track])
-            
-        filter_complex = "[1:a]volume=1.35[v];[2:a]volume=1.0[rt];"
-        if foley_track:
-            filter_complex += "[3:a]volume=1.0[fol];[v][rt][fol]amix=inputs=3:duration=first[a]"
-        else:
-            filter_complex += "[v][rt]amix=inputs=2:duration=first[a]"
-            
-        cmd.extend([
-            "-filter_complex", filter_complex,
-            "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_video
-        ])
-        
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        log.error(f"Audio mix failed: {res.stderr}")
+        log.info("No music track provided, using raw Remotion output")
         return remotion_video
         
     log.info("✅ Documentary audio assembly complete with Strategic Silence ducking & Foley mixing!")
@@ -2790,6 +2604,12 @@ def run_pipeline_v52():
                 from agents.director import DirectorAgent
                 director = DirectorAgent()
                 script = director.add_metadata(script)
+            
+            if genre == "documentary":
+                log.info("Upgrading legacy flat script to v2.0 hierarchy using DirectorAgent...")
+                from agents.director import DirectorAgent
+                director = DirectorAgent()
+                script = director.add_metadata(script)
 
         script = stage_3_voice(script, cfg)
         music_path = stage_4_music(cfg)
@@ -3002,18 +2822,36 @@ def run_pipeline_v52():
 
         url     = stage_9_publish(final_video, script, cfg)
         elapsed = int(time.time()-start)
-        scenes   = extract_scenes_list(script)
-        total    = sum(s.get("actual_duration",4) for s in scenes) if scenes else 0.0
-        wan_ct   = sum(1 for s in scenes if s.get("visual_source")=="wan2.1")
-        kling_ct = sum(1 for s in scenes if s.get("visual_source")=="kling")
+        
+        is_v2 = isinstance(script, dict) and "story_beats" in script
+        num_scenes = 0
+        total_dur = 0.0
+        wan_ct = 0
+        kling_ct = 0
+        
+        if is_v2:
+            for beat in script.get("story_beats", []):
+                for block in beat.get("narration_blocks", []):
+                    for shot in block.get("shots", []):
+                        num_scenes += 1
+                        total_dur += float(shot.get("actual_duration", shot.get("duration_seconds", 4.0)))
+                        src = shot.get("asset", {}).get("source")
+                        if src == "wan2.1": wan_ct += 1
+                        if src == "kling": kling_ct += 1
+        else:
+            scenes = extract_scenes_list(script)
+            num_scenes = len(scenes)
+            total_dur = sum(s.get("actual_duration", 4) for s in scenes) if scenes else 0.0
+            wan_ct = sum(1 for s in scenes if s.get("visual_source") == "wan2.1")
+            kling_ct = sum(1 for s in scenes if s.get("visual_source") == "kling")
 
         tg(
             f"✅ DONE!\n\n"
             f"📺 {url}\n"
             f"⏰ {cfg['schedule']} UTC\n"
             f"🏆 QC: {score}/10\n"
-            f"🎬 {len(scenes)} scenes | {total:.0f}s\n"
-            f"✂️ Avg {total/max(len(scenes),1):.1f}s/cut\n"
+            f"🎬 {num_scenes} scenes | {total_dur:.0f}s\n"
+            f"✂️ Avg {total_dur/max(num_scenes,1):.1f}s/cut\n"
             f"🎥 Wan2.1: {wan_ct} clips | Kling: {kling_ct} clips\n"
             f"🌍 {cfg['lang']} | {cfg['genre']} | DUAL-SCRIPT\n"
             f"⚡ {elapsed}s total{drive_note}"

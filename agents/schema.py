@@ -52,10 +52,11 @@ class Shot(BaseModel):
     fallback_type: Literal["ClassifiedFile", "Newspaper", "ArchivalDocument", "EvidenceBoard", "MapFallback", "PhotoWall", "Timeline", "CinematicText", "PortraitCard", "TechnicalDiagram", "AnimatedDiagram"] = Field(..., description="React fallback component if generation fails or is specifically requested")
     
     visual_description: str = Field(..., description="What happens visually in the shot")
+    visual_query: str = Field(..., description="Structured search query for stock footage. Format: [SUBJECT] + [ACTION] + [LOCATION] + [ERA]. (e.g. '1960s scientists working in underground bunker')")
     ai_prompt: str = Field(..., description="Exact prompt for image/video generation. Format: [SUBJECT], [ERA], [LOCATION], [ENVIRONMENT], [LIGHTING], [CAMERA ANGLE]")
-    camera_motion: str = Field(default="zoom_in", description="Camera movement (e.g., zoom_in, pan_right, slow_push_in, top_down)")
+    camera_motion: str = Field(default="zoom_in", description="Camera movement (e.g., zoom_in, pan_right, slow_push_in, top_down, none)")
     motion_intensity: float = Field(default=0.3, description="Speed/intensity of the camera motion (0.1 to 1.0)")
-    transition_in: Literal["hard_cut", "fade", "j_cut"] = Field(default="hard_cut", description="Transition into this shot")
+    transition_in: Literal["hard_cut", "fade", "dissolve"] = Field(default="hard_cut", description="Transition into this shot")
     
     text_overlay: Optional[str] = Field(None, description="Text to display on screen (e.g., location names, dates, quotes). Null if none.")
     highlight: Optional[HighlightMetadata] = Field(None, description="Highlight instructions for the text_overlay")

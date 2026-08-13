@@ -26,11 +26,12 @@ CRITICAL DIRECTIVES:
    - CHARACTER CONTINUITY: Keep physical descriptions and outfits identical for recurring figures.
    - OBJECT CONTINUITY: Keep key items (weapons, documents, tools) visually identical.
    - WEATHER CONTINUITY: Maintain consistent weather conditions within scenes.
-   - LIGHTING CONTINUITY: Keep lighting style consistent within continuous scenes.
-5. NO ANACHRONISTIC MODERN IMAGERY: Never use modern steel skyscrapers, digital gadgets, or 21st-century cars in historical historical settings unless explicitly representing present-day context.
+5. NO ANACHRONISTIC MODERN IMAGERY: Never use modern steel skyscrapers, digital gadgets, or 21st-century cars in historical settings unless explicitly representing present-day context.
 6. CINEMATOGRAPHY & DETAILED PROMPTS: `ai_prompt` MUST be formatted as: [SUBJECT], [ERA], [LOCATION], [ENVIRONMENT], [LIGHTING], [CAMERA ANGLE]. Every prompt MUST be highly specific and detailed (35-50 words).
-7. NO FALSE PHOTOS (CRITICAL): If the topic is mythological, ancient, or lacks real historical photo/video evidence, DO NOT prompt for a "real photo". Use artistic mediums: 'historical oil painting on canvas', 'detailed sepia sketch with crosshatching', 'ancient stone relief engraving', or '19th-century matte watercolor illustration'.
-8. SEMANTIC FALLBACK MAPPING: Set `fallback_type` according to `visual_job`:
+7. STOCK FOOTAGE QUERY: Provide a `visual_query` for every shot formatted as: [SUBJECT] + [ACTION] + [LOCATION] + [ERA]. (e.g. '1960s scientists working in underground bunker').
+7. CAMERA MOTION: Set `camera_motion` strictly based on the shot's need. Use 'none' for stable shots. Do NOT rely on global zoom loops!
+8. TRANSITIONS & CUT REASONS: Set `transition_in` to 'hard_cut' by default. Only use 'fade' or 'dissolve' when passing time or changing major locations. Ensure `cut_reason` explicitly justifies the edit!
+9. SEMANTIC FALLBACK MAPPING: Set `fallback_type` according to `visual_job`:
    - SHOW_LOCATION -> MapFallback
    - SHOW_EVIDENCE -> ClassifiedFile or ArchivalDocument
    - SHOW_PERSON -> PortraitCard
@@ -38,8 +39,8 @@ CRITICAL DIRECTIVES:
    - EXPLAIN_MECHANISM / EXPLAIN_PROCESS -> AnimatedDiagram
    - SHOW_TIME -> Timeline
    - CREATE_MYSTERY -> CinematicText
-9. METAPHOR BAN: Do not literally translate metaphors (e.g., "financial meltdown" should be a panicked stock floor, not melting coins).
-10. AI VIDEO DURATION LIMIT (CRITICAL): The `ai_video` generator only creates ~3-second clips. Therefore, NO single `ai_video` shot may cover more than 4 seconds of screen time. If a narration block's `duration_hint` is greater than 4 seconds, you MUST define MULTIPLE shots for that block (using `duration_ratio` like 0.3, 0.3, 0.4) so that no single `ai_video` shot exceeds 4 seconds. Failure to do this will result in terrible looping videos!
+10. METAPHOR BAN: Do not literally translate metaphors (e.g., "financial meltdown" should be a panicked stock floor, not melting coins).
+11. AI VIDEO DURATION LIMIT (CRITICAL): The `ai_video` generator only creates ~3-second clips. Therefore, NO single `ai_video` shot may cover more than 4 seconds of screen time. If a narration block's `duration_hint` is greater than 4 seconds, you MUST define MULTIPLE shots for that block (using `duration_ratio` like 0.3, 0.3, 0.4) so that no single `ai_video` shot exceeds 4 seconds. Failure to do this will result in terrible looping videos!
 
 You must return a valid JSON object matching this exact JSON schema:
 {schema_json}

@@ -9,15 +9,10 @@ export const CameraSystem: React.FC<{
 }> = ({ cameraMotion, durationFrames, shotIndex, children }) => {
   const frame = useCurrentFrame();
 
-  const pattern = ['zoom_in', 'pan_left', 'zoom_out', 'pan_right', 'pan_up'] as const;
-  const activeIdx = Math.max(0, shotIndex);
-  
-  let movement = pattern[activeIdx % pattern.length] as string;
+  let movement = 'none';
   if (cameraMotion) {
     const cleaned = cameraMotion.replace('ken_burns_', '').toLowerCase();
-    if ((pattern as readonly string[]).includes(cleaned)) {
-      movement = cleaned;
-    }
+    movement = cleaned;
   }
 
   let scale = 1;
@@ -43,9 +38,16 @@ export const CameraSystem: React.FC<{
       scale = 1.18;
       translateY = interpolate(frame, [0, durationFrames], [6, -6], { extrapolateRight: 'clamp' });
       break;
+    case 'pan_down':
+      scale = 1.18;
+      translateY = interpolate(frame, [0, durationFrames], [-6, 6], { extrapolateRight: 'clamp' });
+      break;
+    case 'none':
     default:
-      scale = interpolate(frame, [0, durationFrames], [1.05, 1.22], { extrapolateRight: 'clamp' });
-      translateX = interpolate(frame, [0, durationFrames], [0, -6], { extrapolateRight: 'clamp' });
+      // Completely stable camera by default, as requested.
+      scale = 1.0;
+      translateX = 0;
+      translateY = 0;
       break;
   }
 

@@ -49,43 +49,72 @@ class BaseAgent:
                 {"scene_number": 2, "voiceover": "लेकिन स्मार्टफोन की लहर में नोकिया पीछे छूट गया।", "caption": "But Nokia fell behind in the smartphone era."}
             ]
         elif cls_name == "DirectorAgent":
-            scenes = []
-            try:
-                if "Raw Script:" in prompt:
-                    script_json = prompt.split("Raw Script:\n")[1].split("\n\nAdd Director Metadata.")[0]
-                    scenes = json.loads(script_json)
-            except Exception:
-                pass
-            if not scenes:
-                scenes = [
-                    {"scene_number": 1, "voiceover": "Nokia dominated the market.", "caption": "Nokia dominated."},
-                    {"scene_number": 2, "voiceover": "Apple launched the iPhone.", "caption": "iPhone arrived."}
+            return {
+                "schema_version": "2.0",
+                "project_meta": {
+                    "topic": "The Fall of Nokia",
+                    "genre": "documentary",
+                    "language": "english",
+                    "visual_bible": {
+                        "era": "2000s",
+                        "locations": ["Finland", "USA"],
+                        "lighting": "cinematic dramatic",
+                        "color_language": "cool tones",
+                        "film_texture": "clean digital"
+                    }
+                },
+                "story_beats": [
+                    {
+                        "beat_id": "b001",
+                        "narrative_intent": "HOOK",
+                        "description": "The Mobile Giant",
+                        "narration_blocks": [
+                            {
+                                "block_id": "n001",
+                                "voiceover": "Nokia dominated the mobile market in the early 2000s.",
+                                "caption": "Nokia dominated the mobile market.",
+                                "duration_hint": 4.0,
+                                "strategic_silence": {
+                                    "duration_seconds": 0.5,
+                                    "position": "end",
+                                    "ambient_level": -35,
+                                    "visual_behavior": "hold_frame"
+                                },
+                                "audio_metadata": {
+                                    "music_energy": 0.5,
+                                    "music_duck_amount": -15
+                                },
+                                "shots": [
+                                    {
+                                        "shot_id": "n001_s001",
+                                        "duration_mode": "ratio",
+                                        "duration_ratio": 1.0,
+                                        "visual_job": "SHOW_LOCATION",
+                                        "visual_type": "ai_image",
+                                        "fallback_type": "MapFallback",
+                                        "visual_description": "Wide view of Nokia headquarters in Finland.",
+                                        "visual_query": "Nokia + headquarters + Finland + 2000s",
+                                        "ai_prompt": "Nokia headquarters, 2000s, Finland, exterior office, dramatic lighting, wide shot",
+                                        "camera_motion": "zoom_in",
+                                        "motion_intensity": 0.3,
+                                        "transition_in": "hard_cut",
+                                        "cut_reason": "introduce_location",
+                                        "visual_importance": 0.7,
+                                        "continuity": {
+                                            "group_id": "grp1",
+                                            "characters": [],
+                                            "location": "Espoo, Finland",
+                                            "environment": "exterior corporate headquarters",
+                                            "time_period": "2000s",
+                                            "lighting": "daylight"
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
                 ]
-            
-            director_scenes = []
-            env_anchor = "dimly lit corporate executive office with mahogany desk"
-            style_anchor = "19th-century matte historical illustration, low-key lighting, archival museum quality"
-            v_types = ["motion_graphics", "ai_video", "real_photo", "ai_image", "broll_video"]
-            
-            for idx, sc in enumerate(scenes):
-                v_type = v_types[idx % len(v_types)]
-                shot_angle = "Wide shot camera zoom in" if idx % 2 == 0 else "Close-up shot slow pan"
-                enriched = dict(sc)
-                enriched.update({
-                    "visual_type": v_type,
-                    "visual_query": f"Archival historical scene {sc.get('scene_number', idx+1)}",
-                    "ai_prompt": f"corporate leadership in discussion, {env_anchor}, {shot_angle}, {style_anchor}",
-                    "camera_movement": "ken_burns_zoom_in",
-                    "lut": "dark_noir",
-                    "overlay": "vhs_glitch",
-                    "sfx": "deep_impact",
-                    "bgm_mood": "dark suspense",
-                    "strategic_silence_seconds": 1.5,
-                    "transition_in": "hard_cut",
-                    "duration_hint": 4.5
-                })
-                director_scenes.append(enriched)
-            return director_scenes
+            }
         elif cls_name == "QCEditorAgent":
             return {"status": "APPROVED", "score": 9, "feedback": "Excellent script structure and director metadata."}
         return {"status": "ok"}

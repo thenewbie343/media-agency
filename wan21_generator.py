@@ -123,8 +123,9 @@ for scene in scenes:
     filename = f"scene_{int(n):03d}.mp4" if is_num else f"scene_{n}.mp4"
     out    = str(output_dir / filename)
 
-    # 24 frames = ~3 seconds at 8fps
-    num_frames = 24
+    # Dynamically calculate frames based on audio duration (8 fps)
+    # Cap at 48 frames (6 seconds) to prevent Colab T4 OutOfMemory errors
+    num_frames = min(max(16, int(dur * 8)), 48)
 
     # Calculate a stable numeric seed
     if is_num:

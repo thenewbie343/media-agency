@@ -31,25 +31,70 @@ def run_documentary_pipeline(cfg):
     
     # 3. Outline (Head Writer)
     log.info("2/5: Head Writer drafting outline...")
-    outline = head_writer.write_outline(json.dumps(fact_sheet), duration_minutes=duration_minutes, target_scenes=target_scenes)
+    outline_str = head_writer.write_outline(json.dumps(fact_sheet), duration_minutes=duration_minutes, target_scenes=target_scenes)
     
-    # 4. Scriptwriting (Scriptwriter)
-    log.info("3/5: Scriptwriter writing Hindi VO & Hinglish captions...")
-    raw_script = scriptwriter.write_script(json.dumps(fact_sheet), json.dumps(outline), duration_minutes=duration_minutes, target_scenes=target_scenes)
-    
-    # 5. Metadata (Director)
-    log.info("4/5: Director adding cinematic visual metadata...")
-    director_script = director.add_metadata(raw_script)
+    try:
+        outline_dict = outline_str if isinstance(outline_str, dict) else json.loads(outline_str)
+    except Exception as e:
+        log.error(f"Failed to parse outline: {e}. Falling back to single-shot generation.")
+        outline_dict = {"act_1": [{"scene_desc": "Full video"}], "act_2": [], "act_3": []}
+
+    act_keys = [k for k in outline_dict.keys() if k.startswith("act_")]
+    if not act_keys:
+        act_keys = ["act_1", "act_2", "act_3"]
+        outline_dict = {k: outline_dict for k in act_keys} # rough fallback
+
+    scenes_per_act = max(1, target_scenes // len(act_keys))
+    master_beats = []
+    context_so_far = ""
+    global_scene_counter = 1
+
+    for idx, act_key in enumerate(act_keys):
+        act_num = idx + 1
+        log.info(f"3/5: Scriptwriter writing Act {act_num} (target {scenes_per_act} scenes)...")
+        act_outline = outline_dict.get(act_key, [])
+        
+        # Write Act
+        act_scenes = scriptwriter.write_act(
+            json.dumps(fact_sheet), 
+            act_num, 
+            json.dumps(act_outline), 
+            target_scenes=scenes_per_act, 
+            context_so_far=context_so_far
+        )
+
+        # Fix Scene Numbers to ensure strict continuity across acts
+        for scene in act_scenes:
+            scene["scene_number"] = global_scene_counter
+            global_scene_counter += 1
+
+        log.info(f"4/5: Director adding metadata for Act {act_num}...")
+        # Director processes just this act's scenes
+        act_manifest = director.add_metadata(act_scenes)
+        
+        if "story_beats" in act_manifest:
+            master_beats.extend(act_manifest["story_beats"])
+            
+        context_so_far += f"Act {act_num} completed with {len(act_scenes)} scenes.\n"
+
+    # Assemble Final ScriptManifest manually
+    final_script = {
+        "schema_version": "2.0",
+        "project_meta": {
+            "title": outline_dict.get("title_idea", topic),
+            "target_duration_seconds": duration_minutes * 60
+        },
+        "story_beats": master_beats
+    }
     
     # 6. Quality Control (QC Editor)
-    log.info("5/5: QC Editor reviewing (Python Validator)...")
-    qc_result = qc_editor.review_script(director_script)
+    log.info("5/5: QC Editor reviewing full master script...")
+    qc_result = qc_editor.review_script(final_script)
     
     if qc_result.get("status") == "REJECTED":
         log.warning(f"QC Rejected! Reason: {qc_result.get('feedback')}.")
     else:
-        log.info("QC Approved script!")
+        log.info("QC Approved master script!")
         
-    final_script = director_script
     return final_script, fact_sheet
 
