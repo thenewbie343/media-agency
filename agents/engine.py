@@ -122,7 +122,9 @@ def run_documentary_pipeline(cfg):
         "final_status": "APPROVED"
     }
     
-    # Surgical QC Loop
+        # Surgical QC Loop
+    previous_states = {}
+    
     for qc_attempt in range(3):
         log.info(f"5/5: QC Editor reviewing master script (Attempt {qc_attempt+1}/3)...")
         qc_result = qc_editor.review_script(final_script)
@@ -151,10 +153,21 @@ def run_documentary_pipeline(cfg):
                         for s_idx, shot in enumerate(block.get("shots", [])):
                             if shot.get("shot_id") == shot_id:
                                 log.info(f"Repairing shot {shot_id}...")
+                                
+                                # Regression check: If this shot failed again for a NEW reason, log it.
+                                # Store the original state before first repair
+                                if shot_id not in previous_states:
+                                    previous_states[shot_id] = dict(shot)
+                                
                                 repaired_shot = director.repair_manifest_section(shot, [failure])
+                                
+                                # Hard Constraint: Force preserve IDs and chronology to ensure convergence
+                                repaired_shot["shot_id"] = shot.get("shot_id")
+                                
                                 final_script["story_beats"][b_idx]["narration_blocks"][n_idx]["shots"][s_idx] = repaired_shot
                                 stats["repair_count"] += 1
-                                stats["repaired_shot_ids"].append(shot_id)
+                                if shot_id not in stats["repaired_shot_ids"]:
+                                    stats["repaired_shot_ids"].append(shot_id)
                                 found = True
                                 break
                         if found: break

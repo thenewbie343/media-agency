@@ -48,10 +48,10 @@ class Shot(BaseModel):
     shot_role: Literal["ESTABLISHING", "ACTION", "REACTION", "DETAIL", "INSERT", "EVIDENCE", "EXPLANATION", "TRANSITION", "REVEAL", "HOLD"] = Field(default="EXPLANATION", description="The grammatical role of this shot")
     asset_provenance: Literal["AUTHENTIC_PHOTO", "ARCHIVAL_FOOTAGE", "DOCUMENT", "STOCK", "AI_RECONSTRUCTION", "AI_ILLUSTRATION", "MOTION_GRAPHIC", "SEMANTIC_FALLBACK"] = Field(default="STOCK", description="The required provenance of the visual")
     
-    shot_size: Literal["extreme_wide", "wide", "medium", "medium_close", "close", "extreme_close", "N/A"] = Field(default="N/A", description="Camera shot size")
-    camera_angle: Optional[str] = Field(None, description="Camera angle (e.g., low angle, eye level, bird's eye)")
-    lens: Optional[str] = Field(None, description="Lens type (e.g., wide angle, telephoto, macro)")
-    composition: Optional[str] = Field(None, description="Composition rule (e.g., rule of thirds, center framed, dynamic symmetry)")
+    shot_size: Literal["extreme_wide", "wide", "medium", "medium_close", "close", "extreme_close", "N/A"] = Field(default="N/A", description="Camera shot size. Do NOT use N/A unless it's a motion graphic.")
+    camera_angle: Optional[str] = Field(None, description="Camera angle. Must NOT be blank or N/A for cinematic visual shots.")
+    lens: Optional[str] = Field(None, description="Lens type. Must NOT be blank or N/A for cinematic visual shots.")
+    composition: Optional[str] = Field(None, description="Composition rule. Must NOT be blank or N/A for cinematic visual shots.")
     foreground: Optional[str] = Field(None, description="What is in the foreground")
     background: Optional[str] = Field(None, description="What is in the background")
     subject_position: Optional[str] = Field(None, description="Position of the main subject")
@@ -84,7 +84,7 @@ class Shot(BaseModel):
     highlight: Optional[HighlightMetadata] = Field(None, description="Highlight instructions for the text_overlay")
     sound_design: Optional[str] = Field(None, description="SFX cue (e.g., 'subtle_whoosh', 'paper_rustle', 'deep_impact', 'wind_howl')")
     
-    cut_reason: str = Field(..., description="Why are we cutting to this shot? (e.g., introduce_information, change_location, reveal_evidence, emphasize_keyword, transition)")
+    cut_reason: str = Field(..., description="Why are we cutting to this shot? Must be highly specific (e.g. 'reveal_financial_consequence', 'bridge_luxury_to_collapse'). DO NOT USE generic reasons like 'introduce_information' or 'transition'.")
     visual_importance: float = Field(default=0.5, description="Scale of visual emphasis (0.0 to 1.0). High means intense motion/sound.")
     
     continuity: ContinuityMetadata = Field(..., description="Continuity constraints for consistent generation")
@@ -109,6 +109,7 @@ class NarrationBlock(BaseModel):
     audio_file: Optional[str] = Field(None, description="Path to the generated TTS file")
     actual_voice_duration: Optional[float] = Field(None, description="Measured duration of the TTS file in seconds")
     total_block_duration: Optional[float] = Field(None, description="Calculated total duration including silence")
+    alignment_status: Optional[Literal["PASS", "PARTIAL", "FAILED"]] = Field(None, description="Status of word-level forced alignment")
     
     duration_hint: float = Field(..., description="Estimated duration in seconds (planning only, do NOT rely on for final timing)")
     
@@ -117,8 +118,16 @@ class NarrationBlock(BaseModel):
     
     shots: List[Shot] = Field(..., description="Visual shots that occur during this narration block")
 
+
+class TimeContext(BaseModel):
+    year: str = Field(..., description="The year or era of this beat (e.g., '2016', '1990s', 'Present Day')")
+    mode: Literal["historical", "present_day", "future_projection"] = Field(..., description="The temporal mode")
+    location: str = Field(..., description="The primary location for this beat")
+    transition_reason: Optional[str] = Field(None, description="Mandatory if transitioning time periods. Why did we jump in time?")
+
 class StoryBeat(BaseModel):
     beat_id: str = Field(..., description="Unique ID for this story beat (e.g., 'b001')")
+    time_context: TimeContext = Field(..., description="The global time and location context for this beat")
     narrative_intent: Literal["HOOK", "EVIDENCE", "MYSTERY", "EXPLANATION", "CONFLICT", "RESOLUTION", "LOCATION_ESTABLISH"] = Field(..., description="The narrative purpose of this beat")
     description: str = Field(..., description="Description of the story beat")
     attention_intensity: float = Field(default=0.5, description="Expected audience attention curve intensity (0.0 to 1.0). Hook=0.8, Revelation=1.0")

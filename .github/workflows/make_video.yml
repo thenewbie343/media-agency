@@ -7,10 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       test_mode:
-        description: "Run in TEST_MODE (30-45s sequence only)"
-        type: boolean
+        description: 'Test Mode (truncates script to 30-45s, prevents publish)'
         required: false
-        default: false
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+          - 'hero'
+        default: 'false'
       topic:
         description: "Topic (with optional --genre --lang --duration flags)"
         required: true

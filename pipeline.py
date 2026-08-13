@@ -2550,6 +2550,59 @@ def stage_kling_visuals(script, cfg, max_clips=2):
 # ═══════════════════════════════════════════════════════════
 #  v5.2 PIPELINE — DUAL-SCRIPT + KOKORO HINDI + ALL FEATURES
 # ═══════════════════════════════════════════════════════════
+
+def audit_assets(script_path):
+    import json
+    import os
+    log.info("🔍 Pre-Render Asset Audit starting...")
+    
+    with open(script_path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+        
+    required_files = []
+    missing_files = []
+    
+    is_v2 = isinstance(manifest, dict) and "story_beats" in manifest
+    if is_v2:
+        for beat in manifest.get("story_beats", []):
+            for block in beat.get("narration_blocks", []):
+                if block.get("audio_file"):
+                    required_files.append(block["audio_file"])
+                for shot in block.get("shots", []):
+                    if shot.get("video_file"):
+                        required_files.append(shot["video_file"])
+                    if shot.get("fg_file"):
+                        required_files.append(shot["fg_file"])
+                    if shot.get("sound_design"):
+                        required_files.append(f"sfx/{shot['sound_design']}.mp3")
+    else:
+        log.warning("Audit skipped for non-V2 manifest")
+        return True, []
+        
+    for file_path in required_files:
+        # Resolve paths exactly as Remotion does (relative to remotion/public/assets or absolute)
+        # Assuming most are just basenames in remotion/public/assets
+        basename = os.path.basename(file_path)
+        if file_path.startswith("sfx/"):
+            check_path = f"remotion/public/assets/{file_path}"
+        elif file_path.startswith("/"):
+            check_path = file_path # Absolute path
+        else:
+            check_path = f"remotion/public/assets/{basename}"
+            
+        if not os.path.exists(check_path):
+            missing_files.append(check_path)
+            
+    with open("render_asset_manifest.json", "w", encoding="utf-8") as f:
+        json.dump({"required": required_files, "missing": missing_files}, f, indent=2)
+        
+    if missing_files:
+        log.error(f"❌ Asset Audit FAILED! Missing {len(missing_files)} files: {missing_files[:5]}")
+        return False, missing_files
+        
+    log.info("✅ Asset Audit PASSED! All files present.")
+    return True, []
+
 def run_pipeline_v52():
     start = time.time()
     cfg   = parse_input()
@@ -2579,10 +2632,12 @@ def run_pipeline_v52():
             _save(script, "script_ai_studio.json")
             tg(f"✍️ {len(script)} scenes generated via AI Studio. AI Video: {review_result['metrics']['ai_video_percentage']:.1f}%")
             
+            
             # 24. TEST BEFORE FULL RENDER
             test_mode = os.environ.get("TEST_MODE", "").lower()
-            if test_mode in ("true", "1", "yes", "grammar"):
-                log.info("🧪 TEST_MODE enabled. Truncating script.")
+            is_hero_test = (test_mode == "hero")
+            if test_mode in ("true", "1", "yes", "grammar", "hero"):
+                log.info(f"🧪 TEST_MODE enabled (mode={test_mode}). Truncating script.")
                 log.info("🧪 TEST_MODE enabled. Enforcing specific mixed-asset coverage (30-45s).")
                 
                 import shutil
@@ -2602,6 +2657,9 @@ def run_pipeline_v52():
                                 break
                             
                             for i, shot in enumerate(block.get("shots", [])):
+                                if is_hero_test and shot_count < 2:
+                                    shot["visual_type"] = "ai_video"
+                                    shot["generation_priority"] = 1.0
                                 shot_count += 1
                                 
                             new_blocks.append(block)
@@ -2881,6 +2939,12 @@ def run_pipeline_v52():
                 script_path = str((WORKSPACE / "script_remotion.json").resolve())
                 final_video_abs = str((WORKSPACE / "final_documentary.mp4").resolve())
 
+                # Pre-Render Asset Audit
+                audit_passed, missing_assets = audit_assets(script_path)
+                if not audit_passed:
+                    log.error("Asset audit failed. Aborting Remotion render to prevent 404 crash.")
+                    raise RuntimeError(f"Missing required assets before render: {missing_assets}")
+
                 # Prevent headless deadlock by lowering concurrency and removing strict angle GL
                 remotion_cmd = f"npx remotion render src/index.ts DocumentaryVideo {final_video_abs} --props={script_path} --concurrency=2 --log=verbose --crf=22"
                 log.info(f"Running Remotion: {remotion_cmd}")
@@ -2939,6 +3003,8 @@ def run_pipeline_v52():
                 "repaired_shot_ids": stats.get("repaired_shot_ids", []),
                 "schema_repair_count": stats.get("schema_repair_count", 0),
                 "final_manifest_status": stats.get("final_status", "UNKNOWN"),
+                "generic_fallback_count": sum(1 for b in script.get("story_beats", []) for n in b.get("narration_blocks", []) for s in n.get("shots", []) if s.get("visual_type") == "fallback"),
+                "asset_audit_passed": audit_passed if "audit_passed" in locals() else "N/A",
                 "final_shot_count": num_scenes,
                 "average_shot_duration": total_dur / max(num_scenes, 1)
             }
