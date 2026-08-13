@@ -51,9 +51,11 @@ LANGUAGE:
 RULES:
 1. MUST output EXACTLY {target_scenes} scenes for this Act.
 2. MINIMUM WORD COUNT (CRITICAL): Each `voiceover` MUST be at least 45 words (3-5 full sentences).
-3. NARRATIVE FLOW: Do NOT write bullet points or "word salad". You MUST write a cohesive story, connecting one idea to the next.
-4. Ensure continuity with previous acts (if provided).
-5. Write highly engaging voiceover. Don't be short or rushed.
+3. NARRATIVE FLOW & CONTINUITY (CRITICAL):
+   - You MUST write a cohesive, linear story that continues from the previous acts.
+   - Do NOT restart the story. Do NOT re-introduce characters or facts that have already been explained in the "Context from Previous Acts". 
+   - Pick up the narrative exactly where the previous act left off.
+4. Write highly engaging voiceover. Don't be short or rushed.
 
 Output JSON strictly matching this schema (an array of EXACTLY {target_scenes} scenes):
 [
@@ -65,6 +67,6 @@ Output JSON strictly matching this schema (an array of EXACTLY {target_scenes} s
   }}
 ]"""
         
-        prompt = f"Fact Sheet:\n{fact_sheet}\n\nAct {act_number} Outline:\n{act_outline}\n\nContext from Previous Acts:\n{context_so_far}\n\nTarget Scenes for THIS Act: {target_scenes}.\nWrite ALL {target_scenes} Scenes."
+        prompt = f"Fact Sheet:\n{fact_sheet}\n\nAct {act_number} Outline:\n{act_outline}\n\nContext from Previous Acts (Do NOT repeat or restart these events):\n{context_so_far}\n\nTarget Scenes for THIS Act: {target_scenes}.\nWrite ALL {target_scenes} Scenes."
         
         return self.call_llm(prompt, system_prompt)

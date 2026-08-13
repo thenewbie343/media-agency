@@ -45,56 +45,97 @@ def run_documentary_pipeline(cfg):
         outline_dict = {k: outline_dict for k in act_keys} # rough fallback
 
     scenes_per_act = max(1, target_scenes // len(act_keys))
-    master_beats = []
-    context_so_far = ""
-    global_scene_counter = 1
-
-    for idx, act_key in enumerate(act_keys):
-        act_num = idx + 1
-        log.info(f"3/5: Scriptwriter writing Act {act_num} (target {scenes_per_act} scenes)...")
-        act_outline = outline_dict.get(act_key, [])
+    
+    final_script = None
+    qc_feedback = ""
+    
+    # Run Generation Loop with QC retry (up to 3 attempts)
+    for qc_attempt in range(3):
+        master_beats = []
+        context_so_far = ""
+        global_scene_counter = 1
         
-        # Write Act
-        act_scenes = scriptwriter.write_act(
-            json.dumps(fact_sheet), 
-            act_num, 
-            json.dumps(act_outline), 
-            target_scenes=scenes_per_act, 
-            context_so_far=context_so_far
-        )
-
-        # Fix Scene Numbers to ensure strict continuity across acts
-        for scene in act_scenes:
-            scene["scene_number"] = global_scene_counter
-            global_scene_counter += 1
-
-        log.info(f"4/5: Director adding metadata for Act {act_num}...")
-        # Director processes just this act's scenes
-        act_manifest = director.add_metadata(act_scenes)
+        if qc_feedback:
+            log.info(f"🔄 QC Retry Attempt {qc_attempt + 1}: Incorporating QC feedback...")
         
-        if "story_beats" in act_manifest:
-            master_beats.extend(act_manifest["story_beats"])
+        for idx, act_key in enumerate(act_keys):
+            act_num = idx + 1
+            log.info(f"3/5: Scriptwriter writing Act {act_num} (target {scenes_per_act} scenes)...")
+            act_outline = outline_dict.get(act_key, [])
             
-        context_so_far += f"Act {act_num} completed with {len(act_scenes)} scenes.\n"
+            # Prepare rich context from previous acts
+            # If we have previous scenes, print them out cleanly so the LLM remembers them
+            act_feedback = f"\nQC FEEDBACK TO HEED: {qc_feedback}" if qc_feedback else ""
+            
+            # Write Act
+            act_scenes = scriptwriter.write_act(
+                json.dumps(fact_sheet), 
+                act_num, 
+                json.dumps(act_outline), 
+                target_scenes=scenes_per_act, 
+                context_so_far=context_so_far + act_feedback
+            )
 
-    # Assemble Final ScriptManifest manually
-    final_script = {
-        "schema_version": "2.0",
-        "project_meta": {
-            "title": outline_dict.get("title_idea", topic),
-            "target_duration_seconds": duration_minutes * 60
-        },
-        "story_beats": master_beats
-    }
-    
-    # 6. Quality Control (QC Editor)
-    log.info("5/5: QC Editor reviewing full master script...")
-    qc_result = qc_editor.review_script(final_script)
-    
-    if qc_result.get("status") == "REJECTED":
-        log.warning(f"QC Rejected! Reason: {qc_result.get('feedback')}.")
-    else:
-        log.info("QC Approved master script!")
+            # Fix Scene Numbers to ensure strict continuity across acts
+            for scene in act_scenes:
+                scene["scene_number"] = global_scene_counter
+                global_scene_counter += 1
+
+            log.info(f"4/5: Director adding metadata for Act {act_num}...")
+            act_manifest = director.add_metadata(act_scenes)
+            
+            if "story_beats" in act_manifest:
+                master_beats.extend(act_manifest["story_beats"])
+                
+            # Keep track of actual text generated in previous scenes for scriptwriter context
+            act_text_summary = "\n".join(
+                f"Scene {s.get('scene_number')}: (Caption: {s.get('caption')})" for s in act_scenes
+            )
+            context_so_far += f"\n--- Act {act_num} generated script ---\n{act_text_summary}\n"
+
+        # Unique ID Normalization & Re-indexing Pass (Resolves overwritten files & looping videos)
+        beat_counter = 1
+        block_counter = 1
+        for beat in master_beats:
+            new_beat_id = f"b{beat_counter:03d}"
+            beat["beat_id"] = new_beat_id
+            beat_counter += 1
+            
+            for block in beat.get("narration_blocks", []):
+                new_block_id = f"n{block_counter:03d}"
+                block["block_id"] = new_block_id
+                
+                shot_counter = 1
+                for shot in block.get("shots", []):
+                    shot["shot_id"] = f"{new_block_id}_s{shot_counter:03d}"
+                    shot_counter += 1
+                    
+                    # Namespace group_id inside continuity to prevent cross-act collisions
+                    if "continuity" in shot and shot["continuity"]:
+                        grp = shot["continuity"].get("group_id", "grp1")
+                        shot["continuity"]["group_id"] = f"{new_beat_id}_{grp}"
+                block_counter += 1
+
+        # Assemble Final ScriptManifest
+        final_script = {
+            "schema_version": "2.0",
+            "project_meta": {
+                "title": outline_dict.get("title_idea", topic),
+                "target_duration_seconds": duration_minutes * 60
+            },
+            "story_beats": master_beats
+        }
         
+        # 6. Quality Control (QC Editor)
+        log.info("5/5: QC Editor reviewing full master script...")
+        qc_result = qc_editor.review_script(final_script)
+        
+        if qc_result.get("status") == "REJECTED" or qc_result.get("verdict") == "retry":
+            qc_feedback = qc_result.get("feedback", qc_result.get("reason", "Editorial flow is not cohesive."))
+            log.warning(f"⚠️ QC Rejected! Reason: {qc_feedback}")
+        else:
+            log.info("✅ QC Approved master script!")
+            break
+            
     return final_script, fact_sheet
 
