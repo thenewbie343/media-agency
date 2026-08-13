@@ -2086,31 +2086,32 @@ def stage_9_publish(video_path, script, cfg):
     
     lang_hint = "Write title and description in HINGLISH (Roman script, no Devanagari)." if lang == "hindi" else f"Write in {lang}."
     
-    meta_text = groq(f"""YouTube metadata for a {genre} video about "{topic}".
-    
-ACTUAL VIDEO CONTENT:
-{actual_content}
+    try:
+        meta_text = groq(f"""YouTube metadata for a {genre} video about "{topic}".
+        
+    ACTUAL VIDEO CONTENT:
+    {actual_content}
 
-Total scenes: {num_scenes}
-Duration: ~{total_dur:.0f} seconds
+    Total scenes: {num_scenes}
+    Duration: ~{total_dur:.0f} seconds
 
-{lang_hint}
+    {lang_hint}
 
-CRITICAL RULES:
-- Title MUST honestly reflect the content. NO clickbait mismatch.
-- If content is a biography → title as "The Untold Story of..." or "Inspiring Journey of..."
-- If content exposes facts → title as "X Shocking Facts About..." and X must match actual scene count
-- If content is a list → title must include the actual number of items
-- NEVER promise "10 truths" if the video only has 6 facts
-- NEVER use generic titles like "Poori Sacchai" or "Reality Exposed" unless the content actually exposes a scandal
-- Description: 2 paragraphs summarizing actual content, not generic filler
+    CRITICAL RULES:
+    - Title MUST honestly reflect the content. NO clickbait mismatch.
+    - If content is a biography → title as "The Untold Story of..." or "Inspiring Journey of..."
+    - If content exposes facts → title as "X Shocking Facts About..." and X must match actual scene count
+    - If content is a list → title must include the actual number of items
+    - NEVER promise "10 truths" if the video only has 6 facts
+    - NEVER use generic titles like "Poori Sacchai" or "Reality Exposed" unless the content actually exposes a scandal
+    - Description: 2 paragraphs summarizing actual content, not generic filler
 
-Return ONLY JSON:
-{{"title":"honest viral title under 60 chars",
-  "description":"2 engaging paragraphs with actual content summary",
-  "tags":["{topic}","{niche or 'viral'}","facts","hindi"],
-  "hashtags":"#{topic.replace(' ','')} #{niche or 'viral'} #hindi"
-}}""", max_tokens=800)
+    Return ONLY JSON:
+    {{"title":"honest viral title under 60 chars",
+      "description":"2 engaging paragraphs with actual content summary",
+      "tags":["{topic}","{niche or 'viral'}","facts","hindi"],
+      "hashtags":"#{topic.replace(' ','')} #{niche or 'viral'} #hindi"
+    }}""", max_tokens=800)
         
         raw_json_str = extract_json_object(meta_text)
         clean_json = re.sub(r'[\x00-\x1F\x7F]', ' ', raw_json_str)
