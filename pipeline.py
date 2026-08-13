@@ -2012,37 +2012,11 @@ def stage_8_qc(video_path, script, cfg):
     log.info("Stage 8: QC...")
     tg("🔍 QC check...")
     try:
-        is_v2 = isinstance(script, dict) and "story_beats" in script
-        if is_v2:
-            num_scenes = 0
-            total = 0.0
-            hook = ""
-            for beat in script.get("story_beats", []):
-                for block in beat.get("narration_blocks", []):
-                    if not hook:
-                        hook = block.get("voiceover", "")
-                    for shot in block.get("shots", []):
-                        num_scenes += 1
-                        total += float(shot.get("actual_duration", shot.get("duration_seconds", 4.0)))
-        else:
-            scenes = extract_scenes_list(script)
-            num_scenes = len(scenes)
-            total = sum(float(s.get("actual_duration", 4.0)) for s in scenes) if scenes else 0.0
-            hook = scenes[0].get("voiceover", "") if scenes else ""
-            
-        avg = total / max(num_scenes, 1)
-        
-        text = gemini(f"""Rate this {cfg['genre']} YouTube video in {cfg['lang']} about "{cfg['topic']}":
-Hook: "{hook}"
-Shots: {num_scenes}, Duration: {total:.0f}s, Avg shot: {avg:.1f}s
-Niche: {cfg.get('niche','general')}
-Return ONLY JSON:
-{{"score":8,"hook_score":9,"pacing_score":8,"verdict":"approved","reason":"brief","improvement":"one fix"}}
-verdict: "approved"(>=7),"drafts"(5-6),"retry"(<5)""")
-        text = text.strip().replace("```json","").replace("```","").strip()
-        r = json.loads(text)
-        log.info(f"Stage 8: {r['score']}/10 — {r['verdict']}")
-        return r
+        from agents.video_qc import VideoQCAgent
+        agent = VideoQCAgent()
+        report = agent.review_video(video_path, script, cfg)
+        log.info(f"Stage 8: {report['score']}/10 — {report['verdict']}")
+        return report
     except Exception as e:
         log.warning(f"QC failed: {e}")
         return {"score":7,"verdict":"approved","reason":"QC unavailable"}
@@ -2590,8 +2564,65 @@ def run_pipeline_v52():
             log.info("🎯 Routing to new AI Studio Documentary Engine (Phase 2 Integration)...")
             from agents.engine import run_documentary_pipeline
             script, research = run_documentary_pipeline(cfg)
+            
+            # V3 VISUAL INTELLIGENCE: Manifest Reviewer
+            log.info("🔍 V3: Running Manifest Review before asset generation...")
+            from agents.manifest_reviewer import ManifestReviewerAgent
+            reviewer = ManifestReviewerAgent()
+            review_result = reviewer.review_manifest(script)
+            
+            if review_result.get("status") == "FAILED":
+                log.error("MANIFEST REVIEW FAILED. Aborting generation.")
+                raise RuntimeError(f"Manifest failed validation: {review_result.get('errors')}")
+                
             _save(script, "script_ai_studio.json")
-            tg(f"✍️ {len(script)} scenes generated via AI Studio")
+            tg(f"✍️ {len(script)} scenes generated via AI Studio. AI Video: {review_result['metrics']['ai_video_percentage']:.1f}%")
+            
+            # 24. TEST BEFORE FULL RENDER
+            test_mode = os.environ.get("TEST_MODE", "").lower()
+            if test_mode in ("true", "1", "yes", "grammar"):
+                log.info("🧪 TEST_MODE enabled. Truncating script.")
+                log.info("🧪 TEST_MODE enabled. Enforcing specific mixed-asset coverage (30-45s).")
+                
+                import shutil
+                if not shutil.which("ffmpeg"):
+                    raise RuntimeError("FFmpeg not found. Install FFmpeg or run inside the GitHub Actions environment.")
+                    
+                if isinstance(script, dict) and "story_beats" in script:
+                    truncated_beats = []
+                    shot_count = 0
+                    
+                    # Force variety in test mode by mutating the first few shots if necessary
+                    forced_roles = ["ESTABLISHING", "EVIDENCE", "EXPLANATION", "REVEAL"]
+                    forced_types = ["stock_video", "real_photo", "motion_graphics", "ai_video"]
+                    
+                    for beat in script.get("story_beats", []):
+                        if shot_count >= 15:
+                            break
+                        new_blocks = []
+                        for block in beat.get("narration_blocks", []):
+                            if shot_count >= 8:
+                                break
+                            
+                            # Inject forced diversity for QC testing
+                            for i, shot in enumerate(block.get("shots", [])):
+                                if shot_count < 4 and test_mode == "grammar":
+                                    shot["shot_role"] = forced_roles[shot_count]
+                                    shot["visual_type"] = forced_types[shot_count]
+                                    if shot["visual_type"] == "real_photo":
+                                        shot["asset_provenance"] = "ARCHIVAL_FOOTAGE"
+                                shot_count += 1
+                                
+                            new_blocks.append(block)
+                        
+                        if new_blocks:
+                            beat["narration_blocks"] = new_blocks
+                            truncated_beats.append(beat)
+                    
+                    script["story_beats"] = truncated_beats
+                    _save(script, "test_manifest.json")
+                    log.info(f"Truncated to {shot_count} shots with forced grammar for regression testing.")
+
         else:
             research = stage_1_research(cfg)
             _save(research, "research.json")
@@ -2615,130 +2646,214 @@ def run_pipeline_v52():
         script = stage_3_voice(script, cfg)
         music_path = stage_4_music(cfg)
 
-        # Route ONLY ai_video (25%) scenes to Colab AnimateDiff
-        wan_scenes = []
-        if os.path.exists(os.path.expanduser("~/.config/colab-cli/token.json")):
+        # V3 Automated Repair Loop
+        max_repairs = 2
+        for repair_attempt in range(max_repairs + 1):
+            if repair_attempt > 0:
+                log.info(f'🔧 REPAIR LOOP: Attempt {repair_attempt} for worst shots.')
+                # V3.2 Diagnostic Repair
+                worst_shots_data = qc.get('worst_5_shots', [])
+                repair_map = {}
+                if isinstance(worst_shots_data, list) and len(worst_shots_data) > 0 and isinstance(worst_shots_data[0], dict):
+                    repair_map = {ws.get('shot_id'): ws for ws in worst_shots_data if 'shot_id' in ws}
+                else:
+                    # Legacy fallback
+                    repair_map = {ws.split(':')[0]: {} for ws in worst_shots_data if isinstance(ws, str)}
+
+                if isinstance(script, dict) and 'story_beats' in script:
+                    for beat in script.get('story_beats', []):
+                        for block in beat.get('narration_blocks', []):
+                            for shot in block.get('shots', []):
+                                s_id = shot.get('shot_id')
+                                if s_id in repair_map:
+                                    ws = repair_map[s_id]
+                                    s_rep = ws.get('suggested_repair', {})
+                                    
+                                    if s_rep.get('regenerate_prompt'):
+                                        shot['ai_prompt'] = f"{shot.get('ai_prompt')} [REPAIR: Avoid {', '.join(ws.get('failures', []))}]"
+                                    elif s_rep.get('switch_medium'):
+                                        new_med = s_rep.get('switch_medium')
+                                        shot['visual_type'] = new_med
+                                        if new_med == "stock_video": shot["asset_provenance"] = "STOCK"
+                                        elif new_med == "motion_graphics": shot["asset_provenance"] = "DATA_VISUALIZATION"
+                                        elif new_med == "real_photo": shot["asset_provenance"] = "ARCHIVAL_FOOTAGE"
+                                    else:
+                                        shot['visual_type'] = 'stock_video'
+                                        shot['asset_provenance'] = 'STOCK'
+                                        
+                                    if 'asset' in shot:
+                                        shot['asset'].pop('path', None)
+                                        shot['asset'].pop('status', None)
+                                        shot['asset'].pop('source', None)
+            # Route ONLY ai_video (25%) scenes to Colab AnimateDiff
+            wan_scenes = []
+            if os.path.exists(os.path.expanduser("~/.config/colab-cli/token.json")):
+                is_v2 = isinstance(script, dict) and "story_beats" in script
+                flat_shots = []
+                if is_v2:
+                    for beat in script.get("story_beats", []):
+                        for block in beat.get("narration_blocks", []):
+                            for shot in block.get("shots", []):
+                                flat_shots.append({
+                                    "scene": shot.get("shot_id"),
+                                    "visual_type": shot.get("visual_type"),
+                                    "ai_prompt": shot.get("ai_prompt"),
+                                    "duration_hint": shot.get("duration_seconds") or 4.0,
+                                })
+                else:
+                    scenes = extract_scenes_list(script)
+                    for i, scene in enumerate(scenes):
+                        flat_shots.append({
+                            "scene": i,
+                            "visual_type": scene.get("visual_type"),
+                            "ai_prompt": scene.get("ai_prompt"),
+                            "duration_hint": scene.get("duration_hint", 4.0),
+                        })
+                wan_scenes = [s for s in flat_shots
+                              if s.get("visual_type") == "ai_video"
+                              and not skip_ai(s.get("ai_prompt",""))]
+                log.info(f"Routing {len(wan_scenes)} ai_video shots to Wan2.1 (Colab GPU generator)")
+
+            wan_clips = {}
+            if wan_scenes:
+                wan_clips = stage_wan21_colab(wan_scenes, cfg["topic"])
+
             is_v2 = isinstance(script, dict) and "story_beats" in script
-            flat_shots = []
             if is_v2:
                 for beat in script.get("story_beats", []):
                     for block in beat.get("narration_blocks", []):
                         for shot in block.get("shots", []):
-                            flat_shots.append({
-                                "scene": shot.get("shot_id"),
-                                "visual_type": shot.get("visual_type"),
-                                "ai_prompt": shot.get("ai_prompt"),
-                                "duration_hint": shot.get("duration_seconds") or 4.0,
-                            })
+                            s_id = shot.get("shot_id")
+                            if s_id in wan_clips:
+                                shot.setdefault("asset", {})["path"] = wan_clips[s_id]
+                                shot["asset"]["source"] = "wan2.1"
+                                shot["asset"]["status"] = "success"
+
+                                v_dur = shot.get("duration_seconds")
+                                if not v_dur:
+                                    ratio = shot.get("duration_ratio", 1.0)
+                                    v_dur = float(block.get("actual_voice_duration") or block.get("duration_hint", 4.0)) * ratio
+
+                                source_dur = 5.0 # Wan2.1 produces 5s clips
+                                if v_dur > source_dur * 1.5:
+                                    diff = v_dur / source_dur
+                                    shot["asset"]["coverage_strategy"] = "slow_mo" if diff <= 2.0 else "coverage_composition"
+                                    log.warning(f"V3 LOOP PREVENTION: Shot {s_id} assigned {v_dur}s but AI clip is {source_dur}s. Strategy: {shot['asset']['coverage_strategy']}")
+                                    shot["actual_duration"] = v_dur
+                                    continue
+                                    
+                                shot["actual_duration"] = v_dur
             else:
                 scenes = extract_scenes_list(script)
-                for i, scene in enumerate(scenes):
-                    flat_shots.append({
-                        "scene": i,
-                        "visual_type": scene.get("visual_type"),
-                        "ai_prompt": scene.get("ai_prompt"),
-                        "duration_hint": scene.get("duration_hint", 4.0),
-                    })
-            wan_scenes = [s for s in flat_shots
-                          if s.get("visual_type") == "ai_video"
-                          and not skip_ai(s.get("ai_prompt",""))]
-            log.info(f"Routing {len(wan_scenes)} ai_video shots to Wan2.1 (Colab GPU generator)")
+                for scene in scenes:
+                    if scene.get("scene") in wan_clips:
+                        scene["video_file"] = wan_clips[scene["scene"]]
+                        scene["visual_source"] = "wan2.1"
+                        if scene.get("audio_file"):
+                            scene["actual_duration"] = get_dur(scene["audio_file"])
+                        else:
+                            scene["actual_duration"] = float(scene.get("duration_hint",4))
 
-        wan_clips = {}
-        if wan_scenes:
-            wan_clips = stage_wan21_colab(wan_scenes, cfg["topic"])
+            # Kling removed per user request
 
-        is_v2 = isinstance(script, dict) and "story_beats" in script
-        if is_v2:
-            for beat in script.get("story_beats", []):
-                for block in beat.get("narration_blocks", []):
-                    for shot in block.get("shots", []):
-                        s_id = shot.get("shot_id")
-                        if s_id in wan_clips:
-                            shot.setdefault("asset", {})["path"] = wan_clips[s_id]
-                            shot["asset"]["source"] = "wan2.1"
-                            shot["asset"]["status"] = "success"
-                            # Resolve duration for the shot
-                            v_dur = shot.get("duration_seconds")
-                            if not v_dur:
-                                # ratio mode
-                                ratio = shot.get("duration_ratio", 1.0)
-                                v_dur = float(block.get("actual_voice_duration") or block.get("duration_hint", 4.0)) * ratio
-                            shot["actual_duration"] = v_dur
-        else:
-            scenes = extract_scenes_list(script)
-            for scene in scenes:
-                if scene.get("scene") in wan_clips:
-                    scene["video_file"] = wan_clips[scene["scene"]]
-                    scene["visual_source"] = "wan2.1"
-                    if scene.get("audio_file"):
-                        scene["actual_duration"] = get_dur(scene["audio_file"])
-                    else:
-                        scene["actual_duration"] = float(scene.get("duration_hint",4))
+            # We run stage_6_visuals for all genres to fetch DDG/Pexels/Pixabay assets
+            script = stage_6_visuals(script, cfg)
+            _save(script, "script_final.json")
 
-        # Kling removed per user request
-        
-        # We run stage_6_visuals for all genres to fetch DDG/Pexels/Pixabay assets
-        script = stage_6_visuals(script, cfg)
-        _save(script, "script_final.json")
+            if genre == "documentary":
+                log.info("🎯 Routing visual composition to Remotion (Phase 3 Integration)...")
+                script_path = str(WORKSPACE / "script_final.json")
+                final_video = str(WORKSPACE / "final_documentary.mp4")
 
-        if genre == "documentary":
-            log.info("🎯 Routing visual composition to Remotion (Phase 3 Integration)...")
-            script_path = str(WORKSPACE / "script_final.json")
-            final_video = str(WORKSPACE / "final_documentary.mp4")
-            
-            # Shell out to npx remotion render
-            public_dir = WORKSPACE.parent / "remotion" / "public" / "assets"
-            public_dir.mkdir(parents=True, exist_ok=True)
-            
-            import shutil
-            import re
-            
-            try:
-                from rembg import remove
-                from PIL import Image, ImageFilter
-            except ImportError:
-                remove = None
+                # Shell out to npx remotion render
+                public_dir = WORKSPACE.parent / "remotion" / "public" / "assets"
+                public_dir.mkdir(parents=True, exist_ok=True)
 
-            def clean_caption_text(text):
-                if not text: return ""
-                # Remove anything in brackets or parentheses
-                t = re.sub(r'\[.*?\]', '', text)
-                t = re.sub(r'\(.*?\)', '', text)
-                # Remove speaker tags like "Narrator:" or "Voiceover:"
-                t = re.sub(r'^[A-Za-z\s]+:', '', t)
-                # Clean up multiple spaces and strip
-                t = re.sub(r'\s+', ' ', t).strip()
-                return t
-                
-            # Clean Narration Captions
-            if isinstance(script, dict) and "story_beats" in script:
-                for beat in script.get("story_beats", []):
-                    for block in beat.get("narration_blocks", []):
-                        raw_cap = block.get("caption", block.get("voiceover", ""))
-                        block["caption"] = clean_caption_text(raw_cap)
-                        
-                        # Copy audio file to public_dir for Remotion
-                        aud = block.get("audio_file")
-                        if aud and os.path.exists(aud):
-                            dest_aud = public_dir / os.path.basename(aud)
-                            shutil.copy2(aud, dest_aud)
-                            block["audio_file"] = os.path.basename(aud)
+                import shutil
+                import re
 
-                        for shot in block.get("shots", []):
-                            vid = shot.get("asset", {}).get("path")
+                try:
+                    from rembg import remove
+                    from PIL import Image, ImageFilter
+                except ImportError:
+                    remove = None
+
+                def clean_caption_text(text):
+                    if not text: return ""
+                    # Remove anything in brackets or parentheses
+                    t = re.sub(r'\[.*?\]', '', text)
+                    t = re.sub(r'\(.*?\)', '', text)
+                    # Remove speaker tags like "Narrator:" or "Voiceover:"
+                    t = re.sub(r'^[A-Za-z\s]+:', '', t)
+                    # Clean up multiple spaces and strip
+                    t = re.sub(r'\s+', ' ', t).strip()
+                    return t
+
+                # Clean Narration Captions
+                if isinstance(script, dict) and "story_beats" in script:
+                    for beat in script.get("story_beats", []):
+                        for block in beat.get("narration_blocks", []):
+                            raw_cap = block.get("caption", block.get("voiceover", ""))
+                            block["caption"] = clean_caption_text(raw_cap)
+
+                            # Copy audio file to public_dir for Remotion
+                            aud = block.get("audio_file")
+                            if aud and os.path.exists(aud):
+                                dest_aud = public_dir / os.path.basename(aud)
+                                shutil.copy2(aud, dest_aud)
+                                block["audio_file"] = os.path.basename(aud)
+
+                            for shot in block.get("shots", []):
+                                vid = shot.get("asset", {}).get("path")
+                                if vid and os.path.exists(vid):
+                                    dest = public_dir / os.path.basename(vid)
+                                    shutil.copy2(vid, dest)
+                                    shot["asset"]["path"] = os.path.basename(vid)
+
+                                    # 2.5D Parallax Foreground Extraction
+                                    if remove and shot.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
+                                        try:
+                                            shot["asset"]["bg_file"] = os.path.basename(vid)
+                                            fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
+                                            fg_path = public_dir / fg_name
+
+                                            if not os.path.exists(fg_path):
+                                                log.info(f"Generating 2.5D Foreground for {vid}...")
+                                                input_img = Image.open(vid)
+                                                output_img = remove(input_img).convert("RGBA")
+                                                r, g, b, alpha = output_img.split()
+                                                blurred_alpha = alpha.filter(ImageFilter.GaussianBlur(radius=1))
+                                                output_img = Image.merge("RGBA", (r, g, b, blurred_alpha))
+                                                output_img.save(fg_path)
+
+                                            shot["asset"]["fg_file"] = fg_name
+                                        except Exception as e:
+                                            log.error(f"Failed to generate foreground for {vid}: {e}")
+                else:
+                    scenes = extract_scenes_list(script)
+                    for s in scenes:
+                        if isinstance(s, dict):
+                            raw_cap = s.get("caption", s.get("voiceover", ""))
+                            s["caption"] = clean_caption_text(raw_cap)
+
+                            aud = s.get("audio_file")
+                            if aud and os.path.exists(aud):
+                                dest_aud = public_dir / os.path.basename(aud)
+                                shutil.copy2(aud, dest_aud)
+                                s["audio_file"] = os.path.basename(aud)
+
+                            vid = s.get("video_file") or s.get("image_file")
                             if vid and os.path.exists(vid):
                                 dest = public_dir / os.path.basename(vid)
                                 shutil.copy2(vid, dest)
-                                shot["asset"]["path"] = os.path.basename(vid)
-                                
-                                # 2.5D Parallax Foreground Extraction
-                                if remove and shot.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
+                                s["video_file"] = os.path.basename(vid)
+
+                                if remove and s.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
                                     try:
-                                        shot["asset"]["bg_file"] = os.path.basename(vid)
+                                        s["bg_file"] = os.path.basename(vid)
                                         fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
                                         fg_path = public_dir / fg_name
-                                        
+
                                         if not os.path.exists(fg_path):
                                             log.info(f"Generating 2.5D Foreground for {vid}...")
                                             input_img = Image.open(vid)
@@ -2747,82 +2862,66 @@ def run_pipeline_v52():
                                             blurred_alpha = alpha.filter(ImageFilter.GaussianBlur(radius=1))
                                             output_img = Image.merge("RGBA", (r, g, b, blurred_alpha))
                                             output_img.save(fg_path)
-                                            
-                                        shot["asset"]["fg_file"] = fg_name
+
+                                        s["fg_file"] = fg_name
                                     except Exception as e:
                                         log.error(f"Failed to generate foreground for {vid}: {e}")
+
+                _save(script, "script_remotion.json")
+                script_path = str((WORKSPACE / "script_remotion.json").resolve())
+                final_video_abs = str((WORKSPACE / "final_documentary.mp4").resolve())
+
+                remotion_cmd = f"npx remotion render src/index.ts DocumentaryVideo {final_video_abs} --props={script_path} --concurrency=100% --gl=angle --crf=22"
+                log.info(f"Running Remotion: {remotion_cmd}")
+                import subprocess
+                res = subprocess.run(remotion_cmd, cwd="remotion", shell=True, capture_output=True, text=True)
+                if res.returncode != 0:
+                    log.error(f"Remotion failed: {res.stderr}")
+                    raise Exception("Remotion render failed")
+                log.info("✅ Remotion render complete!")
+
+                # Phase 4: Mix the generated Remotion visuals with Audio/BGM
+                final_video = stage_assemble_documentary(script, cfg, final_video, music_path)
             else:
-                scenes = extract_scenes_list(script)
-                for s in scenes:
-                    if isinstance(s, dict):
-                        raw_cap = s.get("caption", s.get("voiceover", ""))
-                        s["caption"] = clean_caption_text(raw_cap)
-                        
-                        aud = s.get("audio_file")
-                        if aud and os.path.exists(aud):
-                            dest_aud = public_dir / os.path.basename(aud)
-                            shutil.copy2(aud, dest_aud)
-                            s["audio_file"] = os.path.basename(aud)
-                            
-                        vid = s.get("video_file") or s.get("image_file")
-                        if vid and os.path.exists(vid):
-                            dest = public_dir / os.path.basename(vid)
-                            shutil.copy2(vid, dest)
-                            s["video_file"] = os.path.basename(vid)
-                            
-                            if remove and s.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
-                                try:
-                                    s["bg_file"] = os.path.basename(vid)
-                                    fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
-                                    fg_path = public_dir / fg_name
-                                    
-                                    if not os.path.exists(fg_path):
-                                        log.info(f"Generating 2.5D Foreground for {vid}...")
-                                        input_img = Image.open(vid)
-                                        output_img = remove(input_img).convert("RGBA")
-                                        r, g, b, alpha = output_img.split()
-                                        blurred_alpha = alpha.filter(ImageFilter.GaussianBlur(radius=1))
-                                        output_img = Image.merge("RGBA", (r, g, b, blurred_alpha))
-                                        output_img.save(fg_path)
-                                        
-                                    s["fg_file"] = fg_name
-                                except Exception as e:
-                                    log.error(f"Failed to generate foreground for {vid}: {e}")
-            
-            _save(script, "script_remotion.json")
-            script_path = str((WORKSPACE / "script_remotion.json").resolve())
-            final_video_abs = str((WORKSPACE / "final_documentary.mp4").resolve())
+                final_video = stage_7_assemble(script, cfg, music_path)
 
-            remotion_cmd = f"npx remotion render src/index.ts DocumentaryVideo {final_video_abs} --props={script_path} --concurrency=100% --gl=angle --crf=22"
-            log.info(f"Running Remotion: {remotion_cmd}")
-            import subprocess
-            res = subprocess.run(remotion_cmd, cwd="remotion", shell=True, capture_output=True, text=True)
-            if res.returncode != 0:
-                log.error(f"Remotion failed: {res.stderr}")
-                raise Exception("Remotion render failed")
-            log.info("✅ Remotion render complete!")
-            
-            # Phase 4: Mix the generated Remotion visuals with Audio/BGM
-            final_video = stage_assemble_documentary(script, cfg, final_video, music_path)
+            qc = stage_8_qc(final_video, script, cfg)
+
+            is_test_mode = os.environ.get("TEST_MODE", "").lower() in ("true", "1", "yes")
+
+            if is_test_mode:
+                import shutil
+                test_video_path = str(WORKSPACE / "test_video.mp4")
+                shutil.copy2(final_video, test_video_path)
+                _save(qc, "test_visual_report.json")
+                log.info(f"🧪 TEST_MODE: Saved {test_video_path} and test_visual_report.json")
+            else:
+                _save(qc, "qc.json")
+
+            verdict = qc.get("verdict","approved")
+            score   = qc.get("score",7)
+
+            drive_link = stage_10_drive_backup(final_video, script, research, cfg, verdict, score)
+            drive_note = f"\n📁 Drive: {drive_link}" if drive_link else ""
+
+            if verdict == "retry" or qc.get("status") == "HARD_REJECT":
+                tg(f"❌ QC {score}/10 — Rejected\n{qc.get('reason','')}{drive_note}"); return
+            if verdict == "drafts":
+                tg(f"⚠️ QC {score}/10 — Drafts\n{qc.get('reason','')}{drive_note}"); return
+            if verdict not in ('retry', 'HARD_REJECT'):
+                break
+            if repair_attempt == max_repairs:
+                log.error('Max repair attempts reached. Failing.')
+                break
+
+        if is_test_mode:
+            log.info("🧪 TEST_MODE: Halting before publish. Test successful.")
+            url = "TEST_MODE_NO_URL"
+            elapsed = int(time.time()-start)
         else:
-            final_video = stage_7_assemble(script, cfg, music_path)
+            url     = stage_9_publish(final_video, script, cfg)
+            elapsed = int(time.time()-start)
 
-        qc = stage_8_qc(final_video, script, cfg)
-        _save(qc, "qc.json")
-
-        verdict = qc.get("verdict","approved")
-        score   = qc.get("score",7)
-
-        drive_link = stage_10_drive_backup(final_video, script, research, cfg, verdict, score)
-        drive_note = f"\n📁 Drive: {drive_link}" if drive_link else ""
-
-        if verdict == "retry":
-            tg(f"❌ QC {score}/10 — Rejected\n{qc.get('reason','')}{drive_note}"); return
-        if verdict == "drafts":
-            tg(f"⚠️ QC {score}/10 — Drafts\n{qc.get('reason','')}{drive_note}"); return
-
-        url     = stage_9_publish(final_video, script, cfg)
-        elapsed = int(time.time()-start)
         
         is_v2 = isinstance(script, dict) and "story_beats" in script
         num_scenes = 0

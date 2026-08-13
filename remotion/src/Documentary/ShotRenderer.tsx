@@ -67,6 +67,21 @@ export const ShotRenderer: React.FC<{
       <CaptionSystem caption={shot.caption} highlight={shot.highlight} durationFrames={durationFrames} />
       <AudioSystem soundDesign={shot.sound_design} />
       
+      {shot.asset_provenance && (
+        <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'flex-end', padding: 40, pointerEvents: 'none' }}>
+          <div style={{
+            color: 'rgba(255, 255, 255, 0.4)',
+            fontFamily: 'serif',
+            fontSize: '22px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.15em',
+            textShadow: '0 2px 4px rgba(0,0,0,0.8)'
+          }}>
+            {shot.asset_provenance.replace(/_/g, ' ')}
+          </div>
+        </AbsoluteFill>
+      )}
+      
     </AbsoluteFill>
   );
 };
