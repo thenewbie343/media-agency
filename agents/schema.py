@@ -81,10 +81,10 @@ class Shot(BaseModel):
     transition_in: Literal["hard_cut", "fade", "dissolve"] = Field(default="hard_cut", description="Transition into this shot")
     
     text_overlay: Optional[str] = Field(None, description="Text to display on screen (e.g., location names, dates, quotes). Null if none.")
-        highlight: Optional[HighlightMetadata] = Field(None, description="Highlight instructions for the text_overlay")
+    highlight: Optional[HighlightMetadata] = Field(None, description="Highlight instructions for the text_overlay")
     sound_design: Optional[str] = Field(None, description="SFX cue (e.g., 'subtle_whoosh', 'paper_rustle', 'deep_impact', 'wind_howl')")
     lut_filter: Optional[str] = Field(None, description="CSS color grade filter (e.g., 'sepia', 'vintage_film', 'noir', 'high_contrast')")
-    overlay: Optional[str] = Field(None, description="Visual overlay effect (e.g., 'film_grain', 'vhs_glitch', 'dust_scratches', 'light_leaks')")")
+    overlay: Optional[str] = Field(None, description="Visual overlay effect (e.g., 'film_grain', 'vhs_glitch', 'dust_scratches', 'light_leaks')")
     
     cut_reason: str = Field(..., description="Why are we cutting to this shot? Must be highly specific (e.g. 'reveal_financial_consequence', 'bridge_luxury_to_collapse'). DO NOT USE generic reasons like 'introduce_information' or 'transition'.")
     visual_importance: float = Field(default=0.5, description="Scale of visual emphasis (0.0 to 1.0). High means intense motion/sound.")
