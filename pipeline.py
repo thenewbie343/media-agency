@@ -1325,11 +1325,6 @@ def fetch_duckduckgo_image(search, out):
         pass
         
     return False
-        img_r = requests.get(random.choice(urls), timeout=15)
-        with open(out, "wb") as f: f.write(img_r.content)
-        return True
-    except:
-        return False
 
 
 
