@@ -128,6 +128,11 @@ CRITICAL DIRECTIVES:
    Use `lut_filter` (e.g. 'sepia', 'vintage_film', 'noir', 'neon_cyberpunk', 'high_contrast') to color grade shots.
    Use `overlay` (e.g. 'vhs_glitch', 'film_grain', 'dust_scratches', 'light_leaks', 'scanlines') to add texture.
 
+9. STRICT CINEMATOGRAPHY & FATIGUE RULES:
+   - YOU MUST NEVER use "N/A" or "null" or empty strings for `shot_size`, `camera_angle`, `lens`, or `composition`. They are strictly required for every single shot.
+   - You MUST vary `camera_motion` across consecutive shots. Do NOT use "zoom_in" repeatedly. Alternate with "pan_right", "slow_push_in", "pan_left", "static", "dolly_out", etc.
+   - `cut_reason` MUST be highly descriptive (e.g. "Cutting to wide shot to reveal the massive scale of the mansion" instead of just "To show the mansion").
+
 You must return a valid JSON object matching this exact JSON schema:
 {schema_json}
 """

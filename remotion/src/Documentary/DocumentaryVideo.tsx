@@ -63,32 +63,47 @@ export const DocumentaryVideo: React.FC<{ manifest: ScriptManifest }> = ({ manif
     return <AbsoluteFill style={{ backgroundColor: 'black' }} />;
   }
 
-  // Flatten the shots from the hierarchy for the visual timeline
-  const allShots: ShotData[] = [];
-  manifest.story_beats.forEach(beat => {
-    beat.narration_blocks.forEach(block => {
-      block.shots.forEach(shot => {
-        allShots.push({ ...shot, caption: block.caption });
-      });
-    });
-  });
-
-  // Collect the audio timeline data
+  // Collect the audio timeline data and compute exact frame-perfect shot durations
+  const allShots: (ShotData & { exactDurationFrames: number })[] = [];
   const audioBlocks: { file: string; startFrame: number }[] = [];
+  
   let currentFrame = 0;
 
   manifest.story_beats.forEach(beat => {
     beat.narration_blocks.forEach(block => {
-      // Calculate block duration in frames
-      const blockDurationFrames = Math.ceil(block.total_block_duration * 30);
+      // Audio block duration in frames
+      const blockDurationFrames = Math.ceil((block.total_block_duration || 4) * 30);
       
-      // If there's an audio file, add it to our Audio timeline array
       if (block.audio_file) {
         audioBlocks.push({
           file: block.audio_file,
           startFrame: currentFrame,
         });
       }
+      
+      // Calculate exact durations for shots in this block so they sum perfectly to blockDurationFrames
+      let accumulatedFrames = 0;
+      
+      block.shots.forEach((shot, index) => {
+        const isLastShot = index === block.shots.length - 1;
+        
+        let shotDurationFrames;
+        if (isLastShot) {
+            // The last shot absorbs all remaining frames to guarantee perfect sync!
+            shotDurationFrames = blockDurationFrames - accumulatedFrames;
+        } else {
+            // Internal shots just round normally
+            shotDurationFrames = Math.round((shot.actual_duration || 4) * 30);
+        }
+        
+        accumulatedFrames += shotDurationFrames;
+        
+        allShots.push({ 
+           ...shot, 
+           caption: block.caption,
+           exactDurationFrames: shotDurationFrames
+        });
+      });
       
       currentFrame += blockDurationFrames;
     });
@@ -106,8 +121,8 @@ export const DocumentaryVideo: React.FC<{ manifest: ScriptManifest }> = ({ manif
           const overlapFrames = hasTransition ? 15 : 0;
           
           // To preserve perfect audio sync, we must ADD the overlap back into the duration
-          // so that the net timeline advancement exactly equals actual_duration.
-          const durationFrames = Math.ceil((shot.actual_duration || 4) * 30) + overlapFrames;
+          // so that the net timeline advancement exactly equals the frame-perfect allocation.
+          const durationFrames = shot.exactDurationFrames + overlapFrames;
 
           return (
             <Fragment key={shot.shot_id || index}>
