@@ -2991,6 +2991,24 @@ def run_pipeline_v52():
 
 
 
+
+        # Calculate stats
+        is_v2 = isinstance(script, dict) and "story_beats" in script
+        num_scenes = 0
+        total_dur = 0.0
+        if is_v2:
+            for beat in script.get("story_beats", []):
+                for block in beat.get("narration_blocks", []):
+                    for shot in block.get("shots", []):
+                        num_scenes += 1
+                        total_dur += float(shot.get("actual_duration", shot.get("duration_seconds", 4.0)))
+        else:
+            scenes = extract_scenes_list(script)
+            num_scenes = len(scenes)
+            total_dur = sum(s.get('actual_duration', 4.0) for s in scenes) if scenes else 0.0
+            
+        wan_ct = len(wan_scenes) if 'wan_scenes' in locals() else 0
+        
         if is_test_mode:
             log.info("🧪 TEST_MODE: Halting before publish. Test successful.")
             url = "TEST_MODE_NO_URL"
@@ -3026,8 +3044,6 @@ def run_pipeline_v52():
             url     = stage_9_publish(final_video, script, cfg)
             elapsed = int(time.time()-start)
 
-
-
         tg(
             f"✅ DONE!\n\n"
             f"📺 {url}\n"
@@ -3035,7 +3051,7 @@ def run_pipeline_v52():
             f"🏆 QC: {score}/10\n"
             f"🎬 {num_scenes} scenes | {total_dur:.0f}s\n"
             f"✂️ Avg {total_dur/max(num_scenes,1):.1f}s/cut\n"
-            f"🎥 Wan2.1: {wan_ct} clips | Kling: {kling_ct} clips\n"
+            f"🎥 Wan2.1: {wan_ct} clips\n"
             f"🌍 {cfg['lang']} | {cfg['genre']} | DUAL-SCRIPT\n"
             f"⚡ {elapsed}s total{drive_note}"
         )
