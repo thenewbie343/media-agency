@@ -21,7 +21,14 @@ export const ShotRenderer: React.FC<{
   
   const isMapScene = isMotionGraphics && (searchLower.includes('map') || searchLower.includes('location') || searchLower.includes('geograph'));
   const isColdTheme = searchLower.includes('thriller') || searchLower.includes('history') || searchLower.includes('dark');
-  const cssFilter = isColdTheme ? 'sepia(0.2) saturate(1.1) contrast(1.15) brightness(0.9) hue-rotate(-15deg)' : 'sepia(0.25) saturate(1.2) contrast(1.15) brightness(0.9) hue-rotate(5deg)';
+  let cssFilter = isColdTheme ? 'sepia(0.2) saturate(1.1) contrast(1.15) brightness(0.9) hue-rotate(-15deg)' : 'sepia(0.25) saturate(1.2) contrast(1.15) brightness(0.9) hue-rotate(5deg)';
+  
+  if (shot.lut_filter === 'sepia') cssFilter = 'sepia(1) saturate(0.8) contrast(1.2)';
+  else if (shot.lut_filter === 'vintage_film') cssFilter = 'sepia(0.3) saturate(0.9) contrast(1.3) brightness(0.8)';
+  else if (shot.lut_filter === 'noir') cssFilter = 'grayscale(1) contrast(1.5) brightness(0.8)';
+  else if (shot.lut_filter === 'neon_cyberpunk') cssFilter = 'saturate(2) hue-rotate(180deg) contrast(1.2)';
+  else if (shot.lut_filter === 'high_contrast') cssFilter = 'contrast(1.5) saturate(1.2)';
+
 
   const videoFile = shot.asset?.path;
   const bgFile = shot.asset?.bg_file;
@@ -63,7 +70,7 @@ export const ShotRenderer: React.FC<{
         </AbsoluteFill>
       </CameraSystem>
 
-      <VFXLayer isColdTheme={isColdTheme} isGlitch={shot.overlay === 'vhs_glitch'} />
+      <VFXLayer isColdTheme={isColdTheme} overlay={shot.overlay} />
       <CaptionSystem caption={shot.caption} highlight={shot.highlight} durationFrames={durationFrames} />
       <AudioSystem soundDesign={shot.sound_design} />
       

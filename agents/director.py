@@ -96,6 +96,7 @@ CRITICAL DIRECTIVES:
 
 1. VISUAL DIVERSITY & ASSET PROVENANCE RULES (CRITICAL):
    Do NOT default to `ai_video` for everything. You MUST select the most authentic and high-quality `asset_provenance` and `visual_type`.
+   If `visual_job` is `SHOW_PERSON` or `SHOW_EVIDENCE`, you MUST use `real_photo` and provide a highly specific `visual_query` (e.g. "Vijay Mallya portrait 2012").
 
 2. BAN CLICHÉ DOCUMENTARY VISUALS:
    Do NOT use generic symbolic visuals (e.g. champagne pouring, generic handcuffs, scales of justice, generic gavel, generic businessman, money raining, generic rising graph).
@@ -110,14 +111,22 @@ CRITICAL DIRECTIVES:
    `narrative_intent` MUST ONLY be one of: HOOK, EVIDENCE, MYSTERY, EXPLANATION, CONFLICT, RESOLUTION, LOCATION_ESTABLISH.
    Separate narrative intent from shot role. Keep narrative intent simple. Use `shot_role` for detailed cinematic grammar (e.g. Intent: CONFLICT, Role: EVIDENCE).
 
-5. LOOPS & SHOT-SPLITTING LIMITS:
-   No single shot may cover more than 4.5 seconds. If a block is > 4.5s, define MULTIPLE shots (using `duration_ratio`) so visuals alternate.
+5. HARD DURATION LIMITS (CRITICAL):
+   NO SHOT MAY EXCEED 4.5 SECONDS. NEVER.
+   If a NarrationBlock's `duration_hint` is > 4.5 seconds, you MUST split it into multiple distinct shots by adjusting `duration_ratio`.
+   Example: If duration is 9s, create Shot A (ratio 0.5) and Shot B (ratio 0.5).
 
 6. DETAILED AI PROMPTS & CONTINUITY:
-   `ai_prompt` MUST be formatted exactly as: [SUBJECT], [ERA], [LOCATION], [ENVIRONMENT], [LIGHTING], [CAMERA ANGLE].
+   `ai_prompt` MUST be highly descriptive (MINIMUM 20 WORDS). Detail the lighting, atmosphere, lens feeling, colors, and specific subject action.
+   BAD: "Vijay Mallya on a yacht"
+   GOOD: "Cinematic medium shot of an Indian billionaire in a tailored suit relaxing on a luxury white yacht, 2005 era, Arabian Sea near Goa, golden hour sunset lighting, warm colors, anamorphic lens flare"
 
 7. STOCK FOOTAGE & EVIDENCE:
    Provide a clean `visual_query` for stock footage. If citing evidence, populate `source_name` and `source_date`.
+   
+8. AESTHETICS (LUTS & OVERLAYS):
+   Use `lut_filter` (e.g. 'sepia', 'vintage_film', 'noir', 'neon_cyberpunk', 'high_contrast') to color grade shots.
+   Use `overlay` (e.g. 'vhs_glitch', 'film_grain', 'dust_scratches', 'light_leaks', 'scanlines') to add texture.
 
 You must return a valid JSON object matching this exact JSON schema:
 {schema_json}

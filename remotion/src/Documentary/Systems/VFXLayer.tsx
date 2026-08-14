@@ -3,11 +3,19 @@ import { useCurrentFrame, AbsoluteFill, random } from 'remotion';
 
 export const VFXLayer: React.FC<{
   isColdTheme?: boolean;
-  isGlitch?: boolean;
-}> = ({ isColdTheme = false, isGlitch = false }) => {
+  overlay?: string;
+}> = ({ isColdTheme = false, overlay }) => {
   const frame = useCurrentFrame();
 
+  const isGlitch = overlay === 'vhs_glitch';
+  const isGrain = overlay === 'film_grain' || overlay === 'dust_scratches';
+  const isLeaks = overlay === 'light_leaks';
+
   const randomGlitchShift = isGlitch && frame % 10 === 0 ? random(frame) * 10 - 5 : 0;
+  
+  // Dynamic light leaks based on frame
+  const leakX = Math.sin(frame / 30) * 100;
+  const leakOpacity = 0.3 + Math.abs(Math.sin(frame / 15)) * 0.2;
 
   return (
     <AbsoluteFill style={{ pointerEvents: 'none', zIndex: 20 }}>
@@ -22,12 +30,23 @@ export const VFXLayer: React.FC<{
           }}
         />
       )}
+      
+      {/* Light Leaks */}
+      {isLeaks && (
+        <AbsoluteFill
+          style={{
+            background: `radial-gradient(ellipse at ${50 + leakX}% 10%, rgba(255, 100, 50, ${leakOpacity}), transparent 60%)`,
+            pointerEvents: 'none',
+            mixBlendMode: 'screen'
+          }}
+        />
+      )}
 
-      {/* Film Grain Overlay - 3% Master Filter */}
-      <AbsoluteFill style={{ pointerEvents: 'none', opacity: 0.03, mixBlendMode: 'overlay' }}>
+      {/* Film Grain Overlay - Master Filter */}
+      <AbsoluteFill style={{ pointerEvents: 'none', opacity: isGrain ? 0.08 : 0.03, mixBlendMode: 'overlay' }}>
         <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
           <filter id="noiseFilter">
-            <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch" />
+            <feTurbulence type="fractalNoise" baseFrequency={isGrain ? "0.9" : "0.8"} numOctaves="3" stitchTiles="stitch" />
           </filter>
           <rect width="100%" height="100%" filter="url(#noiseFilter)" />
         </svg>

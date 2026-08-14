@@ -1265,30 +1265,49 @@ def fetch_pollinations(prompt, out, seed=None):
     return False
 
 def fetch_duckduckgo_image(search, out):
-    # Try DuckDuckGo first (rich web images)
+    import requests, random
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
+    # 1. Try DDG first
     try:
         from duckduckgo_search import DDGS
-        import requests, random
-        clean_search = " ".join([w for w in search.split() if len(w)>2][:3])
+        clean_search = " ".join([w for w in search.split() if len(w)>2][:4])
         with DDGS() as ddgs:
             results = list(ddgs.images(clean_search, max_results=10))
             if results:
                 urls = [r.get("image") for r in results if r.get("image")]
                 if urls:
-                    headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                    }
                     img_r = requests.get(random.choice(urls), headers=headers, timeout=15)
                     if img_r.status_code == 200:
                         with open(out, "wb") as f:
                             f.write(img_r.content)
+                        log.info(f"DDG fetched: {clean_search}")
                         return True
     except Exception as e:
-        log.warning(f"DuckDuckGo image search failed: {e}. Falling back to Wikimedia Commons.")
+        log.warning(f"DDG failed for '{search}': {e}. Falling back to Wikimedia.")
 
-    # Fallback to Wikimedia Commons API
+    # 2. Try the smart Wikipedia article-first fetcher
     try:
-        import requests, random
+        wiki_url = fetch_wikimedia_image(search)
+        if not wiki_url:
+            # Fallback to simple query terms for wiki
+            simple = " ".join(search.split()[:2])
+            wiki_url = fetch_wikimedia_image(simple)
+            
+        if wiki_url:
+            img_r = requests.get(wiki_url, headers=headers, timeout=15)
+            if img_r.status_code == 200:
+                with open(out, "wb") as f:
+                    f.write(img_r.content)
+                log.info(f"Wikimedia fetched: {wiki_url}")
+                return True
+    except Exception as e:
+        log.warning(f"Wikimedia fallback failed: {e}")
+
+    # 3. Last resort Wikimedia Commons raw search
+    try:
         url = "https://commons.wikimedia.org/w/api.php"
         params = {
             "action": "query", "generator": "search", "gsrsearch": f"{search} filetype:bitmap",
@@ -1297,7 +1316,15 @@ def fetch_duckduckgo_image(search, out):
         r = requests.get(url, params=params, timeout=15)
         pages = r.json().get("query", {}).get("pages", {})
         urls = [p["imageinfo"][0]["url"] for p in pages.values() if "imageinfo" in p]
-        if not urls: return False
+        if urls:
+            img_r = requests.get(random.choice(urls), headers=headers, timeout=15)
+            with open(out, "wb") as f:
+                f.write(img_r.content)
+            return True
+    except:
+        pass
+        
+    return False
         img_r = requests.get(random.choice(urls), timeout=15)
         with open(out, "wb") as f: f.write(img_r.content)
         return True
@@ -1305,6 +1332,35 @@ def fetch_duckduckgo_image(search, out):
         return False
 
 
+
+
+def fetch_wikimedia_image(query):
+    import requests
+    import urllib.parse
+    
+    url = f"https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&piprop=original&titles={urllib.parse.quote(query)}"
+    try:
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        pages = data.get("query", {}).get("pages", {})
+        for page_id, page_info in pages.items():
+            if page_id != "-1" and "original" in page_info:
+                return page_info["original"]["source"]
+    except Exception as e:
+        log.warning(f"Wikimedia API failed: {e}")
+        
+    # Fallback to search if direct title match fails
+    search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(query)}&utf8=&format=json"
+    try:
+        r = requests.get(search_url, timeout=10)
+        search_data = r.json()
+        results = search_data.get("query", {}).get("search", [])
+        if results:
+            first_title = results[0]["title"]
+            return fetch_wikimedia_image(first_title)
+    except:
+        pass
+    return None
 
 def fetch_pexels_video(search, out, dur):
     try:
@@ -2580,11 +2636,19 @@ def audit_assets(script_path):
         return True, []
         
     for file_path in required_files:
-        # Resolve paths exactly as Remotion does (relative to remotion/public/assets or absolute)
-        # Assuming most are just basenames in remotion/public/assets
         basename = os.path.basename(file_path)
         if file_path.startswith("sfx/"):
             check_path = f"remotion/public/assets/{file_path}"
+            if not os.path.exists(check_path):
+                # Dynamically strip SFX from the JSON in memory to prevent crash
+                log.warning(f"SFX file {file_path} missing. Safely stripping from render manifest.")
+                if is_v2:
+                    for beat in manifest.get("story_beats", []):
+                        for block in beat.get("narration_blocks", []):
+                            for shot in block.get("shots", []):
+                                if shot.get("sound_design") and file_path.endswith(f"{shot['sound_design']}.mp3"):
+                                    shot["sound_design"] = None
+                continue # Do not fail the audit for optional SFX
         elif file_path.startswith("/"):
             check_path = file_path # Absolute path
         else:
@@ -2592,6 +2656,9 @@ def audit_assets(script_path):
             
         if not os.path.exists(check_path):
             missing_files.append(check_path)
+            
+    with open(script_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
             
     with open("render_asset_manifest.json", "w", encoding="utf-8") as f:
         json.dump({"required": required_files, "missing": missing_files}, f, indent=2)
