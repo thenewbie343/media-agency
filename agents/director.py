@@ -85,24 +85,40 @@ Fix the snippet to address the failures and return the corrected JSON."""
 
     def enforce_strict_rules(self, raw_manifest):
         """Programmatically enforce rules that the LLM might miss."""
-        import copy, math
+        import copy, math, random
         
         manifest = copy.deepcopy(raw_manifest)
+        
+        sizes = ["wide_shot", "medium_shot", "close_up", "extreme_close_up", "establishing_shot"]
+        angles = ["eye_level", "low_angle", "high_angle", "dutch_angle", "overhead_shot"]
+        lenses = ["standard_lens", "wide_angle_lens", "telephoto_lens", "macro_lens"]
+        comps = ["rule_of_thirds", "center_framed", "leading_lines", "symmetry"]
+        motions = ["pan_left", "pan_right", "zoom_in", "zoom_out", "dolly_in", "dolly_out", "static", "crane_up", "crane_down"]
+        
+        s_idx, a_idx, l_idx, c_idx = 0, 0, 0, 0
+        last_motion = None
         
         for beat in manifest.get("story_beats", []):
             for block in beat.get("narration_blocks", []):
                 block_dur = block.get("total_block_duration") or block.get("actual_voice_duration") or 4.0
                 new_shots = []
                 for shot in block.get("shots", []):
-                    # 1. ENFORCE CINEMATOGRAPHY
+                    # 1. ENFORCE CINEMATOGRAPHY VARIANCE
                     if not shot.get("shot_size") or shot.get("shot_size", "").upper() == "N/A" or str(shot.get("shot_size")).lower() == "null":
-                        shot["shot_size"] = "medium_shot"
+                        shot["shot_size"] = sizes[s_idx % len(sizes)]; s_idx += 1
                     if not shot.get("camera_angle") or shot.get("camera_angle", "").upper() == "N/A" or str(shot.get("camera_angle")).lower() == "null":
-                        shot["camera_angle"] = "eye_level"
+                        shot["camera_angle"] = angles[a_idx % len(angles)]; a_idx += 1
                     if not shot.get("lens") or shot.get("lens", "").upper() == "N/A" or str(shot.get("lens")).lower() == "null":
-                        shot["lens"] = "standard_lens"
+                        shot["lens"] = lenses[l_idx % len(lenses)]; l_idx += 1
                     if not shot.get("composition") or shot.get("composition", "").upper() == "N/A" or str(shot.get("composition")).lower() == "null":
-                        shot["composition"] = "rule_of_thirds"
+                        shot["composition"] = comps[c_idx % len(comps)]; c_idx += 1
+                        
+                    # PREVENT CAMERA FATIGUE (CONSECUTIVE DUPLICATE MOTION)
+                    motion = shot.get("camera_motion", "static")
+                    if motion == last_motion:
+                        opts = [m for m in motions if m != last_motion]
+                        shot["camera_motion"] = random.choice(opts)
+                    last_motion = shot["camera_motion"]
                         
                     # 2. ENFORCE 4.5S HARD SPLIT
                     mode = shot.get("duration_mode") or "ratio"
@@ -126,11 +142,9 @@ Fix the snippet to address the failures and return the corrected JSON."""
                                 sub["duration_ratio"] = new_ratio
                             
                             # vary camera motion slightly on duplicates
-                            if i % 2 == 1:
-                                if sub.get("camera_motion") == "zoom_in":
-                                    sub["camera_motion"] = "pan_right"
-                                elif sub.get("camera_motion") == "pan_right":
-                                    sub["camera_motion"] = "zoom_out"
+                            opts = [m for m in motions if m != last_motion]
+                            sub["camera_motion"] = random.choice(opts)
+                            last_motion = sub["camera_motion"]
                                     
                             new_shots.append(sub)
                     else:
@@ -151,6 +165,10 @@ Your job is to take a basic script (array of scenes) and upgrade it into a profe
 Story Beat -> Narration Block -> Shots[].
 
 CRITICAL DIRECTIVES:
+
+0. SCENE PRESERVATION (ABSOLUTE MANDATE): 
+   The raw script contains an array of scenes. You MUST create exactly one NarrationBlock for EVERY SINGLE SCENE in the raw script. 
+   Do NOT merge scenes together. Do NOT drop or summarize scenes. The total number of NarrationBlocks in your final JSON MUST EXACTLY MATCH the total number of scenes in the raw script!
 
 1. VISUAL DIVERSITY & ASSET PROVENANCE RULES (CRITICAL):
    Do NOT default to `ai_video` for everything. You MUST select the most authentic and high-quality `asset_provenance` and `visual_type`.

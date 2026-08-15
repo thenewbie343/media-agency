@@ -49,7 +49,7 @@ LANGUAGE:
 - The `caption` MUST BE the FULL Romanized Hinglish equivalent of the voiceover, to be displayed on screen as subtitles. (CRITICAL: USE ENGLISH ALPHABET ONLY. NO DEVANAGARI).
 
 RULES:
-1. MUST output EXACTLY {target_scenes} scenes for this Act.
+1. MUST output EXACTLY {target_scenes} scenes for this Act. THIS IS A HARD REQUIREMENT. If you output fewer than {target_scenes} scenes, the video will be too short and the pipeline will fail.
 2. MINIMUM WORD COUNT (CRITICAL): Each `voiceover` MUST be at least 45 words (3-5 full sentences).
 3. NARRATIVE FLOW & CONTINUITY (CRITICAL):
    - You MUST write a cohesive, linear story that continues from the previous acts.

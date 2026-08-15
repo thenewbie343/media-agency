@@ -18,7 +18,7 @@ except ImportError:
 log = logging.getLogger("agency")
 
 class VideoQCAgent:
-    def __init__(self, model_name="gemini-1.5-pro"):
+    def __init__(self, model_name="gemini-1.5-flash"):
         self.model_name = model_name
         gemini_key = os.environ.get("GEMINI_KEY", "")
         if gemini_key and genai:
