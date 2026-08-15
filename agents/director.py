@@ -91,7 +91,7 @@ Fix the snippet to address the failures and return the corrected JSON."""
         
         for beat in manifest.get("story_beats", []):
             for block in beat.get("narration_blocks", []):
-                block_dur = block.get("total_block_duration", block.get("actual_voice_duration", 4.0))
+                block_dur = block.get("total_block_duration") or block.get("actual_voice_duration") or 4.0
                 new_shots = []
                 for shot in block.get("shots", []):
                     # 1. ENFORCE CINEMATOGRAPHY
@@ -105,12 +105,12 @@ Fix the snippet to address the failures and return the corrected JSON."""
                         shot["composition"] = "rule_of_thirds"
                         
                     # 2. ENFORCE 4.5S HARD SPLIT
-                    mode = shot.get("duration_mode", "ratio")
+                    mode = shot.get("duration_mode") or "ratio"
                     if mode == "fixed" and shot.get("duration_seconds"):
-                        dur = float(shot.get("duration_seconds"))
+                        dur = float(shot.get("duration_seconds") or 4.0)
                         ratio = 1.0 # placeholder
                     else:
-                        ratio = float(shot.get("duration_ratio", 1.0))
+                        ratio = float(shot.get("duration_ratio") or 1.0)
                         dur = block_dur * ratio
                     
                     if dur > 4.5:
