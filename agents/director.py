@@ -82,6 +82,64 @@ Fix the snippet to address the failures and return the corrected JSON."""
             log.error(f"Surgical repair call failed: {e}")
             return broken_snippet
 
+
+    def enforce_strict_rules(self, raw_manifest):
+        """Programmatically enforce rules that the LLM might miss."""
+        import copy, math
+        
+        manifest = copy.deepcopy(raw_manifest)
+        
+        for beat in manifest.get("story_beats", []):
+            for block in beat.get("narration_blocks", []):
+                block_dur = block.get("total_block_duration", block.get("actual_voice_duration", 4.0))
+                new_shots = []
+                for shot in block.get("shots", []):
+                    # 1. ENFORCE CINEMATOGRAPHY
+                    if not shot.get("shot_size") or shot.get("shot_size", "").upper() == "N/A" or str(shot.get("shot_size")).lower() == "null":
+                        shot["shot_size"] = "medium_shot"
+                    if not shot.get("camera_angle") or shot.get("camera_angle", "").upper() == "N/A" or str(shot.get("camera_angle")).lower() == "null":
+                        shot["camera_angle"] = "eye_level"
+                    if not shot.get("lens") or shot.get("lens", "").upper() == "N/A" or str(shot.get("lens")).lower() == "null":
+                        shot["lens"] = "standard_lens"
+                    if not shot.get("composition") or shot.get("composition", "").upper() == "N/A" or str(shot.get("composition")).lower() == "null":
+                        shot["composition"] = "rule_of_thirds"
+                        
+                    # 2. ENFORCE 4.5S HARD SPLIT
+                    mode = shot.get("duration_mode", "ratio")
+                    if mode == "fixed" and shot.get("duration_seconds"):
+                        dur = float(shot.get("duration_seconds"))
+                        ratio = 1.0 # placeholder
+                    else:
+                        ratio = float(shot.get("duration_ratio", 1.0))
+                        dur = block_dur * ratio
+                    
+                    if dur > 4.5:
+                        splits = math.ceil(dur / 4.5)
+                        new_ratio = ratio / splits
+                        for i in range(splits):
+                            sub = copy.deepcopy(shot)
+                            sub["shot_id"] = f"{shot.get('shot_id', 's')}_part{i}"
+                            
+                            if mode == "fixed" and sub.get("duration_seconds"):
+                                sub["duration_seconds"] = dur / splits
+                            else:
+                                sub["duration_ratio"] = new_ratio
+                            
+                            # vary camera motion slightly on duplicates
+                            if i % 2 == 1:
+                                if sub.get("camera_motion") == "zoom_in":
+                                    sub["camera_motion"] = "pan_right"
+                                elif sub.get("camera_motion") == "pan_right":
+                                    sub["camera_motion"] = "zoom_out"
+                                    
+                            new_shots.append(sub)
+                    else:
+                        new_shots.append(shot)
+                
+                block["shots"] = new_shots
+                
+        return manifest
+
     def add_metadata(self, raw_script):
         """Acts as the Video Director, adding visual and audio metadata to the hierarchical script."""
         print("[*] DirectorAgent adding cinematic metadata (v2.0 Schema)...")
@@ -146,13 +204,13 @@ You must return a valid JSON object matching this exact JSON schema:
         try:
             manifest = ScriptManifest.model_validate(output_dict)
             print("[*] Schema validation successful!")
-            return manifest.model_dump()
+            return self.enforce_strict_rules(manifest.model_dump())
         except ValidationError as e:
             repaired_dict = self.repair_schema_error(output_dict, e)
             try:
                 manifest = ScriptManifest.model_validate(repaired_dict)
                 print("[*] Schema repair validation successful!")
-                return manifest.model_dump()
+                return self.enforce_strict_rules(manifest.model_dump())
             except ValidationError as e2:
                 log.error("Schema repair failed twice. Hard failing.")
                 raise e2

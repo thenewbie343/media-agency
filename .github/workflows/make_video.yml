@@ -75,7 +75,8 @@ jobs:
             soundfile \
             numpy \
             scipy \
-            duckduckgo-search
+            duckduckgo-search \
+            Pillow
 
       - name: Parse input (handle all 3 trigger modes)
         id: parse
