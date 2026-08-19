@@ -86,6 +86,8 @@ Fix the snippet to address the failures and return the corrected JSON."""
     def enforce_strict_rules(self, raw_manifest):
         """Programmatically enforce rules that the LLM might miss."""
         import copy, math, random
+        from .visual_story_planner import VisualStoryPlanner
+        planner = VisualStoryPlanner()
         
         manifest = copy.deepcopy(raw_manifest)
         
@@ -99,10 +101,21 @@ Fix the snippet to address the failures and return the corrected JSON."""
         last_motion = None
         
         for beat in manifest.get("story_beats", []):
+            time_mode = beat.get("time_context", {}).get("mode", "historical")
+            intent = beat.get("narrative_intent", "EXPLANATION")
+            attention = float(beat.get("attention_intensity", 0.5))
+            
+            # Establish visual chapter language
+            if not beat.get("chapter_color_language"):
+                beat["chapter_color_language"] = planner.determine_chapter_color(intent, time_mode)
+                
             for block in beat.get("narration_blocks", []):
                 block_dur = block.get("total_block_duration") or block.get("actual_voice_duration") or 4.0
                 new_shots = []
                 for shot in block.get("shots", []):
+                    # Enforce editorial event restraint
+                    shot = planner.enforce_editorial_restraint(shot, attention)
+                    
                     # 1. ENFORCE CINEMATOGRAPHY VARIANCE
                     if not shot.get("shot_size") or shot.get("shot_size", "").upper() == "N/A" or str(shot.get("shot_size")).lower() == "null":
                         shot["shot_size"] = sizes[s_idx % len(sizes)]; s_idx += 1
@@ -206,8 +219,15 @@ CRITICAL DIRECTIVES:
 
 9. STRICT CINEMATOGRAPHY & FATIGUE RULES:
    - YOU MUST NEVER use "N/A" or "null" or empty strings for `shot_size`, `camera_angle`, `lens`, or `composition`. They are strictly required for every single shot.
-   - You MUST vary `camera_motion` across consecutive shots. Do NOT use "zoom_in" repeatedly. Alternate with "pan_right", "slow_push_in", "pan_left", "static", "dolly_out", etc.
-   - `cut_reason` MUST be highly descriptive (e.g. "Cutting to wide shot to reveal the massive scale of the mansion" instead of just "To show the mansion").
+   - You MUST vary `camera_motion` across consecutive shots. Do NOT use "zoom_in" repeatedly.
+   - `cut_reason` MUST be highly descriptive.
+
+10. EDITORIAL PUNCTUATION & RESTRAINT (NEW):
+    - Add `editorial_events` array for moments that need punctuation. 
+    - Use `type`: "SFX", "GRAPHIC", "HARD_CUT", "SILENCE", "IMPACT".
+    - Use `cue`: e.g. "warning_beep", "deep_impact", "radio_static".
+    - Set `timing_percent` (0 to 100) for WHEN it happens in the shot.
+    - DO NOT decorate every shot. High `attention_intensity` = purposeful punctuation. Low = cinematic hold.
 
 You must return a valid JSON object matching this exact JSON schema:
 {schema_json}

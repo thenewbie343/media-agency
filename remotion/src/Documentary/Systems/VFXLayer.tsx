@@ -4,7 +4,9 @@ import { useCurrentFrame, AbsoluteFill, random } from 'remotion';
 export const VFXLayer: React.FC<{
   isColdTheme?: boolean;
   overlay?: string;
-}> = ({ isColdTheme = false, overlay }) => {
+  events?: any[];
+  durationFrames?: number;
+}> = ({ isColdTheme = false, overlay, events = [], durationFrames = 90 }) => {
   const frame = useCurrentFrame();
 
   const isGlitch = overlay === 'vhs_glitch';
@@ -51,6 +53,21 @@ export const VFXLayer: React.FC<{
           <rect width="100%" height="100%" filter="url(#noiseFilter)" />
         </svg>
       </AbsoluteFill>
+      
+      {/* Dynamic Editorial Events (OVERLAY) */}
+      {events.filter(e => e.type === 'OVERLAY').map((evt, idx) => {
+        const timingPct = evt.timing_percent !== undefined ? evt.timing_percent : 0;
+        const delayFrames = Math.floor((timingPct / 100) * durationFrames);
+        const eventDuration = evt.duration ? Math.floor(evt.duration * 30) : 30;
+        
+        if (frame >= delayFrames && frame < delayFrames + eventDuration) {
+           if (evt.cue === 'flash') {
+              const opacity = 1 - ((frame - delayFrames) / eventDuration);
+              return <AbsoluteFill key={idx} style={{ backgroundColor: 'white', opacity, pointerEvents: 'none', zIndex: 50 }} />;
+           }
+        }
+        return null;
+      })}
 
       {/* Cinematic Vignette - Outer 15% Darkened */}
       <AbsoluteFill

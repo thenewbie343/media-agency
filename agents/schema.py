@@ -39,6 +39,14 @@ class AssetMetadata(BaseModel):
     fallback_used: bool = Field(False, description="Whether a fallback had to be used")
     fallback_type: Optional[str] = Field(None, description="The type of fallback used if any")
 
+class EditorialEvent(BaseModel):
+    type: Literal["SFX", "MUSIC_CHANGE", "MUSIC_DUCK", "GRAPHIC", "TEXT_REVEAL", "HIGHLIGHT", "COLOR_SHIFT", "OVERLAY", "CUT", "HARD_CUT", "DISSOLVE", "SILENCE", "IMPACT", "ZOOM_EMPHASIS", "MAP_REVEAL", "DOCUMENT_REVEAL", "NUMBER_REVEAL", "ARCHIVE_INSERT", "REACTION_INSERT"] = Field(..., description="Type of editorial event")
+    cue: str = Field(..., description="Specific preset, asset name, or text to display")
+    timing_percent: Optional[float] = Field(None, description="Percentage (0 to 100) through the shot when this event occurs")
+    intensity: Optional[float] = Field(None, description="Intensity of the event (0.0 to 1.0)")
+    duration: Optional[float] = Field(None, description="Duration in seconds if applicable")
+    reason: Optional[str] = Field(None, description="Editorial reason for this event (important for QC)")
+
 class Shot(BaseModel):
     shot_id: str = Field(..., description="Unique ID for this shot (e.g., 'n001_s001')")
     duration_mode: Literal["ratio", "fixed"] = Field(default="ratio", description="Whether duration is calculated via ratio of parent block or a fixed seconds count")
@@ -91,6 +99,7 @@ class Shot(BaseModel):
     
     continuity: ContinuityMetadata = Field(..., description="Continuity constraints for consistent generation")
     asset: AssetMetadata = Field(default_factory=AssetMetadata, description="Asset tracking metadata (populated during pipeline execution)")
+    editorial_events: Optional[List[EditorialEvent]] = Field(None, description="Editorial events (SFX, Graphics, Color shifts) tied to narrative punctuation")
 
 class StrategicSilence(BaseModel):
     duration_seconds: float = Field(default=0.0, description="Seconds of silence to add")
@@ -133,6 +142,7 @@ class StoryBeat(BaseModel):
     narrative_intent: Literal["HOOK", "EVIDENCE", "MYSTERY", "EXPLANATION", "CONFLICT", "RESOLUTION", "LOCATION_ESTABLISH"] = Field(..., description="The narrative purpose of this beat")
     description: str = Field(..., description="Description of the story beat")
     attention_intensity: float = Field(default=0.5, description="Expected audience attention curve intensity (0.0 to 1.0). Hook=0.8, Revelation=1.0")
+    chapter_color_language: Optional[str] = Field(None, description="Consistent LUT/Color treatment for this entire chapter (e.g., 'archival', 'cinematic', 'high_contrast')")
     narration_blocks: List[NarrationBlock] = Field(..., description="Narration blocks within this story beat")
 
 class ScriptManifest(BaseModel):

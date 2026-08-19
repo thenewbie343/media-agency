@@ -5,6 +5,14 @@ import { fade } from '@remotion/transitions/fade';
 import { Fragment } from 'react';
 
 // Define the shape of our input props (from the Python pipeline)
+export type EditorialEvent = {
+  type: string;
+  cue: string;
+  timing_percent?: number;
+  intensity?: number;
+  duration?: number;
+};
+
 export type ShotData = {
   shot_id: string;
   duration_mode: "ratio" | "fixed";
@@ -26,6 +34,7 @@ export type ShotData = {
     fallback_used?: boolean;
   };
   caption?: string; // Passed down from the parent block for rendering
+  editorial_events?: EditorialEvent[];
 };
 
 export type NarrationBlockData = {
@@ -49,6 +58,7 @@ export type NarrationBlockData = {
 export type StoryBeatData = {
   beat_id: string;
   intent: string;
+  chapter_color_language?: string;
   narration_blocks: NarrationBlockData[];
 };
 
@@ -101,6 +111,7 @@ export const DocumentaryVideo: React.FC<{ manifest: ScriptManifest }> = ({ manif
         allShots.push({ 
            ...shot, 
            caption: block.caption,
+           lut: shot.lut || beat.chapter_color_language,
            exactDurationFrames: shotDurationFrames
         });
       });

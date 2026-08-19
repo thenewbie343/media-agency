@@ -54,10 +54,10 @@ class BaseAgent:
                 "project_meta": {
                     "topic": "The Fall of Nokia",
                     "genre": "documentary",
-                    "language": "english",
+                    "language": "hindi",
                     "visual_bible": {
                         "era": "2000s",
-                        "locations": ["Finland", "USA"],
+                        "locations": ["Espoo, Finland", "USA"],
                         "lighting": "cinematic dramatic",
                         "color_language": "cool tones",
                         "film_texture": "clean digital"
@@ -66,13 +66,21 @@ class BaseAgent:
                 "story_beats": [
                     {
                         "beat_id": "b001",
+                        "time_context": {
+                            "year": "2000s",
+                            "mode": "historical",
+                            "location": "Espoo, Finland",
+                            "transition_reason": "Establishing historical market dominance"
+                        },
                         "narrative_intent": "HOOK",
                         "description": "The Mobile Giant",
+                        "attention_intensity": 0.8,
+                        "chapter_color_language": "cool tones",
                         "narration_blocks": [
                             {
                                 "block_id": "n001",
-                                "voiceover": "Nokia dominated the mobile market in the early 2000s.",
-                                "caption": "Nokia dominated the mobile market.",
+                                "voiceover": "एक समय नोकिया का मोबाइल बाज़ार पर राज था।",
+                                "caption": "Nokia once ruled the mobile market.",
                                 "duration_hint": 4.0,
                                 "strategic_silence": {
                                     "duration_seconds": 0.5,
@@ -89,16 +97,22 @@ class BaseAgent:
                                         "shot_id": "n001_s001",
                                         "duration_mode": "ratio",
                                         "duration_ratio": 1.0,
+                                        "shot_role": "ESTABLISHING",
+                                        "asset_provenance": "STOCK",
+                                        "shot_size": "wide",
+                                        "camera_angle": "eye_level",
+                                        "lens": "wide_angle_lens",
+                                        "composition": "rule_of_thirds",
                                         "visual_job": "SHOW_LOCATION",
                                         "visual_type": "ai_image",
                                         "fallback_type": "MapFallback",
                                         "visual_description": "Wide view of Nokia headquarters in Finland.",
-                                        "visual_query": "Nokia + headquarters + Finland + 2000s",
+                                        "visual_query": "Nokia headquarters Finland 2000s",
                                         "ai_prompt": "Nokia headquarters, 2000s, Finland, exterior office, dramatic lighting, wide shot",
                                         "camera_motion": "zoom_in",
                                         "motion_intensity": 0.3,
                                         "transition_in": "hard_cut",
-                                        "cut_reason": "introduce_location",
+                                        "cut_reason": "establish_nokia_headquarters",
                                         "visual_importance": 0.7,
                                         "continuity": {
                                             "group_id": "grp1",
@@ -107,6 +121,54 @@ class BaseAgent:
                                             "environment": "exterior corporate headquarters",
                                             "time_period": "2000s",
                                             "lighting": "daylight"
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "block_id": "n002",
+                                "voiceover": "लेकिन स्मार्टफोन की लहर में नोकिया पीछे छूट गया।",
+                                "caption": "But Nokia fell behind in the smartphone era.",
+                                "duration_hint": 4.0,
+                                "strategic_silence": {
+                                    "duration_seconds": 0.5,
+                                    "position": "end",
+                                    "ambient_level": -35,
+                                    "visual_behavior": "hold_frame"
+                                },
+                                "audio_metadata": {
+                                    "music_energy": 0.5,
+                                    "music_duck_amount": -15
+                                },
+                                "shots": [
+                                    {
+                                        "shot_id": "n002_s001",
+                                        "duration_mode": "ratio",
+                                        "duration_ratio": 1.0,
+                                        "shot_role": "ACTION",
+                                        "asset_provenance": "STOCK",
+                                        "shot_size": "medium",
+                                        "camera_angle": "low_angle",
+                                        "lens": "standard_lens",
+                                        "composition": "center_framed",
+                                        "visual_job": "SHOW_OBJECT",
+                                        "visual_type": "ai_image",
+                                        "fallback_type": "Timeline",
+                                        "visual_description": "Classic Nokia mobile phone on an office desk.",
+                                        "visual_query": "classic Nokia phone desk 2000s",
+                                        "ai_prompt": "Classic Nokia mobile phone, 2000s, office desk, dramatic lighting, medium shot",
+                                        "camera_motion": "pan_right",
+                                        "motion_intensity": 0.3,
+                                        "transition_in": "hard_cut",
+                                        "cut_reason": "showcase_mobile_phone",
+                                        "visual_importance": 0.7,
+                                        "continuity": {
+                                            "group_id": "grp1",
+                                            "characters": [],
+                                            "location": "Espoo, Finland",
+                                            "environment": "corporate office",
+                                            "time_period": "2000s",
+                                            "lighting": "indoor fluorescent"
                                         }
                                     }
                                 ]

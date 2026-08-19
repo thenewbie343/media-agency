@@ -36,6 +36,40 @@ from urllib.parse import quote
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("agency")
 
+if not shutil.which("ffmpeg"):
+    import glob
+    winget_paths = glob.glob(os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg*\ffmpeg*\bin"))
+    for wp in winget_paths:
+        if os.path.exists(os.path.join(wp, "ffmpeg.exe")):
+            os.environ["PATH"] = wp + os.pathsep + os.environ.get("PATH", "")
+            break
+    if not shutil.which("ffmpeg"):
+        try:
+            import imageio_ffmpeg
+            ff_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            if ff_exe and os.path.exists(ff_exe):
+                ff_dir = os.path.dirname(ff_exe)
+                os.environ["PATH"] = ff_dir + os.pathsep + os.environ.get("PATH", "")
+                alias = os.path.join(ff_dir, "ffmpeg.exe")
+                if not os.path.exists(alias):
+                    try:
+                        shutil.copy2(ff_exe, alias)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+if not shutil.which("npx"):
+    node_dirs = [
+        r"C:\Users\Asus\node-v20.18.0-win-x64",
+        r"C:\Program Files\nodejs",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\node"),
+    ]
+    for nd in node_dirs:
+        if os.path.exists(os.path.join(nd, "npx.cmd")) or os.path.exists(os.path.join(nd, "npx")):
+            os.environ["PATH"] = nd + os.pathsep + os.environ.get("PATH", "")
+            break
+
 def extract_json_array(text):
     """Robustly extract a JSON array even if the model added reasoning text before/after."""
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
@@ -2626,6 +2660,16 @@ def audit_assets(script_path):
                         required_files.append(shot["fg_file"])
                     if shot.get("sound_design"):
                         required_files.append(f"sfx/{shot['sound_design']}.mp3")
+                    if shot.get("editorial_events"):
+                        valid_events = []
+                        for evt in shot.get("editorial_events", []):
+                            if evt.get("type") in ["SFX", "IMPACT"]:
+                                cue = evt.get("cue")
+                                if cue and not os.path.exists(f"remotion/public/assets/{cue}.mp3") and not os.path.exists(f"remotion/public/assets/sfx/{cue}.mp3"):
+                                    log.warning(f"Editorial event audio {cue}.mp3 missing. Safely stripping event from render manifest.")
+                                    continue
+                            valid_events.append(evt)
+                        shot["editorial_events"] = valid_events
     else:
         log.warning("Audit skipped for non-V2 manifest")
         return True, []
@@ -2741,12 +2785,6 @@ def run_pipeline_v52():
             script = stage_2_script(research, cfg)
             _save(script, "script.json")
             tg(f"✍️ {len(script)} scenes (Devanagari + Hinglish)")
-            
-            if genre == "documentary":
-                log.info("Upgrading legacy flat script to v2.0 hierarchy using DirectorAgent...")
-                from agents.director import DirectorAgent
-                director = DirectorAgent()
-                script = director.add_metadata(script)
             
             if genre == "documentary":
                 log.info("Upgrading legacy flat script to v2.0 hierarchy using DirectorAgent...")
@@ -2978,7 +3016,7 @@ def run_pipeline_v52():
                                     except Exception as e:
                                         log.error(f"Failed to generate foreground for {vid}: {e}")
 
-                # SFX Safety Check: strip missing sound_design files to prevent Remotion 404 crash
+                # SFX Safety Check: strip missing sound_design and editorial_events audio files to prevent Remotion 404 crash
                 is_v2 = isinstance(script, dict) and "story_beats" in script
                 if is_v2:
                     for beat in script.get("story_beats", []):
@@ -2989,6 +3027,16 @@ def run_pipeline_v52():
                                     if not os.path.exists(f"remotion/public/assets/{sfx_name}.mp3"):
                                         log.warning(f"SFX file remotion/public/assets/{sfx_name}.mp3 not found. Stripping to prevent crash.")
                                         s["sound_design"] = None
+                                if s.get("editorial_events"):
+                                    valid_events = []
+                                    for evt in s.get("editorial_events", []):
+                                        if evt.get("type") in ["SFX", "IMPACT"]:
+                                            cue = evt.get("cue")
+                                            if cue and not os.path.exists(f"remotion/public/assets/{cue}.mp3"):
+                                                log.warning(f"SFX cue file remotion/public/assets/{cue}.mp3 not found. Stripping event to prevent crash.")
+                                                continue
+                                        valid_events.append(evt)
+                                    s["editorial_events"] = valid_events
                 else:
                     for s in extract_scenes_list(script):
                         if s.get("sound_design"):

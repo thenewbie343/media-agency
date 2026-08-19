@@ -70,9 +70,9 @@ export const ShotRenderer: React.FC<{
         </AbsoluteFill>
       </CameraSystem>
 
-      <VFXLayer isColdTheme={isColdTheme} overlay={shot.overlay} />
+      <VFXLayer isColdTheme={isColdTheme} overlay={shot.overlay} events={shot.editorial_events} durationFrames={durationFrames} />
       <CaptionSystem caption={shot.caption} highlight={shot.highlight} durationFrames={durationFrames} />
-      <AudioSystem soundDesign={shot.sound_design} />
+      <AudioSystem soundDesign={shot.sound_design} events={shot.editorial_events} durationFrames={durationFrames} />
       
       {shot.asset_provenance && (
         <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'flex-end', padding: 40, pointerEvents: 'none' }}>
