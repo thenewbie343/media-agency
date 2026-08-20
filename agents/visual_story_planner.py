@@ -11,10 +11,10 @@ class VisualStoryPlanner:
     
     def __init__(self):
         self.chapter_luts = {
-            "historical": ["vintage_film", "noir", "sepia"],
-            "reconstruction": ["cinematic", "high_contrast"],
-            "crisis": ["high_contrast", "VM Thermal Vice"],
-            "aftermath": ["warm archival", "Teal and Orange"]
+            "historical": ["Warm Cinema", "Teal and Orange", "VM Thermal Sunday", "sepia"],
+            "reconstruction": ["Teal and Orange", "Warm Cinema", "VM Thermal Poolside", "cinematic"],
+            "crisis": ["VM Thermal Vice", "VM Thermal Fahrenheit", "VM Thermal Crush", "high_contrast"],
+            "aftermath": ["Warm Cinema", "VM Thermal Royalty", "Teal and Orange", "VM Thermal Dream"]
         }
 
     def determine_chapter_color(self, beat_intent: str, time_mode: str) -> str:

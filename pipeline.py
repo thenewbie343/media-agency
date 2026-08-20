@@ -283,7 +283,12 @@ Example BAD line (pure Devanagari, DO NOT DO THIS): "पेटीएम का �
 Example BAD line (too formal/textbook Hindi): "पेटीएम के शेयरों में भारी गिरावट दर्ज की गई।"
 """
 
-ASSETS_DIR = Path("assets")
+BASE_DIR = Path(__file__).resolve().parent
+ASSETS_DIR = BASE_DIR / "assets"
+LUTS_DIR = ASSETS_DIR / "luts"
+SFX_DIR = ASSETS_DIR / "sfx"
+OVERLAYS_DIR = ASSETS_DIR / "overlays"
+FONTS_DIR = ASSETS_DIR / "fonts" / "caption"
 
 def pick_asset(subfolder, extension=None):
     """Returns a random file path from assets/<subfolder>/, or None if empty/missing."""
@@ -293,12 +298,12 @@ def pick_asset(subfolder, extension=None):
     if extension:
         files = list(folder.glob(f"*.{extension}"))
     else:
-        files = [f for f in folder.iterdir() if f.is_file()]
+        files = [f for f in folder.rglob("*") if f.is_file()]
     return str(random.choice(files)) if files else None
 
 def get_caption_font(bold=False):
-    """Real premium font if uploaded, otherwise safe system fallback."""
-    folder = ASSETS_DIR / "fonts" / "caption"
+    """Real premium font if uploaded from assets/fonts/caption, otherwise safe system fallback."""
+    folder = FONTS_DIR
     if folder.exists():
         files = list(folder.glob("*.ttf")) + list(folder.glob("*.otf"))
         if files:
@@ -312,17 +317,17 @@ def get_caption_font(bold=False):
     return "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 LUT_KEYWORD_MAP = {
-    "teal_orange": ["warm cinema", "kodak", "clean straight", "gold rush"],
+    "teal_orange": ["teal and orange", "warm cinema", "kodak", "gold rush"],
     "cool_blue":   ["blue cold", "blue moon", "blue ice", "blue steel", "matrix green"],
     "dark_noir":   ["noir", "iron", "bleach"],
-    "cinematic":   ["warm cinema", "clean straight", "big"],
-    "cartoon":     ["thermal royalty", "thermal picasso", "thermal plastic", "gold rush"],
-    "energetic":   ["thermal vice", "thermal crush", "cross"],
+    "cinematic":   ["warm cinema", "teal and orange", "clean straight"],
+    "cartoon":     ["vm thermal royalty", "vm thermal picasso", "vm thermal plastic", "gold rush"],
+    "energetic":   ["vm thermal vice", "vm thermal crush", "vm thermal fahrenheit"],
 }
 
 def get_lut_file(color_grade):
-    """Finds a real .cube LUT matching the genre mood."""
-    folder = ASSETS_DIR / "luts"
+    """Finds a real .cube LUT matching the genre mood from assets/luts."""
+    folder = LUTS_DIR
     if not folder.exists():
         return None
     all_luts = list(folder.glob("*.cube"))
@@ -331,12 +336,15 @@ def get_lut_file(color_grade):
     keywords = LUT_KEYWORD_MAP.get(color_grade, [])
     matches = [f for f in all_luts if any(kw in f.stem.lower() for kw in keywords)]
     if not matches:
-        return None
+        return str(random.choice(all_luts))
     return str(random.choice(matches))
 
 def get_overlay_video():
-    """Random VHS/glitch video overlay (.mp4) if uploaded."""
-    return pick_asset("overlays", "mp4")
+    """Random VHS/glitch video overlay (.mp4) from assets/overlays."""
+    if not OVERLAYS_DIR.exists():
+        return None
+    overlays = list(OVERLAYS_DIR.glob("*.mp4"))
+    return str(random.choice(overlays)) if overlays else None
 
 def extract_json_object(text):
     """Robust extraction for a single {...} object."""
@@ -2639,6 +2647,7 @@ def stage_kling_visuals(script, cfg, max_clips=2):
 def audit_assets(script_path):
     import json
     import os
+    from pathlib import Path
     log.info("🔍 Pre-Render Asset Audit starting...")
     
     with open(script_path, "r", encoding="utf-8") as f:
@@ -2647,6 +2656,31 @@ def audit_assets(script_path):
     required_files = []
     missing_files = []
     
+    public_assets_dir = BASE_DIR / "remotion" / "public" / "assets"
+    
+    def check_asset_exists(file_ref):
+        if not file_ref:
+            return True
+        # Check direct path
+        p1 = public_assets_dir / file_ref
+        if p1.exists(): return True
+        # Check sfx path
+        p2 = public_assets_dir / "sfx" / file_ref
+        if p2.exists(): return True
+        # Check without sfx/ prefix if present
+        if file_ref.startswith("sfx/"):
+            sub = file_ref[4:]
+            if (public_assets_dir / sub).exists() or (public_assets_dir / "sfx" / sub).exists():
+                return True
+        # Check with .mp3 or .wav
+        for ext in [".mp3", ".wav"]:
+            if (public_assets_dir / f"{file_ref}{ext}").exists(): return True
+            if (public_assets_dir / "sfx" / f"{file_ref}{ext}").exists(): return True
+            if (public_assets_dir / "sfx" / "Impacts" / f"{file_ref}{ext}").exists(): return True
+            if (public_assets_dir / "sfx" / "Whooshes" / f"{file_ref}{ext}").exists(): return True
+            if (public_assets_dir / "sfx" / "Risers" / f"{file_ref}{ext}").exists(): return True
+        return False
+
     is_v2 = isinstance(manifest, dict) and "story_beats" in manifest
     if is_v2:
         for beat in manifest.get("story_beats", []):
@@ -2665,8 +2699,8 @@ def audit_assets(script_path):
                         for evt in shot.get("editorial_events", []):
                             if evt.get("type") in ["SFX", "IMPACT"]:
                                 cue = evt.get("cue")
-                                if cue and not os.path.exists(f"remotion/public/assets/{cue}.mp3") and not os.path.exists(f"remotion/public/assets/sfx/{cue}.mp3"):
-                                    log.warning(f"Editorial event audio {cue}.mp3 missing. Safely stripping event from render manifest.")
+                                if cue and not check_asset_exists(cue):
+                                    log.warning(f"Editorial event audio {cue} missing in {public_assets_dir}. Stripping event.")
                                     continue
                             valid_events.append(evt)
                         shot["editorial_events"] = valid_events
@@ -2677,9 +2711,7 @@ def audit_assets(script_path):
     for file_path in required_files:
         basename = os.path.basename(file_path)
         if file_path.startswith("sfx/"):
-            check_path = f"remotion/public/assets/{file_path}"
-            if not os.path.exists(check_path):
-                # Dynamically strip SFX from the JSON in memory to prevent crash
+            if not check_asset_exists(file_path):
                 log.warning(f"SFX file {file_path} missing. Safely stripping from render manifest.")
                 if is_v2:
                     for beat in manifest.get("story_beats", []):
@@ -2690,11 +2722,12 @@ def audit_assets(script_path):
                 continue # Do not fail the audit for optional SFX
         elif file_path.startswith("/"):
             check_path = file_path # Absolute path
+            if not os.path.exists(check_path):
+                missing_files.append(check_path)
         else:
             check_path = f"remotion/public/assets/{basename}"
-            
-        if not os.path.exists(check_path):
-            missing_files.append(check_path)
+            if not (public_assets_dir / basename).exists() and not check_asset_exists(file_path):
+                missing_files.append(check_path)
             
     with open(script_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
@@ -2705,7 +2738,6 @@ def audit_assets(script_path):
     if missing_files:
         log.error(f"❌ Asset Audit FAILED! Missing {len(missing_files)} files: {missing_files[:5]}")
         return False, missing_files
-        
     log.info("✅ Asset Audit PASSED! All files present.")
     return True, []
 
@@ -2921,6 +2953,38 @@ def run_pipeline_v52():
                 import shutil
                 import re
 
+                # Sync exact repository assets (SFX, Overlays, LUTs, Fonts) to Remotion public assets directory
+                if SFX_DIR.exists():
+                    shutil.copytree(SFX_DIR, public_dir / "sfx", dirs_exist_ok=True)
+                if OVERLAYS_DIR.exists():
+                    shutil.copytree(OVERLAYS_DIR, public_dir / "overlays", dirs_exist_ok=True)
+                if LUTS_DIR.exists():
+                    shutil.copytree(LUTS_DIR, public_dir / "luts", dirs_exist_ok=True)
+                if FONTS_DIR.exists():
+                    shutil.copytree(FONTS_DIR, public_dir / "fonts" / "caption", dirs_exist_ok=True)
+
+                # Seed standard cues with real high-quality audio files from assets/sfx
+                sfx_dest = public_dir / "sfx"
+                sfx_dest.mkdir(parents=True, exist_ok=True)
+                sfx_cue_mappings = {
+                    "deep_impact": SFX_DIR / "Impacts" / "Impact_1.wav",
+                    "impact": SFX_DIR / "Impacts" / "Impact_1.wav",
+                    "whoosh": SFX_DIR / "Whooshes" / "Cinematic Whoosh.mp3",
+                    "subtle_whoosh": SFX_DIR / "Whooshes" / "Whoosh Fly By 1 1.mp3",
+                    "riser": SFX_DIR / "Risers" / "Riser 1.wav",
+                    "cinematic_whoosh": SFX_DIR / "Whooshes" / "Cinematic Whoosh.mp3",
+                    "paper_rustle": SFX_DIR / "Whooshes" / "Whoosh Fly By 1 2.mp3",
+                    "wind_howl": SFX_DIR / "Risers" / "Riser 2.wav",
+                }
+                for cue_name, src_path in sfx_cue_mappings.items():
+                    if src_path.exists():
+                        ext = src_path.suffix
+                        shutil.copy2(src_path, sfx_dest / f"{cue_name}{ext}")
+                        shutil.copy2(src_path, public_dir / f"{cue_name}{ext}")
+                        if ext == ".wav":
+                            shutil.copy2(src_path, sfx_dest / f"{cue_name}.mp3")
+                            shutil.copy2(src_path, public_dir / f"{cue_name}.mp3")
+
                 try:
                     from rembg import remove
                     from PIL import Image, ImageFilter
@@ -2937,6 +3001,21 @@ def run_pipeline_v52():
                     # Clean up multiple spaces and strip
                     t = re.sub(r'\s+', ' ', t).strip()
                     return t
+
+                def is_sfx_present(sfx_name):
+                    if not sfx_name: return False
+                    candidates = [
+                        public_dir / sfx_name,
+                        public_dir / "sfx" / sfx_name,
+                        public_dir / f"{sfx_name}.mp3",
+                        public_dir / f"{sfx_name}.wav",
+                        public_dir / "sfx" / f"{sfx_name}.mp3",
+                        public_dir / "sfx" / f"{sfx_name}.wav",
+                        public_dir / "sfx" / "Impacts" / f"{sfx_name}.wav",
+                        public_dir / "sfx" / "Whooshes" / f"{sfx_name}.mp3",
+                        public_dir / "sfx" / "Risers" / f"{sfx_name}.wav",
+                    ]
+                    return any(c.exists() for c in candidates)
 
                 # Clean Narration Captions
                 if isinstance(script, dict) and "story_beats" in script:
@@ -3024,16 +3103,16 @@ def run_pipeline_v52():
                             for s in block.get("shots", []):
                                 if s.get("sound_design"):
                                     sfx_name = s["sound_design"]
-                                    if not os.path.exists(f"remotion/public/assets/{sfx_name}.mp3"):
-                                        log.warning(f"SFX file remotion/public/assets/{sfx_name}.mp3 not found. Stripping to prevent crash.")
+                                    if not is_sfx_present(sfx_name):
+                                        log.warning(f"SFX file {sfx_name} not found in public assets. Stripping to prevent crash.")
                                         s["sound_design"] = None
                                 if s.get("editorial_events"):
                                     valid_events = []
                                     for evt in s.get("editorial_events", []):
                                         if evt.get("type") in ["SFX", "IMPACT"]:
                                             cue = evt.get("cue")
-                                            if cue and not os.path.exists(f"remotion/public/assets/{cue}.mp3"):
-                                                log.warning(f"SFX cue file remotion/public/assets/{cue}.mp3 not found. Stripping event to prevent crash.")
+                                            if cue and not is_sfx_present(cue):
+                                                log.warning(f"SFX cue {cue} not found in public assets. Stripping event to prevent crash.")
                                                 continue
                                         valid_events.append(evt)
                                     s["editorial_events"] = valid_events
@@ -3041,8 +3120,8 @@ def run_pipeline_v52():
                     for s in extract_scenes_list(script):
                         if s.get("sound_design"):
                             sfx_name = s["sound_design"]
-                            if not os.path.exists(f"remotion/public/assets/{sfx_name}.mp3"):
-                                log.warning(f"SFX file remotion/public/assets/{sfx_name}.mp3 not found. Stripping to prevent crash.")
+                            if not is_sfx_present(sfx_name):
+                                log.warning(f"SFX file {sfx_name} not found in public assets. Stripping to prevent crash.")
                                 s["sound_design"] = None
 
                 _save(script, "script_remotion.json")

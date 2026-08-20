@@ -1,6 +1,17 @@
 import React from 'react';
 import { Audio, staticFile, Sequence } from 'remotion';
 
+const resolveAudioSrc = (cue?: string): string => {
+  if (!cue) return '';
+  if (cue.startsWith('http://') || cue.startsWith('https://')) return cue;
+  if (cue.startsWith('assets/')) return staticFile(cue);
+  if (cue.includes('.')) {
+    if (cue.startsWith('sfx/')) return staticFile(`assets/${cue}`);
+    return staticFile(`assets/sfx/${cue}`);
+  }
+  return staticFile(`assets/${cue}.mp3`);
+};
+
 export const AudioSystem: React.FC<{
   soundDesign?: string;
   volume?: number;
@@ -13,7 +24,7 @@ export const AudioSystem: React.FC<{
     <>
       {soundDesign && (
         <Audio 
-          src={staticFile(`assets/${soundDesign}.mp3`)} 
+          src={resolveAudioSrc(soundDesign)} 
           volume={volume} 
           startFrom={0}
         />
@@ -26,7 +37,7 @@ export const AudioSystem: React.FC<{
         return (
           <Sequence key={idx} from={delayFrames}>
             <Audio 
-              src={staticFile(`assets/${evt.cue}.mp3`)} 
+              src={resolveAudioSrc(evt.cue)} 
               volume={evtVolume} 
               startFrom={0}
             />
