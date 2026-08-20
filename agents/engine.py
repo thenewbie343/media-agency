@@ -14,7 +14,7 @@ def run_documentary_pipeline(cfg):
     """
     topic = cfg["topic"]
     duration_minutes = int(cfg.get("duration_min") or cfg.get("duration") or 1)
-    target_scenes = max(6, int(duration_minutes * 6))
+    target_scenes = max(4, int(duration_minutes * 3.5))
     log.info(f"🎥 AI Studio Orchestrator starting for topic: {topic} ({duration_minutes}m -> target {target_scenes} scenes)")
     
     from .researcher import ResearcherAgent
@@ -63,6 +63,7 @@ def run_documentary_pipeline(cfg):
             act_num, 
             json.dumps(act_outline), 
             target_scenes=scenes_per_act, 
+            duration_minutes=duration_minutes,
             context_so_far=context_so_far
         )
 

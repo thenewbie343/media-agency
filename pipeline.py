@@ -882,7 +882,13 @@ def stage_3_voice(manifest, cfg):
             return out, 4.0
 
     if isinstance(manifest, dict) and "story_beats" in manifest:
+        from agents.visual_story_planner import VisualStoryPlanner
+        planner = VisualStoryPlanner()
+        
         for beat in manifest.get("story_beats", []):
+            intent = beat.get("narrative_intent", "EXPLANATION")
+            attention = float(beat.get("attention_intensity", 0.5))
+            
             for block in beat.get("narration_blocks", []):
                 total_blocks += 1
                 b_id = block.get("block_id", f"b{total_blocks}")
@@ -898,9 +904,18 @@ def stage_3_voice(manifest, cfg):
                     block["audio_file"] = out_file
                     block["actual_voice_duration"] = dur
                     
-                # Calculate total duration
+                # Calculate authoritative total duration
                 silence_dur = block.get("strategic_silence", {}).get("duration_seconds", 0.0)
                 block["total_block_duration"] = block["actual_voice_duration"] + silence_dur
+
+                # SEMANTIC VISUAL DECOMPOSITION UNDER CONTINUOUS NARRATION
+                # Decomposes narration into purposeful visual units summing exactly to block duration
+                block["shots"] = planner.decompose_narration_block(
+                    block, 
+                    block["total_block_duration"], 
+                    beat_intent=intent, 
+                    attention_intensity=attention
+                )
 
                 if total_blocks % 5 == 4:
                     time.sleep(1)

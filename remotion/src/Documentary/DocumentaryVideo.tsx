@@ -205,13 +205,11 @@ export const RemotionRoot: React.FC = () => {
   const manifest = (inputProps.scenes ? { story_beats: [], ...inputProps, schema_version: "2.0" } : inputProps) as ScriptManifest;
   const activeManifest = manifest.story_beats ? manifest : defaultManifest;
 
-  // Calculate total duration (without arbitrary overlaps reducing it)
+  // Calculate total duration directly from authoritative narration blocks
   let baseDuration = 0;
   activeManifest.story_beats.forEach(beat => {
     beat.narration_blocks.forEach(block => {
-      block.shots.forEach(shot => {
-        baseDuration += Math.ceil((shot.actual_duration || 4) * 30);
-      });
+      baseDuration += Math.ceil((block.total_block_duration || block.actual_voice_duration || 4) * 30);
     });
   });
   
