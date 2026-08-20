@@ -58,12 +58,22 @@ export const VFXLayer: React.FC<{
       {events.filter(e => e.type === 'OVERLAY').map((evt, idx) => {
         const timingPct = evt.timing_percent !== undefined ? evt.timing_percent : 0;
         const delayFrames = Math.floor((timingPct / 100) * durationFrames);
-        const eventDuration = evt.duration ? Math.floor(evt.duration * 30) : 30;
+        const eventDuration = evt.duration ? Math.floor(evt.duration * 30) : 15;
         
         if (frame >= delayFrames && frame < delayFrames + eventDuration) {
-           if (evt.cue === 'flash') {
-              const opacity = 1 - ((frame - delayFrames) / eventDuration);
-              return <AbsoluteFill key={idx} style={{ backgroundColor: 'white', opacity, pointerEvents: 'none', zIndex: 50 }} />;
+           const progress = (frame - delayFrames) / eventDuration;
+           if (evt.cue === 'flash' || evt.cue === 'white_flash') {
+              const opacity = (1 - progress) * 0.85;
+              return <AbsoluteFill key={idx} style={{ backgroundColor: 'white', opacity, pointerEvents: 'none', zIndex: 50, mixBlendMode: 'screen' }} />;
+           } else if (evt.cue === 'light_leak') {
+              const opacity = Math.sin(progress * Math.PI) * 0.5;
+              return <AbsoluteFill key={idx} style={{ background: 'radial-gradient(circle at 80% 20%, rgba(255, 140, 50, 0.8), transparent 70%)', opacity, pointerEvents: 'none', zIndex: 45, mixBlendMode: 'screen' }} />;
+           } else if (evt.cue === 'vhs_glitch') {
+              const offset = (random(frame) * 16 - 8);
+              return <AbsoluteFill key={idx} style={{ background: 'repeating-linear-gradient(0deg, rgba(255,0,0,0.1), rgba(0,255,255,0.1) 3px, transparent 3px, transparent 6px)', transform: `translateY(${offset}px)`, pointerEvents: 'none', zIndex: 45 }} />;
+           } else if (evt.cue === 'red_tint' || evt.cue === 'alert') {
+              const opacity = Math.sin(progress * Math.PI) * 0.35;
+              return <AbsoluteFill key={idx} style={{ backgroundColor: 'rgba(220, 20, 20, 0.4)', opacity, pointerEvents: 'none', zIndex: 45, mixBlendMode: 'color-burn' }} />;
            }
         }
         return null;

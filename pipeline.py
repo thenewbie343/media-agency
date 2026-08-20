@@ -177,11 +177,11 @@ GENRE_PRESETS = {
 }
 
 VOICE_MAP = {
-    "hindi":   ["hi-IN-MadhurNeural",      "hi-IN-SwaraNeural"],
+    "hindi":   ["hi-IN-SwaraNeural",        "hi-IN-MadhurNeural"],
     "english": ["en-GB-RyanNeural",         "en-US-ChristopherNeural"],
-    "spanish": ["es-ES-AlvaroNeural",       "es-MX-JorgeNeural"],
-    "french":  ["fr-FR-HenriNeural",        "fr-FR-DeniseNeural"],
-    "german":  ["de-DE-ConradNeural",       "de-DE-KatjaNeural"],
+    "spanish": ["es-ES-ElviraNeural",       "es-MX-DaliaNeural"],
+    "french":  ["fr-FR-DeniseNeural",       "fr-FR-HenriNeural"],
+    "german":  ["de-DE-KatjaNeural",        "de-DE-ConradNeural"],
 }
 
 WORKSPACE = Path(f"workspace_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
@@ -798,10 +798,10 @@ Return ONLY JSON array. No markdown.
     log.info(f"Stage 2: {len(full_script)} scenes written")
     return full_script
 # ═══════════════════════════════════════════════════════════
-#  STAGE 3 — VOICE
+#  STAGE 3 — VOICE (LOCKED AT DOCUMENTARY LEVEL)
 # ═══════════════════════════════════════════════════════════
 
-async def _edge_tts(text, path, voice, rate="+8%", pitch="+0Hz"):
+async def _edge_tts(text, path, voice, rate="+4%", pitch="+0Hz"):
     import edge_tts
     await edge_tts.Communicate(text, voice, rate=rate, pitch=pitch).save(path)
 
@@ -817,12 +817,14 @@ EMOTION_VOICE_MAP = {
 def stage_3_voice(manifest, cfg):
     lang = cfg["lang"]
     use_kokoro = os.environ.get("USE_KOKORO", "true").lower() in ("true", "1", "yes")
-    log.info(f"Stage 3: Voice (Kokoro: {use_kokoro})...")
+    log.info(f"Stage 3: Voice (Kokoro: {use_kokoro}, locked voice profile)...")
     tg(f"🎙️ Generating voice...")
     audio_dir = WORKSPACE / "audio"
     audio_dir.mkdir(exist_ok=True)
     failed_blocks = 0
     total_blocks = 0
+
+    doc_fallback_voice = cfg.get("voice", VOICE_MAP.get(lang, VOICE_MAP["hindi"])[0])
 
     def _generate_voice(text, b_id, emotion="dramatic"):
         if not text:
@@ -831,41 +833,37 @@ def stage_3_voice(manifest, cfg):
         out = str(audio_dir / f"block_{b_id}.mp3")
         done = False
         
-        # Try Kokoro first if enabled
+        # 1. Try Kokoro first if enabled (Locked at clean documentary speed 1.0)
         if use_kokoro:
             try:
-                done = generate_kokoro_voice(text, out, lang, emotion)
+                done = generate_kokoro_voice(text, out, lang, emotion="dramatic")
                 if done:
                     log.info(f"  Block {b_id}: Kokoro TTS ✓")
             except Exception as e:
                 log.warning(f"  Block {b_id}: Kokoro failed: {e}")
 
-        # Fallback to Edge-TTS
+        # 2. Consistent Fallback to Edge-TTS with identical voice across all blocks
         if not done:
-            voice = cfg.get("voice", VOICE_MAP.get(lang, VOICE_MAP["hindi"])[0])
-            fallback = VOICE_MAP.get(lang, VOICE_MAP["hindi"])
-            rate, pitch = EMOTION_VOICE_MAP.get(emotion, ("+8%", "+0Hz"))
-            for v in fallback:
-                for attempt in range(2):
-                    try:
-                        asyncio.run(_edge_tts(text, out, v, rate=rate, pitch=pitch))
-                        if os.path.exists(out) and os.path.getsize(out) > 500:
-                            done = True
-                        break
-                    except Exception as e:
-                        log.warning(f"  Block {b_id} {v} attempt {attempt+1}: {e}")
-                        time.sleep(1.5)
-                if done:
+            for attempt in range(2):
+                try:
+                    asyncio.run(_edge_tts(text, out, doc_fallback_voice, rate="+4%", pitch="+0Hz"))
+                    if os.path.exists(out) and os.path.getsize(out) > 500:
+                        done = True
+                        log.info(f"  Block {b_id}: Edge-TTS ({doc_fallback_voice}) ✓")
                     break
+                except Exception as e:
+                    log.warning(f"  Block {b_id} {doc_fallback_voice} attempt {attempt+1}: {e}")
+                    time.sleep(1.5)
 
-        # Fallback to gTTS
+        # 3. Fallback to gTTS if Edge-TTS fails
         if not done:
             try:
                 from gtts import gTTS
                 lc = {"hindi":"hi","english":"en","spanish":"es","french":"fr","german":"de"}.get(lang,"hi")
-                gTTS(text=text,lang=lc).save(out)
+                gTTS(text=text, lang=lc).save(out)
                 if os.path.exists(out) and os.path.getsize(out) > 500:
                     done = True
+                    log.info(f"  Block {b_id}: gTTS ✓")
             except Exception as e:
                 log.error(f"  Block {b_id}: gTTS also failed: {e}")
 

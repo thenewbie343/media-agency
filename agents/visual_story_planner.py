@@ -93,7 +93,11 @@ class VisualStoryPlanner:
                 "provenance": "ARCHIVAL_FOOTAGE",
                 "query": f"{clean_topic} {loc_name} exterior building archive",
                 "prompt": f"Cinematic wide establishing shot of {clean_topic} {loc_name} exterior, authentic period lighting, architectural photography",
-                "weight": 3.6
+                "weight": 3.6,
+                "lut_filter": "warm_cinema",
+                "overlay": "film_grain",
+                "sound_design": "subtle_whoosh",
+                "events": [{"type": "SFX", "cue": "subtle_whoosh", "timing_percent": 0.0, "intensity": 0.5}]
             })
             
         # 2. Data / Kinetic Typography if number or financial scale is present
@@ -104,7 +108,11 @@ class VisualStoryPlanner:
                 "provenance": "DATA_VISUALIZATION",
                 "query": f"{stat_text} kinetic typography financial statistic graphic",
                 "prompt": f"Editorial motion graphics screen displaying {stat_text} in bold typography with subtle data lines on dark parchment",
-                "weight": 2.8
+                "weight": 2.8,
+                "lut_filter": "high_contrast",
+                "overlay": None,
+                "sound_design": "impact",
+                "events": [{"type": "IMPACT", "cue": "deep_impact", "timing_percent": 15.0, "intensity": 0.7}]
             })
             
         # 3. Tension / Cyber Reconstruction (covert operation / hackers)
@@ -115,7 +123,11 @@ class VisualStoryPlanner:
                 "provenance": "CINEMATIC_RECONSTRUCTION",
                 "query": f"cyber attack hacker terminal screen typing in dark room",
                 "prompt": f"Cinematic medium close-up of computer monitor displaying rapid terminal code in a dimly lit security room, moody atmospheric lighting, high tension",
-                "weight": 3.8
+                "weight": 3.8,
+                "lut_filter": "noir",
+                "overlay": "dust_scratches",
+                "sound_design": "riser",
+                "events": [{"type": "SFX", "cue": "riser", "timing_percent": 0.0, "intensity": 0.7}]
             })
             
         # 4. Process / Flow (Money moving between accounts, global network)
@@ -126,7 +138,11 @@ class VisualStoryPlanner:
                 "provenance": "DATA_VISUALIZATION",
                 "query": f"global banking transaction network money flow account transfer map",
                 "prompt": f"Clean editorial map diagram showing money routing across global banking systems between accounts",
-                "weight": 3.2
+                "weight": 3.2,
+                "lut_filter": "teal_orange",
+                "overlay": "light_leaks",
+                "sound_design": "cinematic_whoosh",
+                "events": [{"type": "SFX", "cue": "cinematic_whoosh", "timing_percent": 0.0, "intensity": 0.6}]
             })
             
         # 5. Anomaly / Evidence (Typo / Document)
@@ -137,7 +153,11 @@ class VisualStoryPlanner:
                 "provenance": "ARCHIVAL_FOOTAGE",
                 "query": f"misspelled wire transfer document bank typo error close up",
                 "prompt": f"Macro detail shot of official banking telex document with highlighted misspelled word, macro lens, shallow depth of field",
-                "weight": 3.2
+                "weight": 3.2,
+                "lut_filter": "vintage_film",
+                "overlay": "vhs_glitch",
+                "sound_design": "paper_rustle",
+                "events": [{"type": "SFX", "cue": "paper_rustle", "timing_percent": 0.0, "intensity": 0.7}]
             })
             
         # 6. Reveal / Exposed / Alert
@@ -148,7 +168,14 @@ class VisualStoryPlanner:
                 "provenance": "DATA_VISUALIZATION",
                 "query": f"red alert warning transaction blocked system expose graphic",
                 "prompt": f"Dramatic editorial screen showing high-contrast security warning banner and transaction flag",
-                "weight": 2.8
+                "weight": 2.8,
+                "lut_filter": "high_contrast",
+                "overlay": "light_leaks",
+                "sound_design": "deep_impact",
+                "events": [
+                    {"type": "IMPACT", "cue": "deep_impact", "timing_percent": 0.0, "intensity": 0.85},
+                    {"type": "OVERLAY", "cue": "flash", "timing_percent": 0.0, "duration": 0.5}
+                ]
             })
             
         # Fallback if no specific trigger matched
@@ -160,7 +187,11 @@ class VisualStoryPlanner:
                     "provenance": "ARCHIVAL_FOOTAGE",
                     "query": f"{clean_topic} portrait archival photograph",
                     "prompt": f"Authentic archival historical portrait of key figure in {clean_topic}",
-                    "weight": 3.5
+                    "weight": 3.5,
+                    "lut_filter": "sepia",
+                    "overlay": "film_grain",
+                    "sound_design": "subtle_whoosh",
+                    "events": []
                 })
             else:
                 semantic_units.append({
@@ -169,7 +200,11 @@ class VisualStoryPlanner:
                     "provenance": "ARCHIVAL_FOOTAGE",
                     "query": f"{clean_topic} official case file document evidence",
                     "prompt": f"Official case file document and investigative evidence from {clean_topic}, archival lighting",
-                    "weight": 3.2
+                    "weight": 3.2,
+                    "lut_filter": "vintage_film",
+                    "overlay": "dust_scratches",
+                    "sound_design": "paper_rustle",
+                    "events": [{"type": "SFX", "cue": "paper_rustle", "timing_percent": 0.0, "intensity": 0.6}]
                 })
 
         # If total duration is long, ensure enough semantic units so no shot exceeds 4.5s
@@ -183,7 +218,11 @@ class VisualStoryPlanner:
                     "provenance": "CINEMATIC_RECONSTRUCTION",
                     "query": f"{clean_topic} banking terminal screen keyboard close up",
                     "prompt": f"Macro close-up details of financial terminal and glowing screen, cinematic depth of field",
-                    "weight": 2.8
+                    "weight": 2.8,
+                    "lut_filter": "noir",
+                    "overlay": "film_grain",
+                    "sound_design": "subtle_whoosh",
+                    "events": []
                 })
             elif idx % 3 == 1:
                 semantic_units.append({
@@ -192,7 +231,11 @@ class VisualStoryPlanner:
                     "provenance": "ARCHIVAL_FOOTAGE",
                     "query": f"{clean_topic} official transaction record document evidence",
                     "prompt": f"Close-up of official case file and wire transfer logs, authentic archival lighting",
-                    "weight": 3.0
+                    "weight": 3.0,
+                    "lut_filter": "vintage_film",
+                    "overlay": "dust_scratches",
+                    "sound_design": "paper_rustle",
+                    "events": [{"type": "SFX", "cue": "paper_rustle", "timing_percent": 0.0, "intensity": 0.6}]
                 })
             else:
                 semantic_units.append({
@@ -201,7 +244,11 @@ class VisualStoryPlanner:
                     "provenance": "STOCK",
                     "query": f"server room data center lights flashing network",
                     "prompt": f"Cinematic shot of secure server room racks with blinking blue indicator lights",
-                    "weight": 3.2
+                    "weight": 3.2,
+                    "lut_filter": "teal_orange",
+                    "overlay": "light_leaks",
+                    "sound_design": "cinematic_whoosh",
+                    "events": [{"type": "SFX", "cue": "cinematic_whoosh", "timing_percent": 0.0, "intensity": 0.6}]
                 })
             total_weight = sum(u["weight"] for u in semantic_units)
 
@@ -231,6 +278,10 @@ class VisualStoryPlanner:
             shot["duration_ratio"] = round(dur / max(0.1, actual_duration), 4)
             shot["visual_query"] = unit["query"]
             shot["ai_prompt"] = unit["prompt"]
+            shot["lut_filter"] = unit.get("lut_filter", "warm_cinema")
+            shot["overlay"] = unit.get("overlay")
+            shot["sound_design"] = unit.get("sound_design")
+            shot["editorial_events"] = unit.get("events", [])
             
             # Varied cinematography
             shot["shot_size"] = self.sizes[i % len(self.sizes)]
