@@ -504,17 +504,20 @@ Return ONLY valid JSON (no markdown):
     except Exception as e:
         log.warning(f"Stage 1 Gemini failed: {e}")
     try:
+        wiki_headers = {"User-Agent": "MediaAgencyDocBot/1.0 (https://github.com/thenewbie343/media-agency; contact@mediaagency.ai)"}
         url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={quote(topic)}&utf8=&format=json"
-        resp = requests.get(url, timeout=15)
-        import re
-        snips = [re.sub(r'<[^>]+>', '', s["snippet"]) for s in resp.json().get("query", {}).get("search", [])][:8]
-        if not snips: raise Exception("No wiki results")
-        return {"hook":snips[0] if snips else f"The truth about {topic}",
-                "hook_question":f"What really happened with {topic}?",
-                "key_facts":snips,"statistics":[],"timeline":[],"visual_themes":[topic]}
+        resp = requests.get(url, headers=wiki_headers, timeout=15)
+        if resp.status_code == 200:
+            import re
+            snips = [re.sub(r'<[^>]+>', '', s["snippet"]) for s in resp.json().get("query", {}).get("search", [])][:8]
+            if snips:
+                return {"hook":snips[0],
+                        "hook_question":f"What really happened with {topic}?",
+                        "key_facts":snips,"statistics":[],"timeline":[],"visual_themes":[topic]}
     except:
-        return {"hook":f"Everything you know about {topic} is wrong.","hook_question":f"The real story of {topic}?",
-                "key_facts":[f"Incredible truth about {topic}"],"statistics":[],"timeline":[],"visual_themes":[topic]}
+        pass
+    return {"hook":f"Everything you know about {topic} is wrong.","hook_question":f"The real story of {topic}?",
+            "key_facts":[f"Incredible truth about {topic}"],"statistics":[],"timeline":[],"visual_themes":[topic]}
 
 # ═══════════════════════════════════════════════════════════
 #  STAGE 2 — SCRIPT (DUAL-SCRIPT: Devanagari + Hinglish)
@@ -1306,6 +1309,10 @@ def fetch_pollinations(prompt, out, seed=None):
     except Exception as e: log.warning(f"Pollinations: {e}")
     return False
 
+WIKI_HEADERS = {
+    "User-Agent": "MediaAgencyDocBot/1.0 (https://github.com/thenewbie343/media-agency; contact@mediaagency.ai)"
+}
+
 def fetch_duckduckgo_image(search, out):
     import requests, random
     headers = {
@@ -1322,7 +1329,7 @@ def fetch_duckduckgo_image(search, out):
                 urls = [r.get("image") for r in results if r.get("image")]
                 if urls:
                     img_r = requests.get(random.choice(urls), headers=headers, timeout=15)
-                    if img_r.status_code == 200:
+                    if img_r.status_code == 200 and len(img_r.content) > 1000:
                         with open(out, "wb") as f:
                             f.write(img_r.content)
                         log.info(f"DDG fetched: {clean_search}")
@@ -1334,13 +1341,12 @@ def fetch_duckduckgo_image(search, out):
     try:
         wiki_url = fetch_wikimedia_image(search)
         if not wiki_url:
-            # Fallback to simple query terms for wiki
             simple = " ".join(search.split()[:2])
             wiki_url = fetch_wikimedia_image(simple)
             
         if wiki_url:
-            img_r = requests.get(wiki_url, headers=headers, timeout=15)
-            if img_r.status_code == 200:
+            img_r = requests.get(wiki_url, headers=WIKI_HEADERS, timeout=15)
+            if img_r.status_code == 200 and len(img_r.content) > 1000:
                 with open(out, "wb") as f:
                     f.write(img_r.content)
                 log.info(f"Wikimedia fetched: {wiki_url}")
@@ -1355,48 +1361,78 @@ def fetch_duckduckgo_image(search, out):
             "action": "query", "generator": "search", "gsrsearch": f"{search} filetype:bitmap",
             "gsrnamespace": 6, "gsrlimit": 10, "prop": "imageinfo", "iiprop": "url", "format": "json"
         }
-        r = requests.get(url, params=params, timeout=15)
-        pages = r.json().get("query", {}).get("pages", {})
-        urls = [p["imageinfo"][0]["url"] for p in pages.values() if "imageinfo" in p]
-        if urls:
-            img_r = requests.get(random.choice(urls), headers=headers, timeout=15)
-            with open(out, "wb") as f:
-                f.write(img_r.content)
-            return True
-    except:
-        pass
+        r = requests.get(url, params=params, headers=WIKI_HEADERS, timeout=15)
+        if r.status_code == 200:
+            pages = r.json().get("query", {}).get("pages", {})
+            urls = [p["imageinfo"][0]["url"] for p in pages.values() if "imageinfo" in p and p["imageinfo"]]
+            if urls:
+                img_r = requests.get(random.choice(urls), headers=WIKI_HEADERS, timeout=15)
+                if img_r.status_code == 200 and len(img_r.content) > 1000:
+                    with open(out, "wb") as f:
+                        f.write(img_r.content)
+                    return True
+    except Exception as e:
+        log.warning(f"Wikimedia raw commons failed: {e}")
         
     return False
 
-
-
-
 def fetch_wikimedia_image(query):
+    """Fetches full-resolution historical images from Wikipedia / Wikimedia Commons with compliant headers."""
     import requests
     import urllib.parse
+    import random
     
-    url = f"https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&piprop=original&titles={urllib.parse.quote(query)}"
+    if not query:
+        return None
+    
+    # Tier 1: Direct Wikipedia pageimage (lead image)
     try:
-        r = requests.get(url, timeout=10)
-        data = r.json()
-        pages = data.get("query", {}).get("pages", {})
-        for page_id, page_info in pages.items():
-            if page_id != "-1" and "original" in page_info:
-                return page_info["original"]["source"]
+        url = f"https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&piprop=original&titles={urllib.parse.quote(query)}"
+        r = requests.get(url, headers=WIKI_HEADERS, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            pages = data.get("query", {}).get("pages", {})
+            for page_id, page_info in pages.items():
+                if page_id != "-1" and "original" in page_info:
+                    return page_info["original"]["source"]
     except Exception as e:
-        log.warning(f"Wikimedia API failed: {e}")
+        log.debug(f"Direct Wikipedia pageimage failed: {e}")
         
-    # Fallback to search if direct title match fails
-    search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(query)}&utf8=&format=json"
+    # Tier 2: Wikipedia full-text article search to resolve title
     try:
-        r = requests.get(search_url, timeout=10)
-        search_data = r.json()
-        results = search_data.get("query", {}).get("search", [])
-        if results:
-            first_title = results[0]["title"]
-            return fetch_wikimedia_image(first_title)
-    except:
-        pass
+        search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(query)}&utf8=&format=json"
+        r = requests.get(search_url, headers=WIKI_HEADERS, timeout=10)
+        if r.status_code == 200:
+            search_data = r.json()
+            results = search_data.get("query", {}).get("search", [])
+            if results:
+                first_title = results[0]["title"]
+                url2 = f"https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&piprop=original&titles={urllib.parse.quote(first_title)}"
+                r2 = requests.get(url2, headers=WIKI_HEADERS, timeout=10)
+                if r2.status_code == 200:
+                    pages2 = r2.json().get("query", {}).get("pages", {})
+                    for page_id, page_info in pages2.items():
+                        if page_id != "-1" and "original" in page_info:
+                            return page_info["original"]["source"]
+    except Exception as e:
+        log.debug(f"Wikipedia search fallback failed: {e}")
+
+    # Tier 3: Wikimedia Commons raw bitmap search
+    try:
+        url = "https://commons.wikimedia.org/w/api.php"
+        params = {
+            "action": "query", "generator": "search", "gsrsearch": f"{query} filetype:bitmap",
+            "gsrnamespace": 6, "gsrlimit": 8, "prop": "imageinfo", "iiprop": "url", "format": "json"
+        }
+        r = requests.get(url, params=params, headers=WIKI_HEADERS, timeout=10)
+        if r.status_code == 200:
+            pages = r.json().get("query", {}).get("pages", {})
+            urls = [p["imageinfo"][0]["url"] for p in pages.values() if "imageinfo" in p and p["imageinfo"]]
+            if urls:
+                return random.choice(urls)
+    except Exception as e:
+        log.debug(f"Wikimedia Commons API failed: {e}")
+        
     return None
 
 def fetch_pexels_video(search, out, dur):
