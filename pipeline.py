@@ -1272,7 +1272,7 @@ def img_to_vid(img, out, dur, anim="zoom_in", grain=True):
     vf = ken_burns(anim, dur)
     if grain: vf += ",noise=alls=2:allf=t+u"
     r = subprocess.run(["ffmpeg","-y","-loop","1","-i",img,"-vf",vf,
-        "-t",str(dur),"-c:v","libx264","-pix_fmt","yuv420p","-preset","fast",out],
+        "-t",str(dur),"-c:v","libx264","-pix_fmt","yuv420p","-movflags","+faststart","-preset","fast",out],
         capture_output=True, timeout=180)
     return r.returncode==0
 
@@ -1473,7 +1473,7 @@ def fetch_pexels_video(search, out, dur):
             for chunk in v.iter_content(8192): f.write(chunk)
         r2=subprocess.run(["ffmpeg","-y","-i",raw,"-t",str(dur),
             "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25",
-            "-r","25","-vsync","cfr","-c:v","libx264","-an","-preset","fast",out],capture_output=True,timeout=60)
+            "-r","25","-vsync","cfr","-c:v","libx264","-pix_fmt","yuv420p","-movflags","+faststart","-an","-preset","fast",out],capture_output=True,timeout=60)
         return r2.returncode==0
     except Exception as e: log.warning(f"Pexels video: {e}"); return False
 
@@ -1506,7 +1506,7 @@ def fetch_pixabay(search, out, dur=None):
                 for chunk in v.iter_content(8192): f.write(chunk)
             r2=subprocess.run(["ffmpeg","-y","-i",raw,"-t",str(dur),
                 "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25",
-                "-r","25","-vsync","cfr","-c:v","libx264","-an","-preset","fast",out],capture_output=True,timeout=60)
+                "-r","25","-vsync","cfr","-c:v","libx264","-pix_fmt","yuv420p","-movflags","+faststart","-an","-preset","fast",out],capture_output=True,timeout=60)
             return r2.returncode==0
         else:
             r=requests.get("https://pixabay.com/api/",
@@ -3185,8 +3185,8 @@ def run_pipeline_v52():
                     log.error("Asset audit failed. Aborting Remotion render to prevent 404 crash.")
                     raise RuntimeError(f"Missing required assets before render: {missing_assets}")
 
-                # Prevent headless deadlock by lowering concurrency and removing strict angle GL
-                remotion_cmd = f"npx remotion render src/index.ts DocumentaryVideo {final_video_abs} --props={script_path} --concurrency=2 --log=verbose --crf=22"
+                # Prevent headless deadlock by lowering concurrency and providing ample delay-render timeout
+                remotion_cmd = f"npx remotion render src/index.ts DocumentaryVideo {final_video_abs} --props={script_path} --concurrency=2 --delay-render-timeout-in-milliseconds=60000 --log=verbose --crf=22"
                 log.info(f"Running Remotion: {remotion_cmd}")
                 import subprocess
                 res = subprocess.run(remotion_cmd, cwd="remotion", shell=True, capture_output=True, text=True)

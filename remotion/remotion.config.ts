@@ -8,6 +8,9 @@ import { enableTailwind } from '@remotion/tailwind-v4';
 
 Config.setVideoImageFormat("jpeg");
 Config.setOverwriteOutput(true);
+Config.setDelayRenderTimeoutInMilliseconds(60000);
 Config.setChromiumDisableWebSecurity(true);
 Config.setChromiumIgnoreCertificateErrors(true);
+Config.setChromiumOpenGlRenderer("angle");
 Config.overrideWebpackConfig(enableTailwind);
+

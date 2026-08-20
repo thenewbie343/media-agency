@@ -1,5 +1,5 @@
 import React, { Fragment } from 'react';
-import { AbsoluteFill, Img, Video, staticFile } from 'remotion';
+import { AbsoluteFill, Img, OffthreadVideo, staticFile } from 'remotion';
 import { MapMotionGraphic } from './MapMotionGraphic';
 import { TimelineMotionGraphic } from './TimelineMotionGraphic';
 import { SemanticFallback } from './Fallbacks';
@@ -54,8 +54,7 @@ export const ShotRenderer: React.FC<{
             )
           ) : videoFile ? (
             videoFile.endsWith('.mp4') ? (
-              /* eslint-disable-next-line @remotion/no-object-fit-on-media-video */
-              <Video src={staticFile(`assets/${videoFile}`)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loop />
+              <OffthreadVideo src={staticFile(`assets/${videoFile}`)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : fgFile && bgFile ? (
               <Fragment>
                 <Img src={staticFile(`assets/${bgFile}`)} style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover' }} />
