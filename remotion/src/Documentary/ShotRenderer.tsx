@@ -21,15 +21,22 @@ export const ShotRenderer: React.FC<{
   
   const isMapScene = isMotionGraphics && (searchLower.includes('map') || searchLower.includes('location') || searchLower.includes('geograph'));
   const isColdTheme = searchLower.includes('thriller') || searchLower.includes('history') || searchLower.includes('dark');
-  let cssFilter = isColdTheme ? 'sepia(0.18) saturate(1.1) contrast(1.15) brightness(0.92) hue-rotate(-10deg)' : 'sepia(0.2) saturate(1.2) contrast(1.15) brightness(0.95)';
-  
-  if (shot.lut_filter === 'warm_cinema') cssFilter = 'sepia(0.25) saturate(1.25) contrast(1.18) brightness(0.96) hue-rotate(5deg)';
-  else if (shot.lut_filter === 'teal_orange') cssFilter = 'sepia(0.15) hue-rotate(15deg) saturate(1.3) contrast(1.22) brightness(0.94)';
-  else if (shot.lut_filter === 'sepia') cssFilter = 'sepia(0.85) saturate(0.85) contrast(1.2) brightness(0.92)';
-  else if (shot.lut_filter === 'vintage_film') cssFilter = 'sepia(0.35) saturate(0.9) contrast(1.25) brightness(0.88)';
-  else if (shot.lut_filter === 'noir') cssFilter = 'grayscale(1) contrast(1.4) brightness(0.88)';
-  else if (shot.lut_filter === 'neon_cyberpunk') cssFilter = 'saturate(2) hue-rotate(180deg) contrast(1.2)';
-  else if (shot.lut_filter === 'high_contrast') cssFilter = 'contrast(1.45) saturate(1.15) brightness(0.95)';
+  let cssFilter = 'none';
+  if (shot.lut_filter === 'warm_cinema') {
+    cssFilter = 'sepia(0.3) saturate(1.35) contrast(1.15) brightness(0.96) hue-rotate(5deg)';
+  } else if (shot.lut_filter === 'teal_orange') {
+    cssFilter = 'sepia(0.2) saturate(1.45) contrast(1.25) hue-rotate(18deg) brightness(0.92)';
+  } else if (shot.lut_filter === 'sepia') {
+    cssFilter = 'sepia(0.9) saturate(0.8) contrast(1.25) brightness(0.9)';
+  } else if (shot.lut_filter === 'vintage_film') {
+    cssFilter = 'sepia(0.45) saturate(0.8) contrast(1.35) brightness(0.85)';
+  } else if (shot.lut_filter === 'noir') {
+    cssFilter = 'grayscale(1) contrast(1.6) brightness(0.82)';
+  } else if (shot.lut_filter === 'neon_cyberpunk') {
+    cssFilter = 'saturate(2.2) hue-rotate(180deg) contrast(1.3) brightness(0.95)';
+  } else if (shot.lut_filter === 'high_contrast') {
+    cssFilter = 'contrast(1.6) saturate(1.25) brightness(0.92)';
+  }
 
 
   const videoFile = shot.asset?.path;

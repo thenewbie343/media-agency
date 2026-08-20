@@ -882,10 +882,14 @@ def stage_3_voice(manifest, cfg):
     if isinstance(manifest, dict) and "story_beats" in manifest:
         from agents.visual_story_planner import VisualStoryPlanner
         planner = VisualStoryPlanner()
+        planner.reset_timeline()
         
         for beat in manifest.get("story_beats", []):
             intent = beat.get("narrative_intent", "EXPLANATION")
             attention = float(beat.get("attention_intensity", 0.5))
+            time_mode = beat.get("time_context", {}).get("mode", "modern")
+            chapter_lut = planner.determine_chapter_color(intent, time_mode)
+            beat["chapter_color_language"] = chapter_lut
             
             for block in beat.get("narration_blocks", []):
                 total_blocks += 1
@@ -912,7 +916,9 @@ def stage_3_voice(manifest, cfg):
                     block, 
                     block["total_block_duration"], 
                     beat_intent=intent, 
-                    attention_intensity=attention
+                    attention_intensity=attention,
+                    time_mode=time_mode,
+                    chapter_lut=chapter_lut
                 )
 
                 if total_blocks % 5 == 4:

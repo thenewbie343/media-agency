@@ -13,46 +13,62 @@ export const VFXLayer: React.FC<{
   const isGrain = overlay === 'film_grain' || overlay === 'dust_scratches';
   const isLeaks = overlay === 'light_leaks';
 
-  const randomGlitchShift = isGlitch && frame % 10 === 0 ? random(frame) * 10 - 5 : 0;
+  const randomGlitchShift = isGlitch && frame % 8 === 0 ? random(frame) * 20 - 10 : 0;
   
   // Dynamic light leaks based on frame
-  const leakX = Math.sin(frame / 30) * 100;
-  const leakOpacity = 0.3 + Math.abs(Math.sin(frame / 15)) * 0.2;
+  const leakX = Math.sin(frame / 24) * 80;
+  const leakOpacity = 0.45 + Math.abs(Math.sin(frame / 18)) * 0.25;
 
   return (
     <AbsoluteFill style={{ pointerEvents: 'none', zIndex: 20 }}>
-      {/* VHS Scanline Overlay */}
+      {/* VHS Scanline & Tracking Overlay */}
       {isGlitch && (
-        <AbsoluteFill
-          style={{
-            background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 2px, transparent 2px, transparent 4px)',
-            pointerEvents: 'none',
-            transform: `translateY(${randomGlitchShift}px)`,
-            opacity: 0.7
-          }}
-        />
+        <>
+          <AbsoluteFill
+            style={{
+              background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.35) 0px, rgba(0,0,0,0.35) 2px, transparent 2px, transparent 4px)',
+              pointerEvents: 'none',
+              transform: `translateY(${randomGlitchShift}px)`,
+              opacity: 0.8
+            }}
+          />
+          {frame % 45 < 6 && (
+            <AbsoluteFill
+              style={{
+                height: 40,
+                top: `${(frame * 7) % 90}%`,
+                background: 'rgba(255, 255, 255, 0.25)',
+                filter: 'blur(4px)',
+                pointerEvents: 'none'
+              }}
+            />
+          )}
+        </>
       )}
       
       {/* Light Leaks */}
       {isLeaks && (
         <AbsoluteFill
           style={{
-            background: `radial-gradient(ellipse at ${50 + leakX}% 10%, rgba(255, 100, 50, ${leakOpacity}), transparent 60%)`,
+            background: `radial-gradient(ellipse at ${60 + leakX}% 15%, rgba(255, 130, 45, ${leakOpacity}), rgba(255, 60, 20, 0.2) 40%, transparent 65%)`,
             pointerEvents: 'none',
             mixBlendMode: 'screen'
           }}
         />
       )}
 
-      {/* Film Grain Overlay - Master Filter */}
-      <AbsoluteFill style={{ pointerEvents: 'none', opacity: isGrain ? 0.08 : 0.03, mixBlendMode: 'overlay' }}>
-        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-          <filter id="noiseFilter">
-            <feTurbulence type="fractalNoise" baseFrequency={isGrain ? "0.9" : "0.8"} numOctaves="3" stitchTiles="stitch" />
-          </filter>
-          <rect width="100%" height="100%" filter="url(#noiseFilter)" />
-        </svg>
-      </AbsoluteFill>
+      {/* 35mm Film Grain & Scratches */}
+      {isGrain && (
+        <AbsoluteFill style={{ pointerEvents: 'none', opacity: 0.15, mixBlendMode: 'overlay' }}>
+          <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <filter id="noiseFilter">
+              <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" stitchTiles="stitch" />
+              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.7 0"/>
+            </filter>
+            <rect width="100%" height="100%" fill="#808080" filter="url(#noiseFilter)" />
+          </svg>
+        </AbsoluteFill>
+      )}
       
       {/* Dynamic Editorial Events (OVERLAY) */}
       {events.filter(e => e.type === 'OVERLAY').map((evt, idx) => {
