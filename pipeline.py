@@ -1063,6 +1063,29 @@ def stage_4_music(cfg):
         except Exception:
             return False
 
+    # 1. Try Freesound if API key is provided
+    freesound_key = os.environ.get("FREESOUND_KEY", "")
+    if freesound_key:
+        try:
+            music = get_freesound_music(mood, freesound_key)
+            if music and is_valid_audio(music):
+                log.info("Stage 4: Music from Freesound ✓")
+                return music
+        except Exception as e:
+            log.warning(f"Stage 4: Freesound failed: {e}")
+
+    # 2. Try Pixabay if API key is provided
+    pixabay_key = os.environ.get("PIXABAY_KEY", "")
+    if pixabay_key:
+        try:
+            music = get_pixabay_music(mood, pixabay_key)
+            if music and is_valid_audio(music):
+                log.info("Stage 4: Music from Pixabay ✓")
+                return music
+        except Exception as e:
+            log.warning(f"Stage 4: Pixabay failed: {e}")
+
+    # 3. Use high-quality royalty-free thematic library from assets/music/
     music_folder = ASSETS_DIR / "music"
     if music_folder.exists():
         mood_files = list(music_folder.glob("*.mp3")) + list(music_folder.glob("*.m4a")) + list(music_folder.glob("*.wav"))
@@ -1071,97 +1094,78 @@ def stage_4_music(cfg):
         if pool:
             chosen = random.choice(pool)
             if is_valid_audio(str(chosen)):
-                log.info(f"Stage 4: Using your uploaded track — {chosen.name}")
+                log.info(f"Stage 4: Using curated cinematic track — {chosen.name} ✓")
                 return str(chosen)
 
-    freesound_key = os.environ.get("FREESOUND_KEY", "")
-    if freesound_key:
-        try:
-            music = get_freesound_music(mood, freesound_key)
-            if music and is_valid_audio(music):
-                log.info("Stage 4: Music from Freesound")
-                return music
-        except Exception as e:
-            log.warning(f"Stage 4: Freesound failed: {e}")
-
-    pixabay_key = os.environ.get("PIXABAY_KEY", "")
-    if pixabay_key:
-        try:
-            music = get_pixabay_music(mood, pixabay_key)
-            if music and is_valid_audio(music):
-                log.info("Stage 4: Music from Pixabay")
-                return music
-        except Exception as e:
-            log.warning(f"Stage 4: Pixabay failed: {e}")
-
-    music_map = {
-        "serious corporate dramatic":  "https://freepd.com/music/Sci-Fi%20Intelligence.mp3",
-        "dark suspense thriller":      "https://freepd.com/music/Dark%20Mystery.mp3",
-        "calm lo-fi focus":            "https://freepd.com/music/Acoustic%20Meditation.mp3",
-        "cinematic dramatic":          "https://freepd.com/music/Inspiring%20Cinematic.mp3",
-        "energetic trap beat":         "https://freepd.com/music/Heavy%20Interlude.mp3",
-        "playful upbeat cartoon":      "https://freepd.com/music/Fun%20Day.mp3",
-        "dark noir":                   "https://freepd.com/music/Dark%20Mystery.mp3",
-        "cool blue":                   "https://freepd.com/music/Blue%20Skies.mp3",
-    }
-    url = None
-    for key in music_map:
-        if any(w in mood for w in key.split()):
-            url = music_map[key]; break
-    url = url or music_map["cinematic dramatic"]
-
-    music_path = str(WORKSPACE/"music.mp3")
+    # 4. Fallback: synthesize dynamic cinematic ambient pad
+    music_path = str(WORKSPACE / "music.mp3")
     try:
-        r = requests.get(url, timeout=30)
-        if r.status_code == 200 and len(r.content) > 1000:
-            with open(music_path,"wb") as f: f.write(r.content)
-            if is_valid_audio(music_path):
-                log.info(f"Stage 4: Music from freepd.com")
-                return music_path
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", "anoisesrc=d=300:c=pink:r=44100:a=0.015",
+            "-f", "lavfi", "-i", "sine=f=55:d=300",
+            "-f", "lavfi", "-i", "sine=f=110:d=300",
+            "-f", "lavfi", "-i", "sine=f=164.81:d=300",
+            "-filter_complex", "[1:a]volume=0.3[s1];[2:a]volume=0.25[s2];[3:a]volume=0.15[s3];[0:a][s1][s2][s3]amix=inputs=4[mix];[mix]lowpass=f=450,aecho=0.8:0.88:1000:0.4,volume=1.5[out]",
+            "-map", "[out]", "-c:a", "libmp3lame", "-b:a", "192k", music_path
+        ]
+        subprocess.run(cmd, capture_output=True, timeout=30)
+        if is_valid_audio(music_path):
+            log.info("Stage 4: Synthesized cinematic drone track ✓")
+            return music_path
     except Exception as e:
-        log.warning(f"Stage 4: FreePD failed: {e}")
+        log.warning(f"Stage 4: Synthesis failed: {e}")
 
-    music_path = str(WORKSPACE/"music.m4a")
-    subprocess.run(["ffmpeg","-y","-f","lavfi","-i","anullsrc=r=44100:cl=stereo",
-        "-t","300","-c:a","aac",music_path], capture_output=True, timeout=30)
-    log.warning("Stage 4: Using silent track")
-    return music_path
+    return None
 
 def get_freesound_music(mood, api_key):
     search_terms = {
-        "serious corporate dramatic": ["corporate", "dramatic", "cinematic"],
-        "dark suspense thriller": ["suspense", "thriller", "dark"],
-        "calm lo-fi focus": ["lo-fi", "calm", "focus"],
-        "cinematic dramatic": ["cinematic", "dramatic"],
-        "energetic trap beat": ["energetic", "trap", "beat"],
-        "playful upbeat cartoon": ["cartoon", "playful", "upbeat"],
-        "dark noir": ["noir", "dark", "mysterious"],
-        "cool blue": ["chill", "lo-fi", "calm"]
+        "serious corporate dramatic": ["corporate dramatic", "cinematic suspense"],
+        "dark suspense thriller": ["suspense thriller", "dark cinematic"],
+        "calm lo-fi focus": ["calm ambient", "cinematic ambient"],
+        "cinematic dramatic": ["cinematic dramatic", "documentary score"],
+        "energetic trap beat": ["cinematic beat", "action dramatic"],
+        "playful upbeat cartoon": ["upbeat acoustic", "light documentary"],
+        "dark noir": ["dark noir", "mystery cinematic"],
+        "cool blue": ["ambient background", "documentary calm"]
     }
-    search_query = random.choice(search_terms.get(mood, ["cinematic"]))
+    search_query = random.choice(search_terms.get(mood, ["cinematic dramatic"]))
     try:
         resp = requests.get(
             "https://freesound.org/apiv2/search/text/",
-            params={"query": search_query, "filter": "duration:[30 TO 180] type:wav",
-                "sort": "rating_desc", "page_size": 20},
-            headers={"Authorization": f"Token {api_key}"}, timeout=30)
-        if resp.status_code != 200: return None
+            params={
+                "query": search_query,
+                "filter": "duration:[20.0 TO 300.0]",
+                "fields": "id,name,previews,duration,tags",
+                "sort": "rating_desc",
+                "page_size": 15
+            },
+            headers={"Authorization": f"Token {api_key}", "User-Agent": "MediaAgencyBot/1.0"},
+            timeout=20
+        )
+        if resp.status_code != 200:
+            log.warning(f"Freesound returned status {resp.status_code}")
+            return None
+            
         results = resp.json().get("results", [])
-        if not results: return None
+        if not results:
+            return None
+            
+        # Select best preview URL
         sound = random.choice(results)
-        sound_id = sound["id"]
-        detail_resp = requests.get(f"https://freesound.org/apiv2/sounds/{sound_id}/",
-            headers={"Authorization": f"Token {api_key}"}, timeout=30)
-        if detail_resp.status_code != 200: return None
-        download_url = detail_resp.json().get("previews", {}).get("preview-hq-mp3")
-        if not download_url: return None
+        previews = sound.get("previews", {})
+        download_url = previews.get("preview-hq-mp3") or previews.get("preview-lq-mp3")
+        if not download_url:
+            return None
+            
         music_path = str(WORKSPACE / "freesound_music.mp3")
-        r = requests.get(download_url, timeout=60)
-        if r.status_code == 200 and len(r.content) > 1000:
-            with open(music_path, "wb") as f: f.write(r.content)
+        r = requests.get(download_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=60)
+        if r.status_code == 200 and len(r.content) > 2000:
+            with open(music_path, "wb") as f:
+                f.write(r.content)
             return music_path
     except Exception as e:
-        log.warning(f"Freesound music failed: {e}")
+        log.warning(f"Freesound music search failed: {e}")
     return None
 
 def get_pixabay_music(mood, api_key):
@@ -2378,30 +2382,38 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
     asm.mkdir(exist_ok=True)
     
     if not os.path.exists(remotion_video):
-        raise RuntimeError("Remotion video missing!")
+        raise RuntimeError(f"Remotion video missing at {remotion_video}!")
         
     final_output = str(asm / "final_documentary.mp4")
     total_dur = get_dur(remotion_video)
 
     if music_path and os.path.exists(music_path):
-        # Mix the Remotion audio (TTS, Foley) with the background music
+        # Mix the Remotion audio (TTS, Foley) with the background music using intelligent sidechain ducking
         cmd = [
             "ffmpeg", "-y", "-i", remotion_video, "-stream_loop", "-1", "-i", music_path,
-            "-filter_complex", f"[1:a]volume=0.06,atrim=0:{total_dur}[m];[0:a][m]amix=inputs=2:duration=first[a]",
+            "-filter_complex", f"[1:a]volume=0.20,atrim=0:{total_dur}[bgm];[bgm][0:a]sidechaincompress=threshold=0.12:ratio=4:attack=200:release=1000[ducked];[0:a][ducked]amix=inputs=2:duration=first:dropout_transition=2[a]",
             "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_output
         ]
         r = subprocess.run(cmd, capture_output=True, timeout=300)
-        if r.returncode == 0 and os.path.exists(final_output):
+        if r.returncode == 0 and os.path.exists(final_output) and os.path.getsize(final_output) > 1000:
+            log.info("✅ Documentary audio assembly complete with dynamic BGM sidechain ducking!")
             return final_output
         else:
+            # Fallback simple amix
+            log.warning("Sidechain mix failed, attempting simple amix fallback...")
+            cmd_fb = [
+                "ffmpeg", "-y", "-i", remotion_video, "-stream_loop", "-1", "-i", music_path,
+                "-filter_complex", f"[1:a]volume=0.18,atrim=0:{total_dur}[m];[0:a][m]amix=inputs=2:duration=first[a]",
+                "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_output
+            ]
+            r_fb = subprocess.run(cmd_fb, capture_output=True, timeout=300)
+            if r_fb.returncode == 0 and os.path.exists(final_output):
+                return final_output
             log.warning("Music mix failed, using raw Remotion output")
             return remotion_video
     else:
         log.info("No music track provided, using raw Remotion output")
         return remotion_video
-        
-    log.info("✅ Documentary audio assembly complete with Strategic Silence ducking & Foley mixing!")
-    return final_video
 
 # ═══════════════════════════════════════════════════════════
 #  MAIN PIPELINE
@@ -3194,7 +3206,7 @@ def run_pipeline_v52():
                 log.info("✅ Remotion render complete!")
 
                 # Phase 4: Mix the generated Remotion visuals with Audio/BGM
-                final_video = stage_assemble_documentary(script, cfg, final_video, music_path)
+                final_video = stage_assemble_documentary(script, cfg, final_video_abs, music_path)
             else:
                 final_video = stage_7_assemble(script, cfg, music_path)
 
