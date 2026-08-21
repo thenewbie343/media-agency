@@ -85,7 +85,7 @@ class Shot(BaseModel):
     visual_description: str = Field(..., description="What happens visually in the shot")
     visual_query: str = Field(..., description="Structured search query for stock footage. Format: [SUBJECT] + [ACTION] + [LOCATION] + [ERA]. (e.g. '1960s scientists working in underground bunker')")
     ai_prompt: str = Field(..., description="Exact prompt for image/video generation. Format: [SUBJECT], [ERA], [LOCATION], [ENVIRONMENT], [LIGHTING], [CAMERA ANGLE]")
-    camera_motion: str = Field(default="zoom_in", description="Camera movement (e.g., zoom_in, pan_right, slow_push_in, top_down, none)")
+    camera_motion: str = Field(default="slow_push_in", description="Camera movement (e.g., slow_push_in, pan_right, pan_left, dolly_in, static)")
     motion_intensity: float = Field(default=0.3, description="Speed/intensity of the camera motion (0.1 to 1.0)")
     transition_in: Literal["hard_cut", "fade", "dissolve"] = Field(default="hard_cut", description="Transition into this shot")
     

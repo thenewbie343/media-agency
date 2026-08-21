@@ -114,6 +114,9 @@ def run_documentary_pipeline(cfg):
         "story_beats": master_beats
     }
     
+    # Global Directorial Harmonization across all assembled acts
+    final_script = director.enforce_strict_rules(final_script)
+    
     stats = {
         "initial_status": "PENDING",
         "schema_repair_count": 0,
@@ -123,7 +126,7 @@ def run_documentary_pipeline(cfg):
         "final_status": "APPROVED"
     }
     
-        # Surgical QC Loop
+    # Surgical QC Loop
     previous_states = {}
     
     for qc_attempt in range(3):
@@ -156,7 +159,6 @@ def run_documentary_pipeline(cfg):
                                 log.info(f"Repairing shot {shot_id}...")
                                 
                                 # Regression check: If this shot failed again for a NEW reason, log it.
-                                # Store the original state before first repair
                                 if shot_id not in previous_states:
                                     previous_states[shot_id] = dict(shot)
                                 
@@ -173,6 +175,9 @@ def run_documentary_pipeline(cfg):
                                 break
                         if found: break
                     if found: break
+            
+            # Re-harmonize master script after repair
+            final_script = director.enforce_strict_rules(final_script)
         else:
             log.info("✅ QC Approved master script!")
             stats["final_status"] = "APPROVED"
