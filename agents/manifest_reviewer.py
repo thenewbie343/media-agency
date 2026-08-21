@@ -125,11 +125,19 @@ class ManifestReviewerAgent:
             status = "PASS_WITH_WARNINGS"
         else:
             status = "PASS"
+
+        # Calculate 10-Dimension Director Score
+        from .cinematic_qc import CinematicQCEngine
+        qc_engine = CinematicQCEngine()
+        director_eval = qc_engine.evaluate_manifest_director_score(manifest)
         
         result = {
             "status": status,
             "errors": errors,
             "warnings": warnings,
+            "director_score": director_eval.get("overall_director_score", 8.0),
+            "director_verdict": director_eval.get("verdict", "APPROVED"),
+            "director_score_matrix": director_eval.get("director_score_matrix", {}),
             "metrics": {
                 "total_shots": shot_count,
                 "ai_video_count": ai_video_count,
@@ -140,6 +148,6 @@ class ManifestReviewerAgent:
         if errors:
             log.error(f"Manifest Review FAILED. {len(errors)} errors: {errors[0]}")
         else:
-            log.info(f"Manifest Review PASSED. {len(warnings)} warnings.")
+            log.info(f"Manifest Review PASSED. Director Score: {result['director_score']}/10.0 ({len(warnings)} warnings).")
             
         return result

@@ -11,6 +11,7 @@ class VisualBible(BaseModel):
 class ProjectMeta(BaseModel):
     topic: str = Field(..., description="The main topic of the documentary")
     genre: str = Field(default="documentary", description="Genre style")
+    style_profile: Optional[str] = Field(default="DOCUMENTARY_INVESTIGATIVE", description="Look Bible and directorial style profile")
     language: str = Field(default="hindi", description="Language of the voiceover")
     visual_bible: VisualBible = Field(..., description="Global visual style guidelines")
 
@@ -96,6 +97,10 @@ class Shot(BaseModel):
     
     cut_reason: str = Field(..., description="Why are we cutting to this shot? Must be highly specific (e.g. 'reveal_financial_consequence', 'bridge_luxury_to_collapse'). DO NOT USE generic reasons like 'introduce_information' or 'transition'.")
     visual_importance: float = Field(default=0.5, description="Scale of visual emphasis (0.0 to 1.0). High means intense motion/sound.")
+    visual_density: float = Field(default=0.5, description="Visual complexity score from 0.0 minimal breathing room to 1.0 maximum density")
+    visual_intent: Optional[str] = Field(default=None, description="The abstract visual storytelling intent")
+    is_restrained: bool = Field(default=False, description="Whether this shot enforces cinematic restraint (no motion/no sfx)")
+    director_score: Optional[float] = Field(default=None, description="Director quality score from 0.0 to 10.0")
     
     continuity: ContinuityMetadata = Field(..., description="Continuity constraints for consistent generation")
     asset: AssetMetadata = Field(default_factory=AssetMetadata, description="Asset tracking metadata (populated during pipeline execution)")

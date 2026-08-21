@@ -3254,6 +3254,19 @@ def run_pipeline_v52():
                                 log.warning(f"SFX file {sfx_name} not found in public assets. Stripping to prevent crash.")
                                 s["sound_design"] = None
 
+                # Authoritative Pre-Render Cinematic Timeline Compilation
+                if is_v2:
+                    from agents.cinematic_timeline import CinematicTimelineCompiler
+                    from agents.cinematic_qc import CinematicQCEngine
+                    timeline_compiler = CinematicTimelineCompiler()
+                    compiled_timeline = timeline_compiler.compile_timeline(script, fps=30)
+                    script["cinematic_timeline"] = compiled_timeline
+                    
+                    qc_engine = CinematicQCEngine()
+                    director_score_res = qc_engine.evaluate_manifest_director_score(script)
+                    log.info(f"🎬 Pre-Render Director Score: {director_score_res.get('overall_director_score', 8.0)}/10.0 ({director_score_res.get('verdict')})")
+                    _save(compiled_timeline, "cinematic_timeline.json")
+
                 _save(script, "script_remotion.json")
                 script_path = str((WORKSPACE / "script_remotion.json").resolve())
                 final_video_abs = str((WORKSPACE / "final_documentary.mp4").resolve())
