@@ -826,30 +826,85 @@ def stage_3_voice(manifest, cfg):
 
     doc_fallback_voice = cfg.get("voice", VOICE_MAP.get(lang, VOICE_MAP["hindi"])[0])
 
-    def _generate_voice(text, b_id, emotion="dramatic"):
+    def _apply_studio_mastering(raw_path, target_path):
+        """Applies highpass, vocal warmth, presence boost, and dynamic compression."""
+        vocal_filter = (
+            "highpass=f=80,"
+            "equalizer=f=220:width_type=o:width=1.0:g=2.0,"
+            "equalizer=f=3500:width_type=o:width=1.2:g=2.2,"
+            "acompressor=threshold=0.12:ratio=3:attack=15:release=200,"
+            "volume=1.25"
+        )
+        tmp_master = target_path + ".tmp.mp3"
+        cmd = [
+            "ffmpeg", "-y", "-i", raw_path,
+            "-filter:a", vocal_filter,
+            "-codec:a", "libmp3lame", "-qscale:a", "2",
+            tmp_master
+        ]
+        r = subprocess.run(cmd, capture_output=True, timeout=30)
+        if r.returncode == 0 and os.path.exists(tmp_master) and os.path.getsize(tmp_master) > 500:
+            if os.path.exists(target_path):
+                os.remove(target_path)
+            os.rename(tmp_master, target_path)
+            if raw_path != target_path and os.path.exists(raw_path):
+                try: os.remove(raw_path)
+                except: pass
+            return True
+        if os.path.exists(tmp_master):
+            try: os.remove(tmp_master)
+            except: pass
+        return False
+
+    def _generate_voice(text, b_id, intent="EXPLANATION", attention=0.5):
         if not text:
             return None, 0.0
             
         out = str(audio_dir / f"block_{b_id}.mp3")
         done = False
         
-        # 1. Try Kokoro first if enabled (Locked at clean documentary speed 1.0)
+        # Adaptive Pacing Calculation (Subtle & Cinematic: 0.92x to 1.08x)
+        intent_upper = str(intent).upper()
+        if intent_upper in ["HOOK", "MYSTERY"]:
+            kokoro_speed = 0.95
+            edge_rate = "-3%"
+            edge_pitch = "-1Hz"
+        elif intent_upper in ["CONFLICT", "CRISIS"]:
+            kokoro_speed = 1.08
+            edge_rate = "+8%"
+            edge_pitch = "+1Hz"
+        elif intent_upper in ["EVIDENCE", "ANOMALY", "REVEAL"]:
+            kokoro_speed = 0.92
+            edge_rate = "-5%"
+            edge_pitch = "-2Hz"
+        elif intent_upper in ["RESOLUTION", "AFTERMATH"]:
+            kokoro_speed = 0.96
+            edge_rate = "-2%"
+            edge_pitch = "-1Hz"
+        else: # EXPLANATION / DEFAULT
+            kokoro_speed = 1.00
+            edge_rate = "+2%"
+            edge_pitch = "+0Hz"
+
+        # 1. Try Kokoro first if enabled with adaptive pacing
         if use_kokoro:
             try:
-                done = generate_kokoro_voice(text, out, lang, emotion="dramatic")
+                done = generate_kokoro_voice(text, out, lang, speed_override=kokoro_speed)
                 if done:
-                    log.info(f"  Block {b_id}: Kokoro TTS ✓")
+                    log.info(f"  Block {b_id}: Kokoro TTS ✓ ({kokoro_speed}x, intent={intent_upper})")
             except Exception as e:
                 log.warning(f"  Block {b_id}: Kokoro failed: {e}")
 
-        # 2. Consistent Fallback to Edge-TTS with identical voice across all blocks
+        # 2. Consistent Fallback to Edge-TTS with adaptive rate/pitch + studio mastering
         if not done:
+            raw_edge = str(audio_dir / f"raw_{b_id}.mp3")
             for attempt in range(2):
                 try:
-                    asyncio.run(_edge_tts(text, out, doc_fallback_voice, rate="+4%", pitch="+0Hz"))
-                    if os.path.exists(out) and os.path.getsize(out) > 500:
+                    asyncio.run(_edge_tts(text, raw_edge, doc_fallback_voice, rate=edge_rate, pitch=edge_pitch))
+                    if os.path.exists(raw_edge) and os.path.getsize(raw_edge) > 500:
+                        _apply_studio_mastering(raw_edge, out)
                         done = True
-                        log.info(f"  Block {b_id}: Edge-TTS ({doc_fallback_voice}) ✓")
+                        log.info(f"  Block {b_id}: Edge-TTS ({doc_fallback_voice}, rate={edge_rate}) + Studio Master ✓")
                     break
                 except Exception as e:
                     log.warning(f"  Block {b_id} {doc_fallback_voice} attempt {attempt+1}: {e}")
@@ -857,13 +912,15 @@ def stage_3_voice(manifest, cfg):
 
         # 3. Fallback to gTTS if Edge-TTS fails
         if not done:
+            raw_gtts = str(audio_dir / f"raw_gtts_{b_id}.mp3")
             try:
                 from gtts import gTTS
                 lc = {"hindi":"hi","english":"en","spanish":"es","french":"fr","german":"de"}.get(lang,"hi")
-                gTTS(text=text, lang=lc).save(out)
-                if os.path.exists(out) and os.path.getsize(out) > 500:
+                gTTS(text=text, lang=lc).save(raw_gtts)
+                if os.path.exists(raw_gtts) and os.path.getsize(raw_gtts) > 500:
+                    _apply_studio_mastering(raw_gtts, out)
                     done = True
-                    log.info(f"  Block {b_id}: gTTS ✓")
+                    log.info(f"  Block {b_id}: gTTS + Studio Master ✓")
             except Exception as e:
                 log.error(f"  Block {b_id}: gTTS also failed: {e}")
 
@@ -896,7 +953,7 @@ def stage_3_voice(manifest, cfg):
                 b_id = block.get("block_id", f"b{total_blocks}")
                 text = block.get("voiceover", "").strip()
                 
-                out_file, dur = _generate_voice(text, b_id)
+                out_file, dur = _generate_voice(text, b_id, intent=intent, attention=attention)
                 
                 if not out_file:
                     failed_blocks += 1
@@ -950,19 +1007,16 @@ def stage_3_voice(manifest, cfg):
     return manifest
 
 
-def generate_kokoro_voice(text, out_path, lang, emotion):
-    """Generate voice using Kokoro TTS — FIXED for proper Hindi audio"""
-    # FIXED: Use actual Hindi voices for Hindi, not American fallback
+def generate_kokoro_voice(text, out_path, lang="hindi", emotion="dramatic", speed_override=None):
+    """Generate voice using Kokoro TTS with adaptive pacing and studio vocal mastering."""
     voice_map = {
         "hindi": "hf_alpha",     # Hindi Female — natural, clear
-        # "hindi": "hm_omega",   # Hindi Male — alternative
         "english": "af_heart",    # American Female
         "spanish": "af_heart",    # Fallback
         "french": "af_heart",     # Fallback
         "german": "af_heart"      # Fallback
     }
 
-    # FIXED: Use correct language code for phoneme generation
     lang_code_map = {
         "hindi": "h",      # 'h' triggers espeak-ng hi + Hindi G2P
         "english": "a",    # 'a' = American English
@@ -971,18 +1025,21 @@ def generate_kokoro_voice(text, out_path, lang, emotion):
         "german": "a"      # Fallback
     }
 
-    voice = voice_map.get(lang, "af_heart")
-    lang_code = lang_code_map.get(lang, "a")
+    voice = voice_map.get(lang, "hf_alpha" if lang == "hindi" else "af_heart")
+    lang_code = lang_code_map.get(lang, "h" if lang == "hindi" else "a")
 
-    speed_map = {
-        "dramatic": 1.0,
-        "shocking": 1.3,
-        "mysterious": 0.9,
-        "inspiring": 1.1,
-        "calm": 0.85,
-        "energetic": 1.2
-    }
-    speed = speed_map.get(emotion, 1.0)
+    if speed_override is not None:
+        speed = float(speed_override)
+    else:
+        speed_map = {
+            "dramatic": 1.0,
+            "shocking": 1.08,
+            "mysterious": 0.95,
+            "inspiring": 1.05,
+            "calm": 0.92,
+            "energetic": 1.08
+        }
+        speed = speed_map.get(emotion, 1.0)
 
     try:
         from kokoro import KPipeline
@@ -991,7 +1048,6 @@ def generate_kokoro_voice(text, out_path, lang, emotion):
         import sys, os, contextlib
         with open(os.devnull, 'w') as devnull:
             with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
-                # FIXED: Correct language code for phoneme dictionary
                 pipeline = KPipeline(lang_code=lang_code)
                 generator = pipeline(text, voice=voice, speed=speed, split_pattern=r'\n+')
 
@@ -1006,26 +1062,33 @@ def generate_kokoro_voice(text, out_path, lang, emotion):
 
         full_audio = np.concatenate(audio_segments)
 
-        # FIX 1: Remove NaN/Inf that corrupt output
+        # 1. Remove NaN/Inf that corrupt output
         full_audio = np.nan_to_num(full_audio, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # FIX 1b: Peak Normalization for crisp, loud voiceover
+        # 2. Peak Normalization
         max_val = np.max(np.abs(full_audio))
         if max_val > 1e-5:
             full_audio = (full_audio / max_val) * 0.96
 
-        # FIX 2: float32 [-1.0, 1.0] → int16 [-32768, 32767] with clipping
+        # 3. float32 [-1.0, 1.0] → int16 [-32768, 32767]
         audio_int16 = np.clip(full_audio * 32767, -32768, 32767).astype(np.int16)
 
-        # FIX 3: Write as proper 16-bit PCM WAV
+        # 4. Write as proper 16-bit PCM WAV
         import soundfile as sf
         wav_path = out_path.replace('.mp3', '.wav')
         sf.write(wav_path, audio_int16, sample_rate, subtype='PCM_16')
 
-        # FIX 4: Convert to MP3 with ffmpeg + clean steady volume
+        # 5. Convert to MP3 with studio broadcast mastering filter
+        vocal_filter = (
+            "highpass=f=80,"
+            "equalizer=f=220:width_type=o:width=1.0:g=2.0,"
+            "equalizer=f=3500:width_type=o:width=1.2:g=2.2,"
+            "acompressor=threshold=0.12:ratio=3:attack=15:release=200,"
+            "volume=1.25"
+        )
         result = subprocess.run([
             "ffmpeg", "-y", "-i", wav_path,
-            "-filter:a", "volume=1.3",
+            "-filter:a", vocal_filter,
             "-codec:a", "libmp3lame", "-qscale:a", "2",
             "-ar", str(sample_rate),
             out_path
@@ -1036,7 +1099,7 @@ def generate_kokoro_voice(text, out_path, lang, emotion):
 
         success = result.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 500
         if success:
-            log.info(f"  Kokoro [{lang_code}/{voice}]: clean audio ({os.path.getsize(out_path)//1024}KB)")
+            log.info(f"  Kokoro [{lang_code}/{voice} @ {speed}x]: studio mastered audio ({os.path.getsize(out_path)//1024}KB)")
         return success
 
     except ImportError:

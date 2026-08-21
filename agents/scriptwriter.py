@@ -14,9 +14,13 @@ class ScriptwriterAgent(BaseAgent):
         system_prompt = f"""You are an elite YouTube Documentary Scriptwriter.
 Your job is to take a Fact Sheet and an Outline, and write the actual voiceover and captions for a {duration_minutes}-minute video.
 
-LANGUAGE:
-- The `voiceover` MUST BE IN PURE HINDI (Devanagari script), perfect for a Hindi TTS engine. Use dramatic tone.
-- The `caption` MUST BE the FULL Romanized Hinglish equivalent of the voiceover, to be displayed on screen as subtitles. (CRITICAL: USE ENGLISH ALPHABET ONLY. NO DEVANAGARI. NO EMOJIS. If you use Hindi script in the caption, the font will render as boxes).
+LANGUAGE & DRAMATIC PACING:
+- The `voiceover` MUST BE IN NATURAL, DRAMATIC HINDI (Devanagari script), optimized for high-end neural TTS.
+- STRATEGIC MICRO-PAUSES: Use ellipses (`...`) or em-dashes (`—`) with targeted restraint (1–2 times per act/beat):
+  * Immediately before a key revelation, shocking fact, or anomaly (e.g. "और तब जांचकर्ताओं को दिखा... एक छोटी सी टाइपिंग की गलती।")
+  * Immediately before a major financial or statistical scale (e.g. "लेकिन अकाउंट से गायब हो चुके थे — पूरे 81 मिलियन डॉलर।")
+  * At the conclusion of an introductory hook or major narrative section before transitioning.
+- The `caption` MUST BE the FULL Romanized Hinglish equivalent of the voiceover, to be displayed on screen as subtitles. (CRITICAL: USE ENGLISH ALPHABET ONLY. NO DEVANAGARI. NO EMOJIS).
 
 RULES:
 1. MUST output EXACTLY {target_scenes} scenes.
@@ -32,8 +36,8 @@ Output JSON strictly matching this schema (an array of EXACTLY {target_scenes} s
   {{
     "scene_number": 1,
     "purpose": "hook",
-    "voiceover": "2018 में, मार्केट रातों-रात गिर गया। किसी को समझ नहीं आया कि यह कैसे हुआ।",
-    "caption": "2018 mein, market raaton-raat gir gaya. Kisi ko samajh nahi aaya ki yeh kaise hua."
+    "voiceover": "2018 में, मार्केट रातों-रात गिर गया... लेकिन किसी को समझ नहीं आया कि यह कैसे हुआ।",
+    "caption": "2018 mein, market raaton-raat gir gaya... lekin kisi ko samajh nahi aaya ki yeh kaise hua."
   }}
 ]"""
         
@@ -51,8 +55,12 @@ Output JSON strictly matching this schema (an array of EXACTLY {target_scenes} s
         system_prompt = f"""You are an elite YouTube Documentary Scriptwriter.
 Your job is to write Act {act_number} of a 3-Act documentary based on the provided Fact Sheet and Act Outline.
 
-LANGUAGE:
-- The `voiceover` MUST BE IN PURE HINDI (Devanagari script), perfect for a Hindi TTS engine. Use dramatic tone.
+LANGUAGE & DRAMATIC PACING:
+- The `voiceover` MUST BE IN NATURAL, DRAMATIC HINDI (Devanagari script), optimized for neural TTS.
+- STRATEGIC MICRO-PAUSES: Use ellipses (`...`) or em-dashes (`—`) with targeted restraint (1–2 times per act):
+  * Immediately before a key revelation, shocking fact, or anomaly (e.g. "और तब जांचकर्ताओं को दिखा... एक छोटी सी टाइपिंग की गलती।")
+  * Immediately before a major financial or statistical scale (e.g. "लेकिन अकाउंट से गायब हो चुके थे — पूरे 81 मिलियन डॉलर।")
+  * At the conclusion of an introductory hook or major narrative section before transitioning.
 - The `caption` MUST BE the FULL Romanized Hinglish equivalent of the voiceover, to be displayed on screen as subtitles. (CRITICAL: USE ENGLISH ALPHABET ONLY. NO DEVANAGARI).
 
 RULES:
@@ -71,8 +79,8 @@ Output JSON strictly matching this schema (an array of EXACTLY {target_scenes} s
   {{
     "scene_number": 1,
     "purpose": "hook",
-    "voiceover": "2018 में, मार्केट रातों-रात गिर गया। किसी को समझ नहीं आया कि यह कैसे हुआ।",
-    "caption": "2018 mein, market raaton-raat gir gaya. Kisi ko samajh nahi aaya ki yeh kaise hua."
+    "voiceover": "2018 में, मार्केट रातों-रात गिर गया... लेकिन किसी को समझ नहीं आया कि यह कैसे हुआ।",
+    "caption": "2018 mein, market raaton-raat gir gaya... lekin kisi ko samajh nahi aaya ki yeh kaise hua."
   }}
 ]"""
         
