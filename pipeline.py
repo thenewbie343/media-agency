@@ -108,7 +108,7 @@ def _salvage_truncated_array(fragment):
 GROQ_KEY        = os.environ.get("GROQ_KEY", "")
 GEMINI_KEY      = os.environ.get("GEMINI_KEY", "")
 GEMINI_KEY_2    = os.environ.get("GEMINI_KEY_2", "")
-PEXELS_KEY      = os.environ.get("PEXELS_KEY", "")
+PEXELS_KEY      = os.environ.get("PEXELS_KEY", "3QjOv4tHN73fLie2daMFqgZDv9w2GRuBoTv5UBhyHYD5da26gVw8kqS4")
 PIXABAY_KEY     = os.environ.get("PIXABAY_KEY", "")
 FREESOUND_KEY   = os.environ.get("FREESOUND_KEY", "")
 TELEGRAM_TOKEN  = os.environ.get("TELEGRAM_TOKEN", "")
@@ -1384,13 +1384,14 @@ def make_text_stat(text, out, dur, lang="hindi"):
 
 def fetch_pollinations(prompt, out, seed=None):
     try:
-        s = seed or random.randint(1,99999)
-        neg="text watermark faces flags modern buildings cars phones computers deformed"
-        url=(f"https://image.pollinations.ai/prompt/{quote(prompt)}"
-             f"?width=1920&height=1080&nologo=true&seed={s}&negative={quote(neg)}&model=flux")
-        r=requests.get(url,timeout=90)
-        if r.status_code==200 and len(r.content)>8000:
-            with open(out,"wb") as f: f.write(r.content)
+        s = seed or random.randint(1, 99999)
+        neg = "text watermark logos cartoon 3d render deformed blur bad anatomy saturated oversaturated plastic skin CGI"
+        url = (f"https://image.pollinations.ai/prompt/{quote(prompt)}"
+               f"?width=1920&height=1080&nologo=true&seed={s}&negative={quote(neg)}&model=flux")
+        r = requests.get(url, timeout=90)
+        if r.status_code == 200 and len(r.content) > 5000:
+            with open(out, "wb") as f:
+                f.write(r.content)
             return True
     except Exception as e: log.warning(f"Pollinations: {e}")
     return False
@@ -1521,47 +1522,87 @@ def fetch_wikimedia_image(query):
         
     return None
 
+def _clean_pexels_query(search: str) -> str:
+    """Cleans search strings into high-converting visual stock queries."""
+    noise = {"official", "case", "file", "document", "cinematic", "dramatic", "scene", "4k", "hd", "footage", "photo", "evidence", "record"}
+    words = [w for w in re.sub(r'[^\w\s]', '', search).split() if len(w) > 2 and w.lower() not in noise]
+    if len(words) >= 2:
+        return " ".join(words[:4])
+    return search.strip() if search.strip() else "cinematic documentary"
+
 def fetch_pexels_video(search, out, dur):
     try:
         if not PEXELS_KEY: return False
-        clean_search = " ".join([w for w in search.split() if len(w)>2][:2]) if len(search.split()) > 2 else search
-        h={"Authorization":PEXELS_KEY}
-        r=requests.get("https://api.pexels.com/videos/search",headers=h,
-            params={"query":clean_search,"per_page":10,"orientation":"landscape"},timeout=15)
-        vids=r.json().get("videos",[])
+        clean_search = _clean_pexels_query(search)
+        h = {"Authorization": PEXELS_KEY}
+        
+        # Primary search
+        r = requests.get("https://api.pexels.com/videos/search", headers=h,
+                         params={"query": clean_search, "per_page": 10, "orientation": "landscape"}, timeout=15)
+        vids = r.json().get("videos", []) if r.status_code == 200 else []
+        
+        # Fallback cascade if specific search returned zero
+        if not vids and len(clean_search.split()) > 2:
+            shorter_query = " ".join(clean_search.split()[:2])
+            r = requests.get("https://api.pexels.com/videos/search", headers=h,
+                             params={"query": shorter_query, "per_page": 10, "orientation": "landscape"}, timeout=15)
+            vids = r.json().get("videos", []) if r.status_code == 200 else []
+            
         if not vids:
-            clean_search = search.split()[0] if search.split() else "cinematic"
-            r=requests.get("https://api.pexels.com/videos/search",headers=h,
-                params={"query":clean_search,"per_page":10,"orientation":"landscape"},timeout=15)
-            vids=r.json().get("videos",[])
-        if not vids: return False
-        vid=random.choice(vids[:5])
-        files=sorted(vid.get("video_files",[]),key=lambda x:x.get("width",0),reverse=True)
-        if not files: return False
-        raw=out.replace(".mp4","_raw.mp4")
-        v=requests.get(files[0]["link"],stream=True,timeout=60)
-        with open(raw,"wb") as f:
-            for chunk in v.iter_content(8192): f.write(chunk)
-        r2=subprocess.run(["ffmpeg","-y","-i",raw,"-t",str(dur),
-            "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25",
-            "-r","25","-vsync","cfr","-c:v","libx264","-pix_fmt","yuv420p","-movflags","+faststart","-an","-preset","fast",out],capture_output=True,timeout=60)
-        return r2.returncode==0
-    except Exception as e: log.warning(f"Pexels video: {e}"); return False
+            return False
+            
+        # Select best video with highest resolution (4K or 1080p)
+        vid = vids[0]
+        files = vid.get("video_files", [])
+        hd_files = [f for f in files if f.get("width", 0) >= 1920 or f.get("quality") == "hd"]
+        chosen_file = max(hd_files, key=lambda x: x.get("width", 0)) if hd_files else files[0]
+        
+        raw = out.replace(".mp4", "_raw.mp4")
+        v = requests.get(chosen_file["link"], stream=True, timeout=60)
+        with open(raw, "wb") as f:
+            for chunk in v.iter_content(8192):
+                f.write(chunk)
+                
+        r2 = subprocess.run([
+            "ffmpeg", "-y", "-i", raw, "-t", str(dur),
+            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25",
+            "-r", "25", "-vsync", "cfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", "-preset", "fast", out
+        ], capture_output=True, timeout=60)
+        return r2.returncode == 0
+    except Exception as e:
+        log.warning(f"Pexels video: {e}")
+        return False
 
 def fetch_pexels_image(search, out):
     try:
         if not PEXELS_KEY: return False
-        clean_search = " ".join([w for w in search.split() if len(w)>2][:2]) if len(search.split()) > 2 else search
-        h={"Authorization":PEXELS_KEY}
-        r=requests.get("https://api.pexels.com/v1/search",headers=h,
-            params={"query":clean_search,"per_page":10,"orientation":"landscape"},timeout=15)
-        photos=r.json().get("photos",[])
-        if not photos: return False
-        url=random.choice(photos[:5])["src"]["original"]
-        img=requests.get(url,timeout=30)
-        with open(out,"wb") as f: f.write(img.content)
-        return True
-    except Exception as e: log.warning(f"Pexels image: {e}"); return False
+        clean_search = _clean_pexels_query(search)
+        h = {"Authorization": PEXELS_KEY}
+        
+        r = requests.get("https://api.pexels.com/v1/search", headers=h,
+                         params={"query": clean_search, "per_page": 10, "orientation": "landscape"}, timeout=15)
+        photos = r.json().get("photos", []) if r.status_code == 200 else []
+        
+        if not photos and len(clean_search.split()) > 2:
+            shorter_query = " ".join(clean_search.split()[:2])
+            r = requests.get("https://api.pexels.com/v1/search", headers=h,
+                             params={"query": shorter_query, "per_page": 10, "orientation": "landscape"}, timeout=15)
+            photos = r.json().get("photos", []) if r.status_code == 200 else []
+            
+        if not photos:
+            return False
+            
+        best_photo = max(photos, key=lambda p: p.get("width", 0) * p.get("height", 0))
+        url = best_photo["src"].get("large2x") or best_photo["src"].get("original") or best_photo["src"].get("large")
+        img = requests.get(url, timeout=30)
+        if img.status_code == 200 and len(img.content) > 1000:
+            with open(out, "wb") as f:
+                f.write(img.content)
+            return True
+        return False
+    except Exception as e:
+        log.warning(f"Pexels image: {e}")
+        return False
 
 def fetch_pixabay(search, out, dur=None):
     try:
