@@ -160,7 +160,7 @@ export const DocumentaryVideo: React.FC<{ manifest: ScriptManifest }> = ({ manif
         <Sequence key={`audio-${i}`} from={audio.startFrame}>
           <Audio 
             src={staticFile(`assets/${audio.file}`)} 
-            volume={1} 
+            volume={1.2} 
           />
         </Sequence>
       ))}

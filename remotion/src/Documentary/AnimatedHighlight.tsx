@@ -26,7 +26,7 @@ export const AnimatedHighlight: React.FC<AnimatedHighlightProps> = ({
   highlightColor = '#facc15',
   strokeOpacity = 0.55,
   playSfx = true,
-  sfxVolume = 0.10, // -20dB volume scale
+  sfxVolume = 0.12, // +20% volume boost
   sfxSrc = staticFile('assets/sfx/Whooshes/Cinematic Whoosh.mp3'),
   style,
   textStyle,

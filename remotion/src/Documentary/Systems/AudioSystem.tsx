@@ -17,7 +17,7 @@ export const AudioSystem: React.FC<{
   volume?: number;
   events?: any[];
   durationFrames?: number;
-}> = ({ soundDesign, volume = 0.5, events = [], durationFrames = 90 }) => {
+}> = ({ soundDesign, volume = 0.6, events = [], durationFrames = 90 }) => {
   const sfxEvents = events.filter(e => e.type === 'SFX' || e.type === 'IMPACT');
   
   return (
@@ -33,7 +33,7 @@ export const AudioSystem: React.FC<{
         // Calculate start frame based on timing_percent
         const timingPct = evt.timing_percent !== undefined ? evt.timing_percent : 0;
         const delayFrames = Math.floor((timingPct / 100) * durationFrames);
-        const evtVolume = evt.intensity ? evt.intensity * 0.8 : volume;
+        const evtVolume = evt.intensity ? evt.intensity * 0.96 : volume;
         return (
           <Sequence key={idx} from={delayFrames}>
             <Audio 

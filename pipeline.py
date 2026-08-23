@@ -833,7 +833,7 @@ def stage_3_voice(manifest, cfg):
             "equalizer=f=220:width_type=o:width=1.0:g=2.0,"
             "equalizer=f=3500:width_type=o:width=1.2:g=2.2,"
             "acompressor=threshold=0.12:ratio=3:attack=15:release=200,"
-            "volume=1.25"
+            "volume=1.50"
         )
         tmp_master = target_path + ".tmp.mp3"
         cmd = [
@@ -1084,7 +1084,7 @@ def generate_kokoro_voice(text, out_path, lang="hindi", emotion="dramatic", spee
             "equalizer=f=220:width_type=o:width=1.0:g=2.0,"
             "equalizer=f=3500:width_type=o:width=1.2:g=2.2,"
             "acompressor=threshold=0.12:ratio=3:attack=15:release=200,"
-            "volume=1.25"
+            "volume=1.50"
         )
         result = subprocess.run([
             "ffmpeg", "-y", "-i", wav_path,
@@ -1175,7 +1175,7 @@ def stage_4_music(cfg):
             "-f", "lavfi", "-i", "sine=f=55:d=300",
             "-f", "lavfi", "-i", "sine=f=110:d=300",
             "-f", "lavfi", "-i", "sine=f=164.81:d=300",
-            "-filter_complex", "[1:a]volume=0.3[s1];[2:a]volume=0.25[s2];[3:a]volume=0.15[s3];[0:a][s1][s2][s3]amix=inputs=4[mix];[mix]lowpass=f=450,aecho=0.8:0.88:1000:0.4,volume=1.5[out]",
+            "-filter_complex", "[1:a]volume=0.36[s1];[2:a]volume=0.30[s2];[3:a]volume=0.18[s3];[0:a][s1][s2][s3]amix=inputs=4[mix];[mix]lowpass=f=450,aecho=0.8:0.88:1000:0.4,volume=1.8[out]",
             "-map", "[out]", "-c:a", "libmp3lame", "-b:a", "192k", music_path
         ]
         subprocess.run(cmd, capture_output=True, timeout=30)
@@ -1294,10 +1294,10 @@ def fetch_sfx(sfx_type):
     out = str(sfx_dir/f"{sfx_type}.mp3")
 
     presets = {
-        "deep_impact": ("sine=frequency=80:duration=0.35:sample_rate=44100", "volume=0.3,lowpass=f=300,afade=t=out:st=0.15:d=0.2"),
-        "whoosh":      ("sine=frequency=800:duration=0.25:sample_rate=44100", "volume=0.15,afade=t=in:d=0.02,afade=t=out:st=0.15:d=0.1,tremolo=f=12:d=0.3"),
-        "click":       ("sine=frequency=1400:duration=0.06:sample_rate=44100", "volume=0.12"),
-        "riser":       ("sine=frequency=200:duration=0.5:sample_rate=44100", "volume=0.2,afade=t=in:d=0.4"),
+        "deep_impact": ("sine=frequency=80:duration=0.35:sample_rate=44100", "volume=0.36,lowpass=f=300,afade=t=out:st=0.15:d=0.2"),
+        "whoosh":      ("sine=frequency=800:duration=0.25:sample_rate=44100", "volume=0.18,afade=t=in:d=0.02,afade=t=out:st=0.15:d=0.1,tremolo=f=12:d=0.3"),
+        "click":       ("sine=frequency=1400:duration=0.06:sample_rate=44100", "volume=0.144"),
+        "riser":       ("sine=frequency=200:duration=0.5:sample_rate=44100", "volume=0.24,afade=t=in:d=0.4"),
     }
     src, af = presets.get(sfx_type, presets["click"])
     r = subprocess.run(["ffmpeg","-y","-f","lavfi","-i",src,"-af",af,out],
@@ -2094,7 +2094,7 @@ def stage_7_assemble(script, cfg, music_path):
             mix_r = subprocess.run(["ffmpeg","-y",
                 "-i",os.path.abspath(audio),
                 "-i",os.path.abspath(sfx_file),
-                "-filter_complex","[0:a]adelay=180|180,volume=1.6[v];[1:a]volume=0.08[s];[v][s]amix=inputs=2:duration=first[a]",
+                "-filter_complex","[0:a]adelay=180|180,volume=1.92[v];[1:a]volume=0.096[s];[v][s]amix=inputs=2:duration=first[a]",
                 "-map","[a]","-c:a","aac",mixed_audio],capture_output=True,timeout=30)
             if mix_r.returncode != 0 or not os.path.exists(mixed_audio):
                 log.warning(f"  SFX mix failed for scene {n}, using voice only")
@@ -2158,7 +2158,7 @@ def stage_7_assemble(script, cfg, music_path):
     with_music=str(WORKSPACE/"with_music.mp4")
     if music_path and os.path.exists(music_path):
         r_mus = subprocess.run(["ffmpeg","-y","-i",raw,"-stream_loop","-1","-i",music_path,
-            "-filter_complex",f"[1:a]volume=0.06,atrim=0:{total_dur}[m];[0:a][m]amix=inputs=2:duration=first[a]",
+            "-filter_complex",f"[1:a]volume=0.072,atrim=0:{total_dur}[m];[0:a][m]amix=inputs=2:duration=first[a]",
             "-map","0:v","-map","[a]","-c:v","copy","-c:a","aac","-shortest",with_music],
             capture_output=True,timeout=300)
         if r_mus.returncode==0 and os.path.exists(with_music):
@@ -2501,7 +2501,7 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
         # Mix the Remotion audio (TTS, Foley) with the background music using intelligent sidechain ducking
         cmd = [
             "ffmpeg", "-y", "-i", remotion_video, "-stream_loop", "-1", "-i", music_path,
-            "-filter_complex", f"[1:a]volume=0.20,atrim=0:{total_dur}[bgm];[bgm][0:a]sidechaincompress=threshold=0.12:ratio=4:attack=200:release=1000[ducked];[0:a][ducked]amix=inputs=2:duration=first:dropout_transition=2[a]",
+            "-filter_complex", f"[1:a]volume=0.24,atrim=0:{total_dur}[bgm];[bgm][0:a]sidechaincompress=threshold=0.12:ratio=4:attack=200:release=1000[ducked];[0:a][ducked]amix=inputs=2:duration=first:dropout_transition=2[a]",
             "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_output
         ]
         r = subprocess.run(cmd, capture_output=True, timeout=300)
@@ -2513,7 +2513,7 @@ def stage_assemble_documentary(script, cfg, remotion_video, music_path):
             log.warning("Sidechain mix failed, attempting simple amix fallback...")
             cmd_fb = [
                 "ffmpeg", "-y", "-i", remotion_video, "-stream_loop", "-1", "-i", music_path,
-                "-filter_complex", f"[1:a]volume=0.18,atrim=0:{total_dur}[m];[0:a][m]amix=inputs=2:duration=first[a]",
+                "-filter_complex", f"[1:a]volume=0.216,atrim=0:{total_dur}[m];[0:a][m]amix=inputs=2:duration=first[a]",
                 "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", final_output
             ]
             r_fb = subprocess.run(cmd_fb, capture_output=True, timeout=300)
