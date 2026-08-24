@@ -63,7 +63,11 @@ export const ShotRenderer: React.FC<{
             )
           ) : videoFile ? (
             videoFile.endsWith('.mp4') ? (
-              <OffthreadVideo src={staticFile(`assets/${videoFile}`)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <OffthreadVideo 
+                src={staticFile(`assets/${videoFile}`)} 
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                pauseWhenBuffering
+              />
             ) : fgFile && bgFile ? (
               <Fragment>
                 <Img src={staticFile(`assets/${bgFile}`)} style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover' }} />

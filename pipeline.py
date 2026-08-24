@@ -1329,23 +1329,23 @@ def get_dur(path):
 ANIMS = ["zoom_in","pan_right","zoom_out","pan_left","pan_up"]
 
 def ken_burns(anim, dur, w=1920, h=1080):
-    fr = int(dur*25)
+    fr = int((dur + 3.0) * 30)
     opts = {
-        "zoom_in":   f"zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
-        "zoom_out":  f"zoompan=z='if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
-        "pan_right": f"zoompan=z='1.3':x='min(iw*0.3,on*1.5)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
-        "pan_left":  f"zoompan=z='1.3':x='max(0,iw*0.3-on*1.5)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=25",
-        "pan_up":    f"zoompan=z='1.3':x='iw/2-(ih/zoom/2)':y='max(0,ih*0.3-on*1.0)':d={fr}:s={w}x{h}:fps=25",
+        "zoom_in":   f"zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=30",
+        "zoom_out":  f"zoompan=z='if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=30",
+        "pan_right": f"zoompan=z='1.3':x='min(iw*0.3,on*1.5)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=30",
+        "pan_left":  f"zoompan=z='1.3':x='max(0,iw*0.3-on*1.5)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=30",
+        "pan_up":    f"zoompan=z='1.3':x='iw/2-(ih/zoom/2)':y='max(0,ih*0.3-on*1.0)':d={fr}:s={w}x{h}:fps=30",
     }
-    return opts.get(anim,opts["zoom_in"])
+    return opts.get(anim, opts["zoom_in"])
 
 def img_to_vid(img, out, dur, anim="zoom_in", grain=True):
     vf = ken_burns(anim, dur)
     if grain: vf += ",noise=alls=2:allf=t+u"
-    r = subprocess.run(["ffmpeg","-y","-loop","1","-i",img,"-vf",vf,
-        "-t",str(dur),"-c:v","libx264","-pix_fmt","yuv420p","-movflags","+faststart","-preset","fast",out],
+    r = subprocess.run(["ffmpeg", "-y", "-loop", "1", "-i", img, "-vf", vf,
+        "-t", str(dur + 3.0), "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-preset", "fast", out],
         capture_output=True, timeout=180)
-    return r.returncode==0
+    return r.returncode == 0
 
 def make_text_stat(text, out, dur, lang="hindi"):
     safe = re.sub(r'''[':"\\%]''',"",text)[:60]
@@ -3204,30 +3204,42 @@ def run_pipeline_v52():
 
                             for shot in block.get("shots", []):
                                 vid = shot.get("asset", {}).get("path")
-                                if vid and os.path.exists(vid):
+                                img_candidate = shot.get("asset", {}).get("image_path") or (str(vis / f"shot_{shot.get('shot_id')}.jpg") if 'vis' in locals() else None)
+                                if not img_candidate and vid and vid.endswith('.mp4'):
+                                    possible_jpg = vid.replace('.mp4', '.jpg')
+                                    if os.path.exists(possible_jpg):
+                                        img_candidate = possible_jpg
+
+                                # For still images, real photos, and motion graphics, prefer image asset for Remotion CameraSystem & 2.5D cutouts
+                                if shot.get("visual_type") in ("ai_image", "real_photo", "motion_graphics") and img_candidate and os.path.exists(img_candidate):
+                                    dest = public_dir / os.path.basename(img_candidate)
+                                    shutil.copy2(img_candidate, dest)
+                                    shot["asset"]["path"] = os.path.basename(img_candidate)
+                                    vid = img_candidate
+                                elif vid and os.path.exists(vid):
                                     dest = public_dir / os.path.basename(vid)
                                     shutil.copy2(vid, dest)
                                     shot["asset"]["path"] = os.path.basename(vid)
 
-                                    # 2.5D Parallax Foreground Extraction
-                                    if remove and shot.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
-                                        try:
-                                            shot["asset"]["bg_file"] = os.path.basename(vid)
-                                            fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
-                                            fg_path = public_dir / fg_name
+                                # 2.5D Parallax Foreground Extraction
+                                if remove and shot.get("visual_type") in ("ai_image", "real_photo") and vid and not vid.endswith('.mp4'):
+                                    try:
+                                        shot["asset"]["bg_file"] = os.path.basename(vid)
+                                        fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
+                                        fg_path = public_dir / fg_name
 
-                                            if not os.path.exists(fg_path):
-                                                log.info(f"Generating 2.5D Foreground for {vid}...")
-                                                input_img = Image.open(vid)
-                                                output_img = remove(input_img).convert("RGBA")
-                                                r, g, b, alpha = output_img.split()
-                                                blurred_alpha = alpha.filter(ImageFilter.GaussianBlur(radius=1))
-                                                output_img = Image.merge("RGBA", (r, g, b, blurred_alpha))
-                                                output_img.save(fg_path)
+                                        if not os.path.exists(fg_path):
+                                            log.info(f"Generating 2.5D Foreground for {vid}...")
+                                            input_img = Image.open(vid)
+                                            output_img = remove(input_img).convert("RGBA")
+                                            r, g, b, alpha = output_img.split()
+                                            blurred_alpha = alpha.filter(ImageFilter.GaussianBlur(radius=1))
+                                            output_img = Image.merge("RGBA", (r, g, b, blurred_alpha))
+                                            output_img.save(fg_path)
 
-                                            shot["asset"]["fg_file"] = fg_name
-                                        except Exception as e:
-                                            log.error(f"Failed to generate foreground for {vid}: {e}")
+                                        shot["asset"]["fg_file"] = fg_name
+                                    except Exception as e:
+                                        log.error(f"Failed to generate foreground for {vid}: {e}")
                 else:
                     scenes = extract_scenes_list(script)
                     for s in scenes:
