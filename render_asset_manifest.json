@@ -1,0 +1,17 @@
+{
+  "required": [
+    "block_n001.mp3",
+    "sfx/deep_impact.mp3",
+    "block_n002.mp3",
+    "sfx/subtle_whoosh.mp3",
+    "block_n003.mp3",
+    "sfx/deep_impact.mp3",
+    "block_n004.mp3",
+    "sfx/subtle_whoosh.mp3",
+    "block_n005.mp3",
+    "sfx/deep_impact.mp3",
+    "block_n006.mp3",
+    "sfx/subtle_whoosh.mp3"
+  ],
+  "missing": []
+}

@@ -930,7 +930,7 @@ def stage_3_voice(manifest, cfg):
         # MEASURE ACTUAL DURATION AS SOURCE OF TRUTH
         try:
             r = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration",
-                "-of","default=noprint_wrappers=1:nokey=1", out], capture_output=True, text=True, timeout=10)
+                "-of","default=noprint_wrappers=1:nokey=1", out], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
             dur = float(r.stdout.strip())
             return out, dur
         except:
@@ -1400,29 +1400,44 @@ WIKI_HEADERS = {
     "User-Agent": "MediaAgencyDocBot/1.0 (https://github.com/thenewbie343/media-agency; contact@mediaagency.ai)"
 }
 
+_DDG_RATE_LIMITED = False
+
 def fetch_duckduckgo_image(search, out):
+    global _DDG_RATE_LIMITED
     import requests, random
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
 
-    # 1. Try DDG first
-    try:
-        from duckduckgo_search import DDGS
-        clean_search = " ".join([w for w in search.split() if len(w)>2][:4])
-        with DDGS() as ddgs:
-            results = list(ddgs.images(clean_search, max_results=10))
-            if results:
-                urls = [r.get("image") for r in results if r.get("image")]
-                if urls:
-                    img_r = requests.get(random.choice(urls), headers=headers, timeout=15)
-                    if img_r.status_code == 200 and len(img_r.content) > 1000:
-                        with open(out, "wb") as f:
-                            f.write(img_r.content)
-                        log.info(f"DDG fetched: {clean_search}")
-                        return True
-    except Exception as e:
-        log.warning(f"DDG failed for '{search}': {e}. Falling back to Wikimedia.")
+    # 1. Try DDG first (if not previously rate limited)
+    if not _DDG_RATE_LIMITED:
+        try:
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    from ddgs import DDGS
+                except ImportError:
+                    from duckduckgo_search import DDGS
+            
+            clean_search = " ".join([w for w in search.split() if len(w)>2][:4])
+            with DDGS() as ddgs:
+                results = list(ddgs.images(clean_search, max_results=10))
+                if results:
+                    urls = [r.get("image") for r in results if r.get("image")]
+                    if urls:
+                        img_r = requests.get(random.choice(urls), headers=headers, timeout=15)
+                        if img_r.status_code == 200 and len(img_r.content) > 1000:
+                            with open(out, "wb") as f:
+                                f.write(img_r.content)
+                            log.info(f"DDG fetched: {clean_search}")
+                            return True
+        except Exception as e:
+            if "403" in str(e) or "Ratelimit" in str(e):
+                _DDG_RATE_LIMITED = True
+                log.warning(f"DDG rate-limited (403). Tripping circuit breaker to use Wikimedia directly.")
+            else:
+                log.warning(f"DDG failed for '{search}': {e}. Falling back to Wikimedia.")
 
     # 2. Try the smart Wikipedia article-first fetcher
     try:
@@ -3334,7 +3349,7 @@ def run_pipeline_v52():
                 remotion_cmd = f"npx remotion render src/index.ts DocumentaryVideo {final_video_abs} --props={script_path} --concurrency=2 --delay-render-timeout-in-milliseconds=60000 --log=verbose --crf=22"
                 log.info(f"Running Remotion: {remotion_cmd}")
                 import subprocess
-                res = subprocess.run(remotion_cmd, cwd="remotion", shell=True, capture_output=True, text=True)
+                res = subprocess.run(remotion_cmd, cwd="remotion", shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
                 if res.returncode != 0:
                     log.error(f"Remotion failed: {res.stderr}")
                     raise Exception("Remotion render failed")

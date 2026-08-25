@@ -1,0 +1,12 @@
+{
+  "initial_manifest_status": "APPROVED",
+  "qc_failures_count": 0,
+  "repair_count": 0,
+  "repaired_shot_ids": [],
+  "schema_repair_count": 0,
+  "final_manifest_status": "APPROVED",
+  "generic_fallback_count": 0,
+  "asset_audit_passed": true,
+  "final_shot_count": 24,
+  "average_shot_duration": 3.215
+}

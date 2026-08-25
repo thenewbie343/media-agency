@@ -357,12 +357,55 @@ class ContinuityMetadata(BaseModel):
     weather: Optional[str] = Field(None, description="Weather conditions if applicable")
     lighting: str = Field(..., description="Specific lighting for this shot")
 
+class Claim(BaseModel):
+    claim_id: str = Field(..., description="Unique ID for this claim (e.g. 'claim_001')")
+    text: str = Field(..., description="The factual assertion being made")
+    claim_type: Literal[
+        "historical_fact", "technical_detail", "statistical_claim", 
+        "eyewitness_account", "official_verdict", "contradiction"
+    ] = Field(default="historical_fact", description="Category of the claim")
+    importance: float = Field(default=0.8, ge=0.0, le=1.0, description="Editorial importance weight (0.0 to 1.0)")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Verification confidence (0.0 to 1.0)")
+    evidence_required: bool = Field(default=True, description="Whether visual evidence must be shown for this claim")
+    evidence_ids: List[str] = Field(default_factory=list, description="IDs of linked EvidenceAsset items")
+    visual_strategy: Literal[
+        "EVIDENCE_TO_RECONSTRUCTION", "RECONSTRUCTION_TO_EVIDENCE",
+        "GRAPHIC_TO_EVIDENCE", "EVIDENCE_HOLD", "HUMAN_ANCHOR_TO_EVIDENCE",
+        "EVIDENCE_TO_CONSEQUENCE"
+    ] = Field(default="EVIDENCE_TO_RECONSTRUCTION", description="The editorial visual strategy for this claim")
+
 class AssetMetadata(BaseModel):
     source: Optional[str] = Field(None, description="Source of the asset (ai, pexels, archival, fallback)")
     path: Optional[str] = Field(None, description="Path to the generated or downloaded asset")
     status: Optional[str] = Field("pending", description="Status of asset generation (pending, success, failed)")
     fallback_used: bool = Field(False, description="Whether a fallback had to be used")
     fallback_type: Optional[str] = Field(None, description="The type of fallback used if any")
+
+class EvidenceAsset(AssetMetadata):
+    id: Optional[str] = Field(None, description="Unique Evidence ID (e.g. 'ev_001')")
+    claim_id: Optional[str] = Field(None, description="ID of the claim this evidence supports")
+    source_name: str = Field(..., description="Archive, agency, or collection name (e.g. 'Soviet Air Defense Command')")
+    source_type: Literal[
+        "primary_source", "declassified_file", "news_archive", 
+        "technical_manual", "official_log", "court_record"
+    ] = Field(default="declassified_file", description="Type of archival source")
+    publisher: Optional[str] = Field(None, description="Publisher or issuing body")
+    title: Optional[str] = Field(None, description="Title of the document or record")
+    url: Optional[str] = Field(None, description="URL or archival reference link")
+    publication_date: Optional[str] = Field(None, description="Original publication or incident date")
+    relevant_excerpt: Optional[str] = Field(None, description="Key excerpt or quote extracted from the evidence")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence in authenticity (0.0 to 1.0)")
+    capture_type: Literal[
+        "document_scan", "article", "photograph", "screenshot", "quote", "diagram"
+    ] = Field(default="document_scan", description="Format of the evidence capture")
+    rights_status: Literal[
+        "public_domain", "fair_use_documentary", "creative_commons", "restricted"
+    ] = Field(default="public_domain", description="Legal / rights provenance")
+    asset_path: Optional[str] = Field(None, description="Path to the evidence image/scan asset")
+    visual_treatment: Literal[
+        "document_inspection", "classified_reveal", "quote_highlight", 
+        "article_clipping", "photo_pan"
+    ] = Field(default="document_inspection", description="Remotion visual treatment style")
 
 class EditorialEvent(BaseModel):
     type: Literal["SFX", "MUSIC_CHANGE", "MUSIC_DUCK", "GRAPHIC", "TEXT_REVEAL", "HIGHLIGHT", "COLOR_SHIFT", "OVERLAY", "CUT", "HARD_CUT", "DISSOLVE", "SILENCE", "IMPACT", "ZOOM_EMPHASIS", "MAP_REVEAL", "DOCUMENT_REVEAL", "NUMBER_REVEAL", "ARCHIVE_INSERT", "REACTION_INSERT"] = Field(..., description="Type of editorial event")
@@ -372,22 +415,32 @@ class EditorialEvent(BaseModel):
     duration: Optional[float] = Field(None, description="Duration in seconds if applicable")
     reason: Optional[str] = Field(None, description="Editorial reason for this event (important for QC)")
 
+class EditorialScene(BaseModel):
+    """
+    An editorial scene represents a conceptual segment of the documentary, structured around a specific claim.
+    """
+    scene_id: str = Field(..., description="Unique ID for this scene")
+    claim: Optional[Claim] = Field(None, description="The central claim being asserted and visually supported")
+    strategic_silence_seconds: float = Field(default=0.0, description="Amount of room tone/silence to hold before or after TTS")
+    
 class Shot(BaseModel):
     """
     The individual cinematic shot unit.
     Embeds 20 Visual Jobs, 12 Shot Relationships, and 7-Dimensional Contrast parameters.
     """
     shot_id: str = Field(..., description="Unique ID for this shot (e.g., 'n001_s001')")
+    linked_claim_id: Optional[str] = Field(None, description="ID of the claim this shot supports")
     duration_mode: Literal["ratio", "fixed"] = Field(default="ratio", description="Whether duration is calculated via ratio of parent block or a fixed seconds count")
     duration_ratio: float = Field(default=1.0, description="If ratio mode, proportion of the parent narration block this shot occupies (0.0 to 1.0)")
     duration_seconds: Optional[float] = Field(None, description="If fixed mode, exact duration in seconds")
     
-    shot_role: Literal["ESTABLISHING", "ACTION", "REACTION", "DETAIL", "INSERT", "EVIDENCE", "EXPLANATION", "TRANSITION", "REVEAL", "HOLD"] = Field(
+    shot_role: Literal["ESTABLISHING", "ACTION", "REACTION", "DETAIL", "INSERT", "EVIDENCE", "EXPLANATION", "TRANSITION", "REVEAL", "HOLD", "CONSEQUENCE"] = Field(
         default="EXPLANATION", description="The grammatical role of this shot"
     )
     asset_provenance: Literal[
-        "AUTHENTIC_PHOTO", "ARCHIVAL_FOOTAGE", "DOCUMENT", "STOCK", 
-        "AI_RECONSTRUCTION", "AI_ILLUSTRATION", "MOTION_GRAPHIC", "SEMANTIC_FALLBACK"
+        "AUTHENTIC_ARCHIVE", "HISTORICAL_DOCUMENT", "AUTHENTIC_PHOTO", 
+        "AI_RECONSTRUCTION", "AI_ILLUSTRATION", "MOTION_GRAPHIC", "STOCK", 
+        "EDITORIAL_TYPOGRAPHY", "SEMANTIC_FALLBACK", "DOCUMENT", "ARCHIVAL_FOOTAGE"
     ] = Field(default="STOCK", description="The required provenance of the visual")
     
     shot_size: Literal["extreme_wide", "wide", "medium", "medium_close", "close", "extreme_close", "N/A"] = Field(
@@ -416,14 +469,18 @@ class Shot(BaseModel):
         description="One of 12 Shot Relationships to previous shot"
     )
     
-    visual_type: Literal["motion_graphics", "ai_video", "real_photo", "ai_image", "broll_video", "text_stat"] = Field(
-        ..., description="Type of visual to generate"
+    visual_type: Literal[
+        "EVIDENCE_DOCUMENT", "EVIDENCE_ARTICLE", "EVIDENCE_PHOTO", "EVIDENCE_SCREENSHOT", "EVIDENCE_QUOTE",
+        "RECONSTRUCTION", "GENERATED_IMAGE", "GENERATED_VIDEO", "MOTION_GRAPHIC", "TYPOGRAPHY_REVEAL", "BLACK_HOLD",
+        "motion_graphics", "ai_video", "real_photo", "ai_image", "broll_video", "text_stat", "evidence"
+    ] = Field(
+        ..., description="First-class visual type to render"
     )
     fallback_type: Literal[
         "ClassifiedFile", "Newspaper", "ArchivalDocument", "EvidenceBoard", 
         "MapFallback", "PhotoWall", "Timeline", "CinematicText", 
-        "PortraitCard", "TechnicalDiagram", "AnimatedDiagram"
-    ] = Field(..., description="React fallback component if generation fails or is specifically requested")
+        "PortraitCard", "TechnicalDiagram", "AnimatedDiagram", "EvidenceCard"
+    ] = Field(default="EvidenceCard", description="React fallback component if generation fails or is specifically requested")
     
     visual_description: str = Field(..., description="What happens visually in the shot")
     visual_query: str = Field(..., description="Structured search query for stock footage. Format: [SUBJECT] + [ACTION] + [LOCATION] + [ERA].")
@@ -446,7 +503,7 @@ class Shot(BaseModel):
     director_score: Optional[float] = Field(default=None, description="Director quality score from 0.0 to 10.0")
     
     continuity: ContinuityMetadata = Field(..., description="Continuity constraints for consistent generation")
-    asset: AssetMetadata = Field(default_factory=AssetMetadata, description="Asset tracking metadata (populated during pipeline execution)")
+    asset: Union[EvidenceAsset, AssetMetadata] = Field(default_factory=AssetMetadata, description="Asset tracking metadata")
     editorial_events: Optional[List[EditorialEvent]] = Field(None, description="Editorial events (SFX, Graphics, Color shifts) tied to narrative punctuation")
 
     @field_validator("visual_job", mode="before")

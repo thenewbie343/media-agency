@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Environment & Credentials
+.env
+.env.*
+client_secret.json
+drive_token.json
+token.json
+.agents/
+
+# Workspace & Temporary Output Directories
+workspace*/
+test_media_samples/
+*.mp4
+*.m4a
+*.wav
+*.jpg
+*.png
+*.webm
+!assets/**/*
+!remotion/public/assets/fonts/**/*
+!remotion/public/assets/luts/**/*
+!remotion/public/assets/overlays/**/*
+
+# Remotion & Node
+node_modules/
+remotion/node_modules/
+remotion/public/assets/shot_*
+remotion/public/assets/block_*
+remotion/public/assets/test_*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

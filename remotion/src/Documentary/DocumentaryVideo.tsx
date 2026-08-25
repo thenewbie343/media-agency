@@ -35,6 +35,7 @@ export type ShotData = {
   };
   caption?: string; // Passed down from the parent block for rendering
   editorial_events?: EditorialEvent[];
+  transition_in?: string;
 };
 
 export type NarrationBlockData = {
