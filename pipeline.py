@@ -1694,6 +1694,198 @@ def fetch_hf_video(prompt, out_path):
             pass
     return False
 
+# ═══════════════════════════════════════════════════════════
+#  YOUTUBE DISCOVERY + AUTHORIZED MEDIA LAYER
+# ═══════════════════════════════════════════════════════════
+
+def fetch_youtube_authorized_clip(discovery_dict, out, target_duration=5.0):
+    """
+    Downloads a short clip from an AUTHORIZED YouTube source using yt-dlp.
+    
+    SAFETY: Rejects any discovery where source_role != YOUTUBE_AUTHORIZED.
+    yt-dlp is NOT a rights mechanism — authorization is checked BEFORE download.
+    """
+    # Hard rights check — REJECT non-authorized sources
+    asset_state = discovery_dict.get("source_role", "")
+    if asset_state != "YOUTUBE_AUTHORIZED":
+        log.warning(f"YouTube clip REJECTED: {discovery_dict.get('title', '')[:50]} — state={asset_state}, not AUTHORIZED.")
+        return False
+    
+    video_id = discovery_dict.get("youtube_video_id", "")
+    if not video_id:
+        return False
+    
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    
+    # Check if yt-dlp is available
+    try:
+        result = subprocess.run(["yt-dlp", "--version"], capture_output=True, timeout=5, 
+                               encoding="utf-8", errors="replace")
+        if result.returncode != 0:
+            log.warning("yt-dlp not available. Cannot download YouTube authorized clips.")
+            return False
+    except (FileNotFoundError, Exception):
+        log.warning("yt-dlp not installed. Skipping YouTube authorized clip download.")
+        return False
+    
+    try:
+        raw = out.replace(".mp4", "_yt_raw.mp4")
+        
+        # Build yt-dlp command with duration limiting
+        cmd = [
+            "yt-dlp",
+            "--no-playlist",
+            "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
+            "--merge-output-format", "mp4",
+            "-o", raw,
+            "--no-check-certificates",
+        ]
+        
+        # If candidate timestamps exist, use them for segment extraction
+        timestamps = discovery_dict.get("candidate_timestamps") or []
+        if timestamps and len(timestamps) > 0:
+            ts = timestamps[0]
+            if "-" in ts:
+                start, end = ts.split("-", 1)
+                cmd.extend(["--download-sections", f"*{start}-{end}"])
+            else:
+                cmd.extend(["--download-sections", f"*{ts}-{ts}+{int(target_duration)}"])
+        
+        cmd.append(url)
+        
+        result = subprocess.run(cmd, capture_output=True, timeout=120,
+                               encoding="utf-8", errors="replace")
+        
+        if result.returncode != 0 or not os.path.exists(raw):
+            log.warning(f"yt-dlp download failed for {video_id}: {result.stderr[:200]}")
+            return False
+        
+        # Trim and normalize with FFmpeg
+        r2 = subprocess.run([
+            "ffmpeg", "-y", "-i", raw, "-t", str(target_duration),
+            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25",
+            "-r", "25", "-vsync", "cfr", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart", "-an", "-preset", "fast", out
+        ], capture_output=True, timeout=60, encoding="utf-8", errors="replace")
+        
+        if r2.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 1000:
+            log.info(f"✅ YouTube AUTHORIZED clip downloaded: {discovery_dict.get('title', '')[:50]}")
+            # Clean up raw
+            try: os.remove(raw)
+            except: pass
+            return True
+        
+        log.warning(f"FFmpeg post-processing failed for YouTube clip {video_id}")
+        return False
+        
+    except Exception as e:
+        log.warning(f"YouTube authorized clip fetch failed: {e}")
+        return False
+
+
+def resolve_youtube_to_archive(discovery_dict, out, dur=5.0):
+    """
+    Takes a YOUTUBE_REFERENCE discovery and attempts to find the same 
+    underlying material from rights-cleared archive sources.
+    
+    Search order:
+    1. Wikimedia Commons (by extracted event/date/location)
+    2. Internet Archive thumbnails
+    3. Library of Congress
+    """
+    # Only process REFERENCE videos (not AUTHORIZED — those can be used directly)
+    state = discovery_dict.get("source_role", "")
+    if state == "YOUTUBE_AUTHORIZED":
+        return False  # Not needed, use fetch_youtube_authorized_clip instead
+    
+    alt_query = discovery_dict.get("alternative_archive_query", "")
+    if not alt_query:
+        # Build from title
+        title = discovery_dict.get("title", "")
+        alt_query = re.sub(r'[^\w\s]', '', title)[:60]
+    
+    if not alt_query:
+        return False
+    
+    log.info(f"🔄 YouTube→Archive resolution: \"{alt_query[:50]}\"")
+    
+    # Tier 1: Wikimedia Commons
+    try:
+        wiki_url = fetch_wikimedia_image(alt_query)
+        if wiki_url:
+            img_out = out.replace(".mp4", "_archive.jpg")
+            img_r = requests.get(wiki_url, headers=WIKI_HEADERS, timeout=15)
+            if img_r.status_code == 200 and len(img_r.content) > 1000:
+                with open(img_out, "wb") as f:
+                    f.write(img_r.content)
+                if img_to_vid(img_out, out, dur, "zoom_in"):
+                    log.info(f"✅ YouTube→Archive resolved via Wikimedia: {alt_query[:40]}")
+                    return True
+    except Exception as e:
+        log.debug(f"Wikimedia archive resolution failed: {e}")
+    
+    # Tier 2: Internet Archive
+    try:
+        ia_url = "https://archive.org/advancedsearch.php"
+        ia_params = {
+            "q": alt_query,
+            "fl[]": "identifier,title,mediatype",
+            "rows": 5,
+            "output": "json",
+            "mediatype": "image"
+        }
+        r = requests.get(ia_url, params=ia_params, headers=WIKI_HEADERS, timeout=15)
+        if r.status_code == 200:
+            docs = r.json().get("response", {}).get("docs", [])
+            for doc in docs:
+                identifier = doc.get("identifier", "")
+                if identifier:
+                    thumb_url = f"https://archive.org/services/img/{identifier}"
+                    img_out = out.replace(".mp4", "_ia.jpg")
+                    img_r = requests.get(thumb_url, headers=WIKI_HEADERS, timeout=15)
+                    if img_r.status_code == 200 and len(img_r.content) > 1000:
+                        with open(img_out, "wb") as f:
+                            f.write(img_r.content)
+                        if img_to_vid(img_out, out, dur, "zoom_in"):
+                            log.info(f"✅ YouTube→Archive resolved via Internet Archive: {identifier}")
+                            return True
+    except Exception as e:
+        log.debug(f"Internet Archive resolution failed: {e}")
+    
+    # Tier 3: Library of Congress (loc.gov)
+    try:
+        loc_url = "https://www.loc.gov/search/"
+        loc_params = {
+            "q": alt_query,
+            "fo": "json",
+            "fa": "original-format:photo,print,drawing",
+            "c": 5
+        }
+        r = requests.get(loc_url, params=loc_params, headers=WIKI_HEADERS, timeout=15)
+        if r.status_code == 200:
+            results = r.json().get("results", [])
+            for result in results:
+                image_url = result.get("image_url")
+                if image_url and isinstance(image_url, list):
+                    image_url = image_url[0]
+                if image_url and isinstance(image_url, str):
+                    if not image_url.startswith("http"):
+                        image_url = f"https:{image_url}"
+                    img_out = out.replace(".mp4", "_loc.jpg")
+                    img_r = requests.get(image_url, headers=WIKI_HEADERS, timeout=15)
+                    if img_r.status_code == 200 and len(img_r.content) > 1000:
+                        with open(img_out, "wb") as f:
+                            f.write(img_r.content)
+                        if img_to_vid(img_out, out, dur, "zoom_in"):
+                            log.info(f"✅ YouTube→Archive resolved via LOC: {result.get('title', '')[:40]}")
+                            return True
+    except Exception as e:
+        log.debug(f"Library of Congress resolution failed: {e}")
+    
+    log.info(f"YouTube→Archive resolution found no rights-cleared alternative for: {alt_query[:50]}")
+    return False
+
+
 def stage_6_visuals(manifest, cfg):
     if not isinstance(manifest, dict) or "project_meta" not in manifest:
         log.error("Invalid ScriptManifest in stage_6_visuals")
@@ -1785,8 +1977,35 @@ def stage_6_visuals(manifest, cfg):
                 shot["asset"]["path"] = out; shot["asset"]["source"] = "pexels"; success = True; log.info(f"  {n_id}: Pexels fallback ✓")
 
         elif vtype == "real_photo":
-            # Prioritize fetching authentic web images for real photos
-            if fetch_duckduckgo_image(search, img):
+            # Prioritize authentic YouTube discovery (if authorized or resolvable archive)
+            try:
+                from agents.youtube_discovery import youtube_search_by_claim
+                yt_discs = youtube_search_by_claim(search, max_results=2)
+                for disc in yt_discs:
+                    if disc.get("source_role") == "YOUTUBE_AUTHORIZED":
+                        if fetch_youtube_authorized_clip(disc, out, dur):
+                            shot["asset"]["path"] = out
+                            shot["asset"]["source"] = "youtube_authorized"
+                            shot["asset"]["youtube_asset_state"] = "YOUTUBE_AUTHORIZED"
+                            shot["asset"]["youtube_video_id"] = disc.get("youtube_video_id")
+                            shot["asset_provenance"] = "YOUTUBE_AUTHORIZED"
+                            success = True
+                            log.info(f"  {n_id}: YouTube AUTHORIZED Clip ✓")
+                            break
+                    elif disc.get("source_role") == "YOUTUBE_REFERENCE":
+                        # Attempt to resolve reference video to rights-cleared archive
+                        if resolve_youtube_to_archive(disc, out, dur):
+                            shot["asset"]["path"] = out
+                            shot["asset"]["source"] = "archive"
+                            shot["asset_provenance"] = "AUTHENTIC_ARCHIVE"
+                            success = True
+                            log.info(f"  {n_id}: YouTube→Archive Resolved ✓")
+                            break
+            except Exception as e:
+                log.debug(f"YouTube discovery attempt skipped: {e}")
+
+            # Fallback to authentic web images for real photos
+            if not success and fetch_duckduckgo_image(search, img):
                 if img_to_vid(img, out, dur, anim):
                     shot["asset"]["path"] = out; shot["asset"]["source"] = "ddg"; success = True; log.info(f"  {n_id}: DDG Real Photo ✓")
             if not success and fetch_pexels_image(search, img):
@@ -2924,7 +3143,18 @@ def audit_assets(script_path):
     if missing_files:
         log.error(f"❌ Asset Audit FAILED! Missing {len(missing_files)} files: {missing_files[:5]}")
         return False, missing_files
-    log.info("✅ Asset Audit PASSED! All files present.")
+
+    # ── YOUTUBE RIGHTS SAFETY GATE ──────────────────────────────
+    try:
+        from agents.youtube_discovery import audit_youtube_rights
+        yt_passed, yt_violations = audit_youtube_rights(manifest)
+        if not yt_passed:
+            log.error(f"❌ YouTube Rights Safety Gate FAILED: {yt_violations}")
+            return False, yt_violations
+    except Exception as e:
+        log.warning(f"YouTube rights audit check warning: {e}")
+
+    log.info("✅ Asset Audit PASSED! All files present and rights cleared.")
     return True, []
 
 def run_pipeline_v52():

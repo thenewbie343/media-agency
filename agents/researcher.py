@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from typing import Dict, Any, List, Optional
 try:
     from ddgs import DDGS
@@ -9,6 +10,12 @@ except ImportError:
     except ImportError:
         DDGS = None
 
+# YouTube Discovery integration (graceful import)
+try:
+    from .youtube_discovery import youtube_search_by_claim
+    _YOUTUBE_AVAILABLE = True
+except ImportError:
+    _YOUTUBE_AVAILABLE = False
 
 from pydantic_core import ValidationError
 from .base_agent import BaseAgent
@@ -27,6 +34,37 @@ log = logging.getLogger("agency")
 class ResearcherAgent(BaseAgent):
     def __init__(self):
         super().__init__()
+
+    def _execute_youtube_search(self, topic: str) -> List[dict]:
+        """Executes claim-driven YouTube search for archival footage discovery."""
+        if not _YOUTUBE_AVAILABLE:
+            log.info("YouTube discovery module not available. Skipping YouTube search.")
+            return []
+        
+        if not os.environ.get("YOUTUBE_API_KEY"):
+            log.info("YOUTUBE_API_KEY not set. Skipping YouTube discovery.")
+            return []
+        
+        youtube_discoveries = []
+        claim_queries = [
+            f"{topic} evidence documents primary source",
+            f"{topic} archival footage historical",
+            f"{topic} original recording testimony interview",
+        ]
+        
+        for query in claim_queries:
+            try:
+                results = youtube_search_by_claim(query, max_results=3)
+                youtube_discoveries.extend(results)
+            except Exception as e:
+                log.warning(f"YouTube search failed for '{query}': {e}")
+        
+        if youtube_discoveries:
+            authorized = sum(1 for d in youtube_discoveries if d.get("source_role") == "YOUTUBE_AUTHORIZED")
+            reference = sum(1 for d in youtube_discoveries if d.get("source_role") == "YOUTUBE_REFERENCE")
+            log.info(f"YouTube discovery: {len(youtube_discoveries)} videos found ({authorized} authorized, {reference} reference)")
+        
+        return youtube_discoveries
 
     def _execute_multi_query_search(self, topic: str) -> str:
         """Executes a multi-query search to gather authentic facts, evidence, and visual opportunities."""
@@ -57,6 +95,19 @@ class ResearcherAgent(BaseAgent):
 
         if not raw_snippets:
             raw_snippets.append("Search yielded no external snippets. Rely on detailed domain facts.")
+
+        # --- YouTube Discovery Integration ---
+        youtube_discoveries = self._execute_youtube_search(topic)
+        if youtube_discoveries:
+            raw_snippets.append("\n--- YouTube Archival Discovery ---")
+            for disc in youtube_discoveries[:6]:  # Top 6 discoveries
+                state = disc.get("source_role", "YOUTUBE_REFERENCE")
+                state_label = "✅ AUTHORIZED" if state == "YOUTUBE_AUTHORIZED" else "🔍 REFERENCE ONLY"
+                raw_snippets.append(
+                    f"[YouTube {state_label}] \"{disc.get('title', '')}\" "
+                    f"by {disc.get('channel_name', '')} — {disc.get('description', '')[:120]}"
+                )
+            raw_snippets.append("--- End YouTube Discovery ---")
 
         return "\n\n".join(raw_snippets)
 

@@ -357,6 +357,54 @@ class ContinuityMetadata(BaseModel):
     weather: Optional[str] = Field(None, description="Weather conditions if applicable")
     lighting: str = Field(..., description="Specific lighting for this shot")
 
+# ============================================================================
+# YouTube Discovery + Authorized Media Layer
+# ============================================================================
+
+class YouTubeAssetState(str, Enum):
+    """Three-state classification for every YouTube discovery."""
+    REFERENCE = "YOUTUBE_REFERENCE"      # Discovery/research only. MUST NOT enter final render.
+    AUTHORIZED = "YOUTUBE_AUTHORIZED"    # Explicitly licensed. May enter final pipeline.
+    UNUSABLE = "YOUTUBE_UNUSABLE"         # Metadata kept for research, media acquisition blocked.
+
+class YouTubeDiscovery(BaseModel):
+    """A YouTube video discovered during claim-driven research."""
+    youtube_video_id: str = Field(..., description="YouTube video ID (e.g. 'dQw4w9WgXcQ')")
+    channel_id: str = Field(..., description="YouTube channel ID")
+    channel_name: str = Field(..., description="YouTube channel display name")
+    title: str = Field(..., description="Video title")
+    url: str = Field(..., description="Full YouTube URL")
+    description: Optional[str] = Field(None, description="Video description snippet")
+    publication_date: Optional[str] = Field(None, description="Video publication date (ISO 8601)")
+    duration_seconds: Optional[float] = Field(None, description="Video duration in seconds")
+    thumbnail_url: Optional[str] = Field(None, description="Thumbnail URL")
+    discovery_timestamp: str = Field(..., description="ISO 8601 timestamp when we discovered this video")
+    linked_claim_id: Optional[str] = Field(None, description="ID of the claim this discovery supports")
+    source_role: YouTubeAssetState = Field(default=YouTubeAssetState.REFERENCE, description="Asset state after rights resolution")
+    rights_status: Literal[
+        "unknown", "public_domain", "creative_commons", 
+        "standard_youtube_license", "project_owned", "explicit_permission"
+    ] = Field(default="unknown", description="Resolved rights status")
+    authorization_reference: Optional[str] = Field(None, description="License doc, email, or ownership proof path")
+    relevance_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Search relevance score")
+    candidate_timestamps: Optional[List[str]] = Field(None, description="e.g. ['00:14:32-00:14:38']")
+    visual_description: Optional[str] = Field(None, description="What the video visually contains")
+    alternative_archive_query: Optional[str] = Field(None, description="Query to find rights-cleared version of this material")
+
+class TrustedChannel(BaseModel):
+    """A pre-approved YouTube channel for discovery or authorized media."""
+    channel_id: str = Field(..., description="YouTube channel ID")
+    channel_name: str = Field(..., description="Channel display name")
+    institution: str = Field(..., description="e.g. 'NASA', 'National Archives'")
+    trust_level: Literal["discovery_only", "authorized_media", "project_owned"] = Field(
+        ..., description="Level of trust for this channel"
+    )
+    permitted_media_policy: Literal[
+        "no_reuse", "creative_commons", "public_domain", 
+        "fair_use_clips", "full_authorization"
+    ] = Field(..., description="What media use is permitted")
+    notes: Optional[str] = Field(None, description="Additional context about this channel's rights")
+
 class Claim(BaseModel):
     claim_id: str = Field(..., description="Unique ID for this claim (e.g. 'claim_001')")
     text: str = Field(..., description="The factual assertion being made")
@@ -375,7 +423,7 @@ class Claim(BaseModel):
     ] = Field(default="EVIDENCE_TO_RECONSTRUCTION", description="The editorial visual strategy for this claim")
 
 class AssetMetadata(BaseModel):
-    source: Optional[str] = Field(None, description="Source of the asset (ai, pexels, archival, fallback)")
+    source: Optional[str] = Field(None, description="Source of the asset (ai, pexels, archival, youtube_authorized, fallback)")
     path: Optional[str] = Field(None, description="Path to the generated or downloaded asset")
     status: Optional[str] = Field("pending", description="Status of asset generation (pending, success, failed)")
     fallback_used: bool = Field(False, description="Whether a fallback had to be used")
@@ -406,6 +454,11 @@ class EvidenceAsset(AssetMetadata):
         "document_inspection", "classified_reveal", "quote_highlight", 
         "article_clipping", "photo_pan"
     ] = Field(default="document_inspection", description="Remotion visual treatment style")
+    # YouTube provenance (when evidence originates from YouTube discovery)
+    youtube_video_id: Optional[str] = Field(None, description="YouTube video ID if sourced via YouTube")
+    youtube_channel_id: Optional[str] = Field(None, description="YouTube channel ID")
+    youtube_channel_name: Optional[str] = Field(None, description="YouTube channel name")
+    youtube_asset_state: Optional[str] = Field(None, description="YOUTUBE_REFERENCE, YOUTUBE_AUTHORIZED, or YOUTUBE_UNUSABLE")
 
 class EditorialEvent(BaseModel):
     type: Literal["SFX", "MUSIC_CHANGE", "MUSIC_DUCK", "GRAPHIC", "TEXT_REVEAL", "HIGHLIGHT", "COLOR_SHIFT", "OVERLAY", "CUT", "HARD_CUT", "DISSOLVE", "SILENCE", "IMPACT", "ZOOM_EMPHASIS", "MAP_REVEAL", "DOCUMENT_REVEAL", "NUMBER_REVEAL", "ARCHIVE_INSERT", "REACTION_INSERT"] = Field(..., description="Type of editorial event")
@@ -440,7 +493,8 @@ class Shot(BaseModel):
     asset_provenance: Literal[
         "AUTHENTIC_ARCHIVE", "HISTORICAL_DOCUMENT", "AUTHENTIC_PHOTO", 
         "AI_RECONSTRUCTION", "AI_ILLUSTRATION", "MOTION_GRAPHIC", "STOCK", 
-        "EDITORIAL_TYPOGRAPHY", "SEMANTIC_FALLBACK", "DOCUMENT", "ARCHIVAL_FOOTAGE"
+        "EDITORIAL_TYPOGRAPHY", "SEMANTIC_FALLBACK", "DOCUMENT", "ARCHIVAL_FOOTAGE",
+        "YOUTUBE_AUTHORIZED"
     ] = Field(default="STOCK", description="The required provenance of the visual")
     
     shot_size: Literal["extreme_wide", "wide", "medium", "medium_close", "close", "extreme_close", "N/A"] = Field(

@@ -1,0 +1,66 @@
+[
+  {
+    "channel_id": "UCLA_DiR1FfKNvjuUpBHmylQ",
+    "channel_name": "NASA",
+    "institution": "National Aeronautics and Space Administration",
+    "trust_level": "authorized_media",
+    "permitted_media_policy": "public_domain",
+    "notes": "All NASA-produced content is public domain under US federal law (17 USC §105)."
+  },
+  {
+    "channel_id": "UCnL8vVmpKY8ZmfSLifVhE_w",
+    "channel_name": "National Archives",
+    "institution": "U.S. National Archives and Records Administration (NARA)",
+    "trust_level": "authorized_media",
+    "permitted_media_policy": "public_domain",
+    "notes": "U.S. Government archival footage, public domain."
+  },
+  {
+    "channel_id": "UCVHFbqXqoYvEWM1Ddxl0QDg",
+    "channel_name": "Smithsonian Channel",
+    "institution": "Smithsonian Institution",
+    "trust_level": "discovery_only",
+    "permitted_media_policy": "no_reuse",
+    "notes": "Excellent historical content. Commercial licensing required for reuse."
+  },
+  {
+    "channel_id": "UCWOA1ZGiwLbDQJk2xZb0HA",
+    "channel_name": "AP Archive",
+    "institution": "Associated Press",
+    "trust_level": "discovery_only",
+    "permitted_media_policy": "no_reuse",
+    "notes": "Premier news archive. Use for discovery and claim verification only."
+  },
+  {
+    "channel_id": "UCYMFp9SLdMFRfNCqm8giWDg",
+    "channel_name": "British Pathé",
+    "institution": "British Pathé / Reuters",
+    "trust_level": "discovery_only",
+    "permitted_media_policy": "no_reuse",
+    "notes": "Largest vintage newsreel archive. Use for discovery and visual reference."
+  },
+  {
+    "channel_id": "UCED-8FaslKS1HTXDJHQ5Q-g",
+    "channel_name": "Library of Congress",
+    "institution": "Library of Congress",
+    "trust_level": "authorized_media",
+    "permitted_media_policy": "public_domain",
+    "notes": "U.S. Government. Most content is public domain or has clear rights statements."
+  },
+  {
+    "channel_id": "UC7IcJI8PUf5Z3zKxnZvTBog",
+    "channel_name": "The School of Life",
+    "institution": "The School of Life",
+    "trust_level": "discovery_only",
+    "permitted_media_policy": "no_reuse",
+    "notes": "Educational content. Discovery only."
+  },
+  {
+    "channel_id": "UCXv1JCOwgl-ByRVG0UB_KJg",
+    "channel_name": "Europeana",
+    "institution": "Europeana Foundation",
+    "trust_level": "authorized_media",
+    "permitted_media_policy": "creative_commons",
+    "notes": "European cultural heritage. Most content CC-BY or public domain."
+  }
+]
