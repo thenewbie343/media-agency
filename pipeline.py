@@ -1382,6 +1382,53 @@ def make_text_stat(text, out, dur, lang="hindi"):
         return r2.returncode==0
     return True
 
+def is_valid_image_file(path):
+    """Verifies that an image file exists, is non-empty, and can be fully decoded by PIL."""
+    if not path or not os.path.exists(path):
+        return False
+    try:
+        if os.path.getsize(path) < 1000:
+            return False
+        from PIL import Image
+        with Image.open(path) as im:
+            im.verify()
+        with Image.open(path) as im:
+            im.load()
+        return True
+    except Exception:
+        return False
+
+def save_and_verify_image(content, out_path):
+    """
+    Saves binary image content, converts RGBA/WebP/AVIF to standard RGB JPEG/PNG,
+    and guarantees it can be decoded without error by Chromium/Remotion.
+    """
+    if not content or len(content) < 1000:
+        return False
+    try:
+        import io
+        from PIL import Image
+        img = Image.open(io.BytesIO(content))
+        img.load()
+        
+        # Normalize color channels
+        if out_path.endswith(".png"):
+            if img.mode not in ("RGBA", "RGB"):
+                img = img.convert("RGBA")
+            img.save(out_path, format="PNG")
+        else:
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            img.save(out_path, format="JPEG", quality=95)
+            
+        return is_valid_image_file(out_path)
+    except Exception as e:
+        log.warning(f"Image validation/conversion failed for {out_path}: {e}")
+        if os.path.exists(out_path):
+            try: os.remove(out_path)
+            except: pass
+        return False
+
 def fetch_pollinations(prompt, out, seed=None):
     try:
         s = seed or random.randint(1, 99999)
@@ -1389,10 +1436,8 @@ def fetch_pollinations(prompt, out, seed=None):
         url = (f"https://image.pollinations.ai/prompt/{quote(prompt)}"
                f"?width=1920&height=1080&nologo=true&seed={s}&negative={quote(neg)}&model=flux")
         r = requests.get(url, timeout=90)
-        if r.status_code == 200 and len(r.content) > 5000:
-            with open(out, "wb") as f:
-                f.write(r.content)
-            return True
+        if r.status_code == 200 and len(r.content) > 1000:
+            return save_and_verify_image(r.content, out)
     except Exception as e: log.warning(f"Pollinations: {e}")
     return False
 
@@ -1428,10 +1473,9 @@ def fetch_duckduckgo_image(search, out):
                     if urls:
                         img_r = requests.get(random.choice(urls), headers=headers, timeout=15)
                         if img_r.status_code == 200 and len(img_r.content) > 1000:
-                            with open(out, "wb") as f:
-                                f.write(img_r.content)
-                            log.info(f"DDG fetched: {clean_search}")
-                            return True
+                            if save_and_verify_image(img_r.content, out):
+                                log.info(f"DDG fetched & verified: {clean_search}")
+                                return True
         except Exception as e:
             if "403" in str(e) or "Ratelimit" in str(e):
                 _DDG_RATE_LIMITED = True
@@ -1449,10 +1493,9 @@ def fetch_duckduckgo_image(search, out):
         if wiki_url:
             img_r = requests.get(wiki_url, headers=WIKI_HEADERS, timeout=15)
             if img_r.status_code == 200 and len(img_r.content) > 1000:
-                with open(out, "wb") as f:
-                    f.write(img_r.content)
-                log.info(f"Wikimedia fetched: {wiki_url}")
-                return True
+                if save_and_verify_image(img_r.content, out):
+                    log.info(f"Wikimedia fetched & verified: {wiki_url}")
+                    return True
     except Exception as e:
         log.warning(f"Wikimedia fallback failed: {e}")
 
@@ -1470,9 +1513,9 @@ def fetch_duckduckgo_image(search, out):
             if urls:
                 img_r = requests.get(random.choice(urls), headers=WIKI_HEADERS, timeout=15)
                 if img_r.status_code == 200 and len(img_r.content) > 1000:
-                    with open(out, "wb") as f:
-                        f.write(img_r.content)
-                    return True
+                    if save_and_verify_image(img_r.content, out):
+                        log.info(f"Wikimedia raw commons fetched & verified: {search}")
+                        return True
     except Exception as e:
         log.warning(f"Wikimedia raw commons failed: {e}")
         
@@ -1611,9 +1654,7 @@ def fetch_pexels_image(search, out):
         url = best_photo["src"].get("large2x") or best_photo["src"].get("original") or best_photo["src"].get("large")
         img = requests.get(url, timeout=30)
         if img.status_code == 200 and len(img.content) > 1000:
-            with open(out, "wb") as f:
-                f.write(img.content)
-            return True
+            return save_and_verify_image(img.content, out)
         return False
     except Exception as e:
         log.warning(f"Pexels image: {e}")
@@ -1642,7 +1683,9 @@ def fetch_pixabay(search, out, dur=None):
             if not hits: return False
             url=random.choice(hits[:5])["largeImageURL"]
             img=requests.get(url,timeout=30)
-            with open(out,"wb") as f: f.write(img.content); return True
+            if img.status_code == 200 and len(img.content) > 1000:
+                return save_and_verify_image(img.content, out)
+            return False
     except Exception as e: log.warning(f"Pixabay: {e}"); return False
 
 def solid_bg(out, dur):
@@ -1668,9 +1711,9 @@ def fetch_hf_image(prompt, out_path):
         for url in urls:
             try:
                 r = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=20)
-                if r.status_code == 200:
-                    with open(out_path, "wb") as f: f.write(r.content)
-                    return True
+                if r.status_code == 200 and len(r.content) > 1000:
+                    if save_and_verify_image(r.content, out_path):
+                        return True
             except Exception:
                 pass
     # If HF returns 410 Deprecated or fails, seamlessly use Pollinations FLUX.1 Engine!
@@ -3452,22 +3495,28 @@ def run_pipeline_v52():
                                 img_candidate = shot.get("asset", {}).get("image_path") or (str(vis / f"shot_{shot.get('shot_id')}.jpg") if 'vis' in locals() else None)
                                 if not img_candidate and vid and vid.endswith('.mp4'):
                                     possible_jpg = vid.replace('.mp4', '.jpg')
-                                    if os.path.exists(possible_jpg):
+                                    if os.path.exists(possible_jpg) and is_valid_image_file(possible_jpg):
                                         img_candidate = possible_jpg
 
                                 # For still images, real photos, and motion graphics, prefer image asset for Remotion CameraSystem & 2.5D cutouts
-                                if shot.get("visual_type") in ("ai_image", "real_photo", "motion_graphics") and img_candidate and os.path.exists(img_candidate):
+                                if shot.get("visual_type") in ("ai_image", "real_photo", "motion_graphics") and img_candidate and is_valid_image_file(img_candidate):
                                     dest = public_dir / os.path.basename(img_candidate)
                                     shutil.copy2(img_candidate, dest)
                                     shot["asset"]["path"] = os.path.basename(img_candidate)
                                     vid = img_candidate
-                                elif vid and os.path.exists(vid):
+                                elif vid and os.path.exists(vid) and (vid.endswith(".mp4") or is_valid_image_file(vid)):
                                     dest = public_dir / os.path.basename(vid)
                                     shutil.copy2(vid, dest)
                                     shot["asset"]["path"] = os.path.basename(vid)
+                                else:
+                                    # Asset is missing or invalid — fallback gracefully so Remotion renders fallback UI
+                                    shot["asset"]["path"] = None
+                                    shot["asset"]["fallback_used"] = True
+                                    shot["asset"]["status"] = "failed"
+                                    vid = None
 
                                 # 2.5D Parallax Foreground Extraction
-                                if remove and shot.get("visual_type") in ("ai_image", "real_photo") and vid and not vid.endswith('.mp4'):
+                                if remove and shot.get("visual_type") in ("ai_image", "real_photo") and vid and not vid.endswith('.mp4') and is_valid_image_file(vid):
                                     try:
                                         shot["asset"]["bg_file"] = os.path.basename(vid)
                                         fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
@@ -3499,12 +3548,12 @@ def run_pipeline_v52():
                                 s["audio_file"] = os.path.basename(aud)
 
                             vid = s.get("video_file") or s.get("image_file")
-                            if vid and os.path.exists(vid):
+                            if vid and os.path.exists(vid) and (vid.endswith(".mp4") or is_valid_image_file(vid)):
                                 dest = public_dir / os.path.basename(vid)
                                 shutil.copy2(vid, dest)
                                 s["video_file"] = os.path.basename(vid)
 
-                                if remove and s.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4'):
+                                if remove and s.get("visual_type") in ("ai_image", "real_photo") and not vid.endswith('.mp4') and is_valid_image_file(vid):
                                     try:
                                         s["bg_file"] = os.path.basename(vid)
                                         fg_name = os.path.splitext(os.path.basename(vid))[0] + "_fg.png"
