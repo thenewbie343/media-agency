@@ -405,6 +405,58 @@ class TrustedChannel(BaseModel):
     ] = Field(..., description="What media use is permitted")
     notes: Optional[str] = Field(None, description="Additional context about this channel's rights")
 
+# ============================================================================
+# Visual Requirement & Semantic Verification Layer
+# ============================================================================
+
+class HistoricalFidelity(str, Enum):
+    """Degrees of historical fidelity required for a shot."""
+    STRICT_ARCHIVAL = "STRICT_ARCHIVAL"                         # Authentic historical artifact / photo from the exact era
+    ERA_ACCURATE = "ERA_ACCURATE"                               # Accurate depiction of the era, no modern anachronisms
+    MODERN_RECONSTRUCTION_ALLOWED = "MODERN_RECONSTRUCTION_ALLOWED"  # AI reconstruction allowed, but must strictly preserve era appearance
+    ABSTRACT = "ABSTRACT"                                       # Conceptual / symbolic / non-literal
+    OPTIONAL = "OPTIONAL"                                       # Standard modern or timeless b-roll allowed
+
+class VisualRequirement(BaseModel):
+    """Normalized visual specification for a shot."""
+    shot_id: str = Field(..., description="Unique ID of the shot this requirement governs")
+    claim_id: Optional[str] = Field(None, description="Linked claim ID if applicable")
+    visual_job: str = Field(..., description="Editorial visual job")
+    subject_entity: Optional[str] = Field(None, description="Core entity/person required (e.g., 'Napoleon Bonaparte')")
+    event: Optional[str] = Field(None, description="Specific historical/narrative event (e.g., 'Imperial Coronation')")
+    location: Optional[str] = Field(None, description="Specific location required (e.g., 'Paris, France')")
+    time_period: Optional[str] = Field(None, description="Era or period (e.g., '1804', '19th century')")
+    date_range: Optional[str] = Field(None, description="Date or date range (e.g., '1804')")
+    start_year: Optional[int] = Field(None, description="Start year of the era")
+    end_year: Optional[int] = Field(None, description="End year of the era")
+    required_objects: List[str] = Field(default_factory=list, description="Objects that MUST be present")
+    forbidden_objects: List[str] = Field(default_factory=list, description="Objects strictly forbidden (anachronisms, mismatches)")
+    visual_type: str = Field(..., description="Target visual type")
+    evidence_required: bool = Field(default=False, description="Whether authentic archival evidence is required")
+    provenance_required: Optional[str] = Field(None, description="Required provenance (e.g., 'AUTHENTIC_ARCHIVE')")
+    historical_required: bool = Field(default=False, description="Whether historical accuracy is mandatory")
+    historical_fidelity: HistoricalFidelity = Field(default=HistoricalFidelity.OPTIONAL, description="Degree of historical fidelity")
+    visual_purpose: Optional[str] = Field(None, description="Editorial purpose of the visual")
+    allowed_sources: List[str] = Field(default_factory=list, description="Allowed provider sources")
+    unresolved_visual_requirement: bool = Field(default=False, description="Flagged true if no candidate met the requirement")
+
+class VerificationResult(BaseModel):
+    """Detailed score card from pixel and semantic verification."""
+    candidate_id: str = Field(..., description="Candidate identifier")
+    candidate_url_or_path: str = Field(..., description="URL or local path to candidate media")
+    entity_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Match score for subject entity (0..1)")
+    event_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Match score for event (0..1)")
+    date_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Match score for date/era (0..1)")
+    location_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Match score for location (0..1)")
+    object_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Match score for required objects (0..1)")
+    visual_role_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Match score for visual job/role (0..1)")
+    evidence_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Authentic evidence provenance match (0..1)")
+    anachronism_risk: float = Field(default=0.0, ge=0.0, le=1.0, description="Risk of anachronisms (0..1, high = reject)")
+    unrelated_subject_risk: float = Field(default=0.0, ge=0.0, le=1.0, description="Risk of unrelated subject/painting (0..1, high = reject)")
+    overall_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Deterministic overall match score (0..1)")
+    passed: bool = Field(default=False, description="Whether the candidate passed all threshold gates")
+    rejection_reasons: List[str] = Field(default_factory=list, description="Specific reasons for rejection if failed")
+
 class Claim(BaseModel):
     claim_id: str = Field(..., description="Unique ID for this claim (e.g. 'claim_001')")
     text: str = Field(..., description="The factual assertion being made")
@@ -559,6 +611,8 @@ class Shot(BaseModel):
     continuity: ContinuityMetadata = Field(..., description="Continuity constraints for consistent generation")
     asset: Union[EvidenceAsset, AssetMetadata] = Field(default_factory=AssetMetadata, description="Asset tracking metadata")
     editorial_events: Optional[List[EditorialEvent]] = Field(None, description="Editorial events (SFX, Graphics, Color shifts) tied to narrative punctuation")
+    visual_requirement: Optional[VisualRequirement] = Field(None, description="Normalized visual requirement specification")
+    verification_result: Optional[VerificationResult] = Field(None, description="Semantic and pixel verification audit result")
 
     @field_validator("visual_job", mode="before")
     @classmethod
