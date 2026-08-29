@@ -68,16 +68,17 @@ The voiceover must sound like a real human speaking with WEIGHT and BREATHING RO
    NOT: "The system was designed by engineers in 1983 and it monitored satellite data for incoming nuclear threats using infrared sensors."
    YES: "1983. Soviet engineers built a system. One job — detect American nuclear missiles. The machine watched the sky. Day and night. Without blinking."
 
-2. WORD WEIGHT WITH EM-DASHES:
-   Use em-dashes (—) to isolate critical words and give them GRAVITY:
-   "But that night — one man — refused to press the button."
-   "The loss was staggering — two hundred and fifty billion dollars — gone."
-   This creates the "---marine---shipsssss---" effect where important words hang in the air.
-
-3. DRAMATIC MICRO-PAUSES WITH ELLIPSES:
-   Use ellipses (...) for suspenseful pauses before revelations:
-   "And when investigators opened the file... they found something that changed everything."
-   "The radar showed five incoming missiles... heading straight for Moscow."
+2. WORD WEIGHT:
+     To give words gravity, use short sentences. 
+     DO NOT put dashes or ellipses between every word! It breaks the TTS engine.
+     YES: "But that night. One man. Refused to press the button."
+     NOT: "But that night — one man — refused to press the button."
+     NOT: "The loss... two hundred... billion dollars... gone."
+  
+  3. DRAMATIC PACING:
+     Use short, punchy sentences for suspenseful pauses before revelations:
+     "And when they opened the file. Everything changed."
+     "The radar showed five incoming missiles. Heading straight for Moscow."
 
 4. RHYTHMIC PUNCH PATTERNS:
    Alternate between investigation sentences and brutal short punches:
@@ -232,12 +233,15 @@ DHRUV RATHEE / GAURAV THAKUR PACING MANDATE
    NOT: "The system was designed by engineers in 1983 and it monitored satellite data."
    YES: "1983. Engineers built a system. One job — detect nuclear missiles."
 
-2. WORD WEIGHT WITH EM-DASHES:
-   "But that night — one man — refused to press the button."
-   "The loss — two hundred and fifty billion dollars — gone."
-
-3. DRAMATIC MICRO-PAUSES WITH ELLIPSES:
-   "And when they opened the file... everything changed."
+2. WORD WEIGHT:
+     To give words gravity, use short sentences. 
+     DO NOT put dashes or ellipses between every word! It breaks the TTS engine.
+     YES: "But that night. One man. Refused to press the button."
+     NOT: "But that night — one man — refused to press the button."
+  
+  3. DRAMATIC PACING:
+     Use short, punchy sentences for suspenseful pauses before revelations:
+     "And when they opened the file. Everything changed."
 
 4. RHYTHMIC PUNCH PATTERNS:
    Long sentence, then: "Nobody knew." / "Every page — a lie." / "Twenty-three minutes."
@@ -253,7 +257,6 @@ EMOTIONAL CURVE: Every scene must include `viewer_emotion`, `vocal_intensity`, `
 LANGUAGE:
 - `voiceover`: NATURAL, DRAMATIC HINDI (Devanagari), written like Dhruv Rathee speaks — conversational and authoritative.
 - `caption`: FULL Romanized Hinglish (ENGLISH ALPHABET ONLY. NO DEVANAGARI. NO EMOJIS).
-- Strategic em-dashes and ellipses for word weight and dramatic pauses.
 
 RULES:
 1. EXACTLY {target_scenes} scenes for this Act.

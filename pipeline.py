@@ -860,6 +860,14 @@ def stage_3_voice(manifest, cfg):
         if not text:
             return None, 0.0
             
+        import re
+        # Strip dashes and ellipses for smoother TTS pacing
+        text = re.sub(r'[—–-]', ',', text)
+        text = re.sub(r'\.{2,}', ',', text)
+        text = re.sub(r',{2,}', ',', text)
+        text = re.sub(r'\s+,\s+', ', ', text)
+        text = text.replace(" ,", ",")
+            
         out = str(audio_dir / f"block_{b_id}.mp3")
         done = False
         
@@ -1014,6 +1022,14 @@ def stage_3_voice(manifest, cfg):
 
 def generate_kokoro_voice(text, out_path, lang="hindi", emotion="dramatic", speed_override=None):
     """Generate voice using Kokoro TTS with adaptive pacing and studio vocal mastering."""
+    # Sanitize text to prevent TTS engine from stammering/stuttering on dramatic punctuation
+    import re
+    text = re.sub(r'[—–-]', ',', text)  # Replace dashes with single comma
+    text = re.sub(r'\.{2,}', ',', text) # Replace ellipses with single comma
+    text = re.sub(r',{2,}', ',', text)  # Deduplicate commas
+    text = re.sub(r'\s+,\s+', ', ', text) # Fix comma spacing
+    text = text.replace(" ,", ",")
+    
     voice_map = {
         "hindi": "hf_alpha",     # Hindi Female — natural, clear
         "english": "af_heart",    # American Female
