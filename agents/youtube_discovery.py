@@ -128,7 +128,6 @@ def _get_youtube_auth():
         import json
         json.loads(token_val)  # Test if JSON
         import tempfile
-        import os
         from google.oauth2.credentials import Credentials
         import google.auth.transport.requests as auth_requests
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
