@@ -120,17 +120,40 @@ def _parse_iso8601_duration(duration_str: str) -> float:
     return hours * 3600 + minutes * 60 + seconds
 
 
+def _get_youtube_auth():
+    token_val = os.environ.get("YOUTUBE_TOKEN_JSON", "")
+    if not token_val:
+        return None, None
+    try:
+        import json
+        json.loads(token_val)  # Test if JSON
+        import tempfile
+        import os
+        from google.oauth2.credentials import Credentials
+        import google.auth.transport.requests as auth_requests
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+            tmp.write(token_val)
+            token_path = tmp.name
+        creds = Credentials.from_authorized_user_file(token_path)
+        os.unlink(token_path)
+        if creds.expired and creds.refresh_token:
+            creds.refresh(auth_requests.Request())
+        return {"Authorization": f"Bearer {creds.token}"}, None
+    except Exception:
+        # Fallback if it's just a raw API key stored in the env var
+        return None, token_val
+
 def youtube_search_by_claim(claim_text: str, max_results: int = 5,
                             channel_filter: Optional[str] = None) -> list:
     """
     Search YouTube by CLAIM text (not broad topic).
     Returns a list of YouTubeDiscovery-compatible dicts with asset state resolved.
     
-    Requires: YOUTUBE_API_KEY environment variable.
+    Requires: YOUTUBE_TOKEN_JSON environment variable.
     """
-    api_key = os.environ.get("YOUTUBE_API_KEY", "")
-    if not api_key:
-        log.warning("YOUTUBE_API_KEY not set. Skipping YouTube discovery.")
+    auth_headers, api_key = _get_youtube_auth()
+    if not auth_headers and not api_key:
+        log.warning("YOUTUBE_TOKEN_JSON not set. Skipping YouTube discovery.")
         return []
     
     try:
@@ -147,15 +170,20 @@ def youtube_search_by_claim(claim_text: str, max_results: int = 5,
         "type": "video",
         "maxResults": min(max_results, 25),
         "order": "relevance",
-        "key": api_key,
         "safeSearch": "none",
         "relevanceLanguage": "en"
     }
+    if api_key:
+        search_params["key"] = api_key
     if channel_filter:
         search_params["channelId"] = channel_filter
     
     try:
-        resp = requests.get(search_url, params=search_params, timeout=15)
+        kwargs = {"params": search_params, "timeout": 15}
+        if auth_headers:
+            kwargs["headers"] = auth_headers
+            
+        resp = requests.get(search_url, **kwargs)
         if resp.status_code != 200:
             log.warning(f"YouTube Search API returned {resp.status_code}: {resp.text[:200]}")
             return []
@@ -173,10 +201,16 @@ def youtube_search_by_claim(claim_text: str, max_results: int = 5,
         details_url = "https://www.googleapis.com/youtube/v3/videos"
         details_params = {
             "part": "contentDetails,snippet",
-            "id": ",".join(video_ids),
-            "key": api_key
+            "id": ",".join(video_ids)
         }
-        details_resp = requests.get(details_url, params=details_params, timeout=15)
+        if api_key:
+            details_params["key"] = api_key
+            
+        details_kwargs = {"params": details_params, "timeout": 15}
+        if auth_headers:
+            details_kwargs["headers"] = auth_headers
+            
+        details_resp = requests.get(details_url, **details_kwargs)
         detail_map = {}
         if details_resp.status_code == 200:
             for item in details_resp.json().get("items", []):
@@ -269,8 +303,8 @@ def fetch_youtube_captions(video_id: str) -> Optional[list]:
     Note: Actual transcript download requires OAuth2 authorization.
     This function returns metadata about available caption tracks.
     """
-    api_key = os.environ.get("YOUTUBE_API_KEY", "")
-    if not api_key:
+    auth_headers, api_key = _get_youtube_auth()
+    if not auth_headers and not api_key:
         return None
     
     try:
@@ -278,10 +312,16 @@ def fetch_youtube_captions(video_id: str) -> Optional[list]:
         url = "https://www.googleapis.com/youtube/v3/captions"
         params = {
             "part": "snippet",
-            "videoId": video_id,
-            "key": api_key
+            "videoId": video_id
         }
-        resp = requests.get(url, params=params, timeout=10)
+        if api_key:
+            params["key"] = api_key
+            
+        kwargs = {"params": params, "timeout": 10}
+        if auth_headers:
+            kwargs["headers"] = auth_headers
+            
+        resp = requests.get(url, **kwargs)
         if resp.status_code == 200:
             items = resp.json().get("items", [])
             return [

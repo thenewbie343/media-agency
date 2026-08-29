@@ -391,22 +391,35 @@ CRITICAL DIRECTIVES:
    Do NOT use generic metaphors (e.g. champagne glasses, generic handcuffs, scales of justice, generic businessman shaking hands, money falling from sky).
    Every shot must show specific real evidence, specific environments, technical diagrams, or authentic archival records.
 
-3. STRICT CAMERA DIVERSITY & NO CAMERA FATIGUE:
-   - DO NOT USE `zoom_in` repeatedly. Distribute camera movements: `slow_push_in`, `pan_left`, `pan_right`, `dolly_in`, `static`, `zoom_out`.
-   - Rotate camera angles: `eye_level`, `low_angle`, `high_angle`, `overhead_shot`. Use `dutch_angle` at most ONCE per video.
-   - Varied shot sizes: alternate `establishing_shot`, `wide`, `medium`, `close`, `extreme_close`.
+3. CINEMATIC SCENE BLUEPRINT (BEAT-LEVEL):
+   Every StoryBeat must contain a `cinematic_blueprint`. 
+   Define scene-level `visual_style`, `camera_language`, `lighting_language`, `depth_strategy`, `evidence_style`, `texture_language`.
+   DO NOT CHANGE style every single shot. Create visual continuity across the beat.
 
-4. 20 VISUAL JOBS & 12 SHOT RELATIONSHIPS:
-   - Assign one of the 20 canonical `visual_job` enums to each shot (ESTABLISH_WORLD, INTRODUCE_CHARACTER, INTRODUCE_OBJECT, SHOW_EVIDENCE, EXAMINE_EVIDENCE, VISUALIZE_ABSTRACT_CONCEPT, SHOW_SCALE, SHOW_COMPARISON, RECONSTRUCT_EVENT, BUILD_MYSTERY, WITHHOLD_INFORMATION, ESCALATE, INTERRUPT, CONTRAST, HUMANIZE, CONSEQUENCE, REVEAL, PAYOFF).
-   - Assign `shot_relationship` to transition shots (CONTINUATION, CONTRAST, CAUSE_TO_EFFECT, QUESTION_TO_ANSWER, DETAIL_TO_CONTEXT, CONTEXT_TO_DETAIL, BEFORE_TO_AFTER, EXPECTATION_TO_SUBVERSION, OBJECT_TO_PERSON, PERSON_TO_CONSEQUENCE, NUMBER_TO_SCALE, EVIDENCE_TO_REVEAL).
+4. CAMERA LANGUAGE & COMPOSITION (SHOT-LEVEL):
+   Camera movement must communicate editorial meaning. DO NOT alternate mechanically (zoom, pan, zoom, pan).
+   Valid `camera_movement`: SLOW_PUSH (realization), PULL_BACK (scale/isolation), LATERAL_MOVE (discovery), LOCKED_OFF (authority/evidence), HANDHELD (urgency), STATIC_CLOSE, ORBIT.
+   Valid `composition`: negative space, foreground obstruction, depth layers, silhouette, leading lines, frame-within-frame. 
 
-5. SEMANTIC CUT REASONS (MANDATORY):
-   `cut_reason` MUST describe a causal editorial shift.
-   GOOD: 'bridge_luxury_to_collapse', 'reveal_critical_typo_discrepancy', 'contrast_public_image_with_covert_log', 'isolate_central_instigator'.
-   BANNED: 'introduce_conflict', 'introduce_information', 'transition', 'next_shot', 'change_scene'.
+5. EVIDENCE CINEMATOGRAPHY:
+   Evidence (documents, photos) MUST NOT be static. Treat it as a physical documentary artifact.
+   Use `evidence_treatment`: FULL_PAGE, HEADLINE_FOCUS, DETAIL_CROP, HIGHLIGHT_LINE, QUOTE_FOCUS, DOCUMENT_STACK.
+   Example: full page -> slow push -> headline focus -> highlight line.
 
-6. HARD DURATION LIMITS:
-   NO SHOT MAY EXCEED 4.5 SECONDS.
+6. 20 VISUAL JOBS & 12 SHOT RELATIONSHIPS:
+   Assign `visual_job` (e.g. ESTABLISH_WORLD, SHOW_EVIDENCE, VISUALIZE_ABSTRACT_CONCEPT, CONSEQUENCE, REVEAL).
+   Assign `shot_relationship` for transitions (e.g. CONTINUATION, CONTRAST, CAUSE_TO_EFFECT, EVIDENCE_TO_REVEAL).
+   Use `cut_reason` to describe a causal editorial shift (e.g., 'reveal_critical_typo_discrepancy'). BANNED: 'transition', 'next_shot'.
+
+7. EDITORIAL HOLDS & PACING:
+   A premium documentary must breathe.
+   - Evidence documents/graphics: 5-7 seconds.
+   - Emotional faces/reveals: 4-8 seconds.
+   DO NOT force every shot into 2-4 seconds. Allow holds where impact is needed.
+
+8. RESTRAINT & VISUAL CONTRAST:
+   Fewer but stronger visual decisions. If no effect is needed, do nothing.
+   Avoid long stretches of the same medium or motion. Create contrast (e.g., dense graphic -> quiet photograph -> black -> wide environment).
 
 You must return a valid JSON object matching this exact JSON schema:
 {schema_json}

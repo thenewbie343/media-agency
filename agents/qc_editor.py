@@ -96,6 +96,46 @@ class QCEditorAgent(BaseAgent):
         metrics = director_eval.get("validation_metrics", {})
         score_matrix = director_eval.get("director_score_matrix", {})
 
+        # ── EMOTIONAL STORYTELLING QC GATE ──
+        emotional_verdict = "ALIVE"
+        all_blocks = []
+        for beat in director_manifest.get("story_beats", []):
+            for block in beat.get("narration_blocks", []):
+                all_blocks.append(block)
+
+        if all_blocks:
+            # Check for flat dramatic tension (all same value)
+            tensions = [b.get("dramatic_tension", 0.5) for b in all_blocks if "dramatic_tension" in b]
+            if tensions and len(set(tensions)) <= 1:
+                emotional_verdict = "FLAT"
+                qc_failures.append("FLAT_EMOTIONAL_CURVE: All scenes have identical dramatic_tension. Script lacks emotional dynamics.")
+                overall_director_score = min(overall_director_score, 5.0)
+
+            # Check for AI cliche phrases in voiceovers
+            banned_phrases = [
+                "in the world of", "little did they know", "let's delve",
+                "it's worth noting", "buckle up", "strap in",
+                "in a shocking turn", "this begs the question",
+                "at the end of the day", "the landscape of", "nestled in"
+            ]
+            all_text = " ".join(b.get("voiceover", "").lower() + " " + b.get("caption", "").lower() for b in all_blocks)
+            found_cliches = [p for p in banned_phrases if p in all_text]
+            if found_cliches:
+                emotional_verdict = "MONOTONE"
+                qc_failures.append(f"AI_CLICHE_DETECTED: Found banned phrases: {', '.join(found_cliches)}")
+                overall_director_score -= 1.5
+
+            # Check for strategic silence (breathing room)
+            has_silence = any(
+                b.get("strategic_silence", {}).get("duration_seconds", 0) > 0
+                for b in all_blocks
+            )
+            if not has_silence:
+                qc_failures.append("NO_BREATHING_ROOM: Zero strategic silences. Script will sound rushed.")
+                overall_director_score -= 0.5
+
+        metrics["emotional_verdict"] = emotional_verdict
+
         has_api_keys = bool(os.environ.get("GEMINI_KEY") or os.environ.get("GROQ_KEY"))
 
         if not has_api_keys:
@@ -148,22 +188,32 @@ class QCEditorAgent(BaseAgent):
 Your job is to strictly evaluate the editorial quality of the generated ScriptManifest.
 
 CRITICAL EDITORIAL RULES & 17 DIRECTORIAL QC METRICS:
-1. 20 Visual Jobs Validation: Every shot MUST have a defined `visual_job` (e.g. ESTABLISH_WORLD, SHOW_EVIDENCE, EXAMINE_EVIDENCE, VISUALIZE_ABSTRACT_CONCEPT, HUMANIZE, REVEAL).
-2. Anti-Literal Rule & Mute Test: Reject any shot that merely illustrates spoken words literally. The sequence must communicate a visual argument even when muted.
-3. 12 Shot Relationships: Adjacent shots must follow relational grammar (e.g., DETAIL_TO_CONTEXT, NUMBER_TO_SCALE, EVIDENCE_TO_REVEAL, CONTRAST).
-4. Camera Motion & Composition Diversity: Consecutive identical camera motions (>2) or compositions is a FAIL (Camera Fatigue). Static holds on evidence/reveals are rewarded.
-5. Cinematography Completeness: Every non-graphic visual shot must define `lens`, `camera_angle`, and `composition`.
-6. Editorial Cut Reason: Generic `cut_reason` (e.g. introduce_information, transition, show_fact) is a FAIL. Must be highly specific.
-7. Dramatic Numbers & Motifs: Numbers must be punctuated with kinetic typography, and recurring visual motifs must escalate across acts.
-8. Human Anchor Grounding: Abstract systems must be anchored in physical human consequence.
-9. SFX Pacing Restraint: SFX must be restrained (1-4 per minute) with deliberate strategic silence on reveals.
-10. REPAIR ISOLATION: When recommending a repair, you MUST instruct the Director to ONLY modify fields related to the failure. Under NO circumstances should narration, beat chronology, or unrelated IDs be modified to fix visual or camera issues.
+1. 20 Visual Jobs Validation: Every shot MUST have a defined `visual_job`.
+2. Anti-Literal Rule & Mute Test: Reject any shot that merely illustrates spoken words literally.
+3. 12 Shot Relationships: Adjacent shots must follow relational grammar.
+4. Camera Motion & Composition Diversity: Consecutive identical motions (>2) = FAIL.
+5. Cinematography Completeness: Every non-graphic shot must define `lens`, `camera_angle`, `composition`.
+6. Editorial Cut Reason: Generic `cut_reason` = FAIL.
+7. Dramatic Numbers & Motifs: Numbers punctuated with typography, motifs escalate.
+8. Human Anchor Grounding: Abstract systems anchored in physical human consequence.
+9. SFX Pacing Restraint: 1-4 SFX per minute with strategic silence on reveals.
+10. REPAIR ISOLATION: Repairs must ONLY modify failure-related fields.
+
+EMOTIONAL STORYTELLING QC (NEW — MANDATORY):
+11. FLAT SCRIPT DETECTION: If ALL scenes have the same `dramatic_tension` value OR lack `viewer_emotion`, REJECT immediately. Score = 3.
+12. PACING MONOTONY: If ALL blocks have similar word counts (variance < 10%), the script lacks rhythmic variety. Flag as WARNING.
+13. VISCERAL LANGUAGE CHECK: If zero scenes contain sensory details (physical sensations, environmental sounds, human internal states), score penalty of -2.0.
+14. AI CLICHE DETECTION: If the script contains banned AI phrases ("In the world of", "Little did they know", "Let's delve deeper", "It's worth noting", "Buckle up"), REJECT with score = 4.
+15. EMOTIONAL CURVE: The `dramatic_tension` values across scenes should form a CURVE (rising to climax, brief dip, final peak) — NOT a flat line.
+16. BREATHING ROOM: At least 1 scene must have `strategic_silence` > 0. Dead air is a storytelling tool.
+17. HUMAN STAKES: At least 1 scene must reference a specific named person or human consequence.
 
 You must return a JSON object in this exact format:
 {
   "status": "APPROVED" | "REJECTED",
   "score": <1-10>,
   "feedback": "Detailed explanation of why it passed or failed.",
+  "emotional_verdict": "ALIVE" | "FLAT" | "MONOTONE",
   "failures": [
     {
       "shot_id": "n001_s001",

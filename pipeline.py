@@ -216,9 +216,9 @@ def gemini(prompt, model="gemini-2.5-flash"):
     raise RuntimeError("All Gemini keys exhausted")
 
 def groq(prompt, max_tokens=4000):
-    from groq import Groq
-    client = Groq(api_key=GROQ_KEY)
     try:
+        from groq import Groq
+        client = Groq(api_key=GROQ_KEY)
         r = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role":"user","content":prompt}],
@@ -863,28 +863,33 @@ def stage_3_voice(manifest, cfg):
         out = str(audio_dir / f"block_{b_id}.mp3")
         done = False
         
-        # Adaptive Pacing Calculation (Subtle & Cinematic: 0.92x to 1.08x)
+        # Adaptive Pacing: Dhruv Rathee / Gaurav Thakur Measured Delivery (0.85x to 0.95x)
+        # NEVER rush. Every word must land with weight and breathing room.
         intent_upper = str(intent).upper()
         if intent_upper in ["HOOK", "MYSTERY"]:
-            kokoro_speed = 0.95
-            edge_rate = "-3%"
-            edge_pitch = "-1Hz"
-        elif intent_upper in ["CONFLICT", "CRISIS"]:
-            kokoro_speed = 1.08
-            edge_rate = "+8%"
-            edge_pitch = "+1Hz"
-        elif intent_upper in ["EVIDENCE", "ANOMALY", "REVEAL"]:
-            kokoro_speed = 0.92
-            edge_rate = "-5%"
+            kokoro_speed = 0.87
+            edge_rate = "-12%"
             edge_pitch = "-2Hz"
-        elif intent_upper in ["RESOLUTION", "AFTERMATH"]:
-            kokoro_speed = 0.96
-            edge_rate = "-2%"
-            edge_pitch = "-1Hz"
-        else: # EXPLANATION / DEFAULT
-            kokoro_speed = 1.00
-            edge_rate = "+2%"
+        elif intent_upper in ["CONFLICT", "CRISIS", "ESCALATION"]:
+            kokoro_speed = 0.95
+            edge_rate = "-4%"
             edge_pitch = "+0Hz"
+        elif intent_upper in ["EVIDENCE", "ANOMALY", "REVEAL", "REVELATION"]:
+            kokoro_speed = 0.85
+            edge_rate = "-14%"
+            edge_pitch = "-3Hz"
+        elif intent_upper in ["RESOLUTION", "AFTERMATH", "PAYOFF"]:
+            kokoro_speed = 0.88
+            edge_rate = "-10%"
+            edge_pitch = "-2Hz"
+        elif intent_upper in ["CONSEQUENCE"]:
+            kokoro_speed = 0.90
+            edge_rate = "-8%"
+            edge_pitch = "-1Hz"
+        else: # EXPLANATION / CONTEXT / DEFAULT
+            kokoro_speed = 0.92
+            edge_rate = "-6%"
+            edge_pitch = "-1Hz"
 
         # 1. Try Kokoro first if enabled with adaptive pacing
         if use_kokoro:
@@ -1056,11 +1061,50 @@ def generate_kokoro_voice(text, out_path, lang="hindi", emotion="dramatic", spee
 
                 for i, (gs, ps, audio) in enumerate(generator):
                     audio_segments.append(audio)
+                    # Natural sentence breathing: 300ms silence between segments
+                    # This creates the Dhruv Rathee / Gaurav Thakur measured pacing
+                    breath_pause = np.zeros(int(sample_rate * 0.30), dtype=np.float32)
+                    audio_segments.append(breath_pause)
 
         if not audio_segments:
             return False
 
         full_audio = np.concatenate(audio_segments)
+
+        # Em-dash micro-pause injection: Add 250ms silence around em-dashes in the waveform
+        # This gives WEIGHT to important words separated by em-dashes
+        # The em-dashes in the text cause natural TTS pauses, but we extend them
+        # by detecting low-energy regions (natural pauses) and extending them slightly
+        # This is done via a simple energy-gate approach
+        window_size = int(sample_rate * 0.05)  # 50ms analysis window
+        pause_extension = np.zeros(int(sample_rate * 0.15), dtype=np.float32)  # 150ms extension
+        energy_threshold = 0.02
+        extended_segments = []
+        i = 0
+        pause_count = 0
+        max_extensions = 8  # Don't over-extend, max 8 pause extensions per block
+        while i < len(full_audio) - window_size:
+            window = full_audio[i:i + window_size]
+            window_energy = np.sqrt(np.mean(window ** 2))
+            if window_energy < energy_threshold and pause_count < max_extensions:
+                # Found a natural pause - extend it slightly for dramatic weight
+                extended_segments.append(full_audio[i:i + window_size])
+                extended_segments.append(pause_extension)
+                pause_count += 1
+                # Skip ahead past this quiet region to avoid double-extending
+                while i < len(full_audio) - window_size:
+                    w = full_audio[i:i + window_size]
+                    if np.sqrt(np.mean(w ** 2)) >= energy_threshold:
+                        break
+                    extended_segments.append(full_audio[i:i + window_size])
+                    i += window_size
+            else:
+                extended_segments.append(full_audio[i:i + window_size])
+                i += window_size
+        # Append remaining samples
+        if i < len(full_audio):
+            extended_segments.append(full_audio[i:])
+        full_audio = np.concatenate(extended_segments)
 
         # 1. Remove NaN/Inf that corrupt output
         full_audio = np.nan_to_num(full_audio, nan=0.0, posinf=0.0, neginf=0.0)
@@ -2555,7 +2599,33 @@ def stage_8_qc(video_path, script, cfg):
         from agents.video_qc import VideoQCAgent
         agent = VideoQCAgent()
         report = agent.review_video(video_path, script, cfg)
-        log.info(f"Stage 8: {report['score']}/10 — {report['verdict']}")
+        
+        log.info("Running Tier 4 Rendered Experience Critic...")
+        from agents.rendered_experience_critic import RenderedExperienceCriticAgent
+        critic = RenderedExperienceCriticAgent()
+        ws_dir = os.path.dirname(video_path) if video_path else "."
+        tier4_res = critic.evaluate_render(video_path, script, ws_dir)
+        
+        report["tier4_score"] = tier4_res.visual_story_score
+        report["tier4_verdict"] = tier4_res.tier4_verdict
+        report["tier4_failed_intervals"] = [i.model_dump() for i in tier4_res.failed_intervals]
+        
+        if tier4_res.tier4_verdict == "FAIL":
+            log.warning("Tier 4 QC FAILED. Adding to repair loop.")
+            report["status"] = "HARD_REJECT"
+            report["verdict"] = "retry"
+            report["reason"] += " | TIER 4 FAILED: Rendered video does not communicate intended story."
+            
+            for interval in tier4_res.failed_intervals:
+                if interval.failed_shot_id:
+                    existing = [w.get("shot_id") for w in report.get("worst_5_shots", []) if isinstance(w, dict)]
+                    if interval.failed_shot_id not in existing:
+                        report.setdefault("worst_5_shots", []).append({
+                            "shot_id": interval.failed_shot_id,
+                            "reason": f"Tier 4 Critic: {interval.problem}. Rec: {interval.recommended_repair}"
+                        })
+
+        log.info(f"Stage 8: {report['score']}/10 (Tier4: {report.get('tier4_verdict', 'PASS')}) — {report['verdict']}")
         return report
     except Exception as e:
         log.warning(f"QC failed: {e}")
@@ -3116,9 +3186,9 @@ def audit_asset_semantics(manifest_dict):
         for block in beat.get("narration_blocks", []):
             for shot in block.get("shots", []):
                 shot_id = shot.get("shot_id", "unknown")
-                req = shot.get("visual_requirement", {})
-                v_res = shot.get("verification_result", {})
-                asset = shot.get("asset", {})
+                req = shot.get("visual_requirement") or {}
+                v_res = shot.get("verification_result") or {}
+                asset = shot.get("asset") or {}
                 
                 is_historical = req.get("historical_required", False)
                 is_evidence = req.get("evidence_required", False)
@@ -3285,6 +3355,23 @@ def audit_assets(script_path):
     except Exception as e:
         log.warning(f"Semantic asset audit check warning: {e}")
 
+    # ── MASTER 3-TIER DOCUMENTARY QC GATE ───────────────────────
+    try:
+        from agents.master_3tier_qc import Master3TierQC
+        master_qc = Master3TierQC()
+        qc_report = master_qc.evaluate_documentary_manifest(manifest)
+        if not qc_report.get("broadcast_approved", False):
+            is_publish_mode = os.environ.get("PUBLISH_MODE", "").lower() in ("true", "1", "yes")
+            if is_publish_mode:
+                log.error(f"❌ Master 3-Tier QC FAILED (Score: {qc_report.get('overall_score')}/10.0): {qc_report.get('remediation_actions')}")
+                return False, qc_report.get("remediation_actions", ["Master 3-Tier QC failure"])
+            else:
+                log.warning(f"⚠️ Master 3-Tier QC Warning (Score: {qc_report.get('overall_score')}/10.0): {qc_report.get('remediation_actions')}")
+        else:
+            log.info(f"🏆 Master 3-Tier QC APPROVED: Score = {qc_report.get('overall_score')}/10.0 (Truth: {qc_report['tier1_truth']['score']}, Story: {qc_report['tier2_story']['score']}, Cinematics: {qc_report['tier3_cinematic']['score']})")
+    except Exception as e:
+        log.warning(f"Master 3-Tier QC evaluation warning: {e}")
+
     log.info("✅ Asset Audit PASSED! All files present, rights cleared, and semantic requirements verified.")
     return True, []
 
@@ -3395,24 +3482,41 @@ def run_pipeline_v52():
                                 s_id = shot.get('shot_id')
                                 if s_id in repair_map:
                                     ws = repair_map[s_id]
-                                    s_rep = ws.get('suggested_repair', {})
-                                    
-                                    if s_rep.get('regenerate_prompt'):
-                                        shot['ai_prompt'] = f"{shot.get('ai_prompt')} [REPAIR: Avoid {', '.join(ws.get('failures', []))}]"
-                                    elif s_rep.get('switch_medium'):
-                                        new_med = s_rep.get('switch_medium')
-                                        shot['visual_type'] = new_med
-                                        if new_med == "stock_video": shot["asset_provenance"] = "STOCK"
-                                        elif new_med == "motion_graphics": shot["asset_provenance"] = "DATA_VISUALIZATION"
-                                        elif new_med == "real_photo": shot["asset_provenance"] = "ARCHIVAL_FOOTAGE"
+                                    if genre == "documentary":
+                                        try:
+                                            from agents.director import DirectorAgent
+                                            director = DirectorAgent()
+                                            repaired_shot = director.repair_manifest_section(shot, [ws])
+                                            repaired_shot["shot_id"] = s_id
+                                            shot.update(repaired_shot)
+                                            log.info(f"Successfully repaired shot {s_id} via Director")
+                                        except Exception as e:
+                                            log.warning(f"Failed to use Director for repair on {s_id}, falling back: {e}")
+                                            shot['visual_type'] = 'stock_video'
+                                            shot['asset_provenance'] = 'STOCK'
+                                            if 'asset' in shot:
+                                                shot['asset'].pop('path', None)
+                                                shot['asset'].pop('status', None)
+                                                shot['asset'].pop('source', None)
                                     else:
-                                        shot['visual_type'] = 'stock_video'
-                                        shot['asset_provenance'] = 'STOCK'
+                                        s_rep = ws.get('suggested_repair', {})
                                         
-                                    if 'asset' in shot:
-                                        shot['asset'].pop('path', None)
-                                        shot['asset'].pop('status', None)
-                                        shot['asset'].pop('source', None)
+                                        if s_rep.get('regenerate_prompt'):
+                                            shot['ai_prompt'] = f"{shot.get('ai_prompt')} [REPAIR: Avoid {', '.join(ws.get('failures', []))}]"
+                                        elif s_rep.get('switch_medium'):
+                                            new_med = s_rep.get('switch_medium')
+                                            shot['visual_type'] = new_med
+                                            if new_med == "stock_video": shot["asset_provenance"] = "STOCK"
+                                            elif new_med == "motion_graphics": shot["asset_provenance"] = "DATA_VISUALIZATION"
+                                            elif new_med == "real_photo": shot["asset_provenance"] = "ARCHIVAL_FOOTAGE"
+                                        else:
+                                            shot['visual_type'] = 'stock_video'
+                                            shot['asset_provenance'] = 'STOCK'
+                                            
+                                        if 'asset' in shot:
+                                            shot['asset'].pop('path', None)
+                                            shot['asset'].pop('status', None)
+                                            shot['asset'].pop('source', None)
             # Route ONLY ai_video (25%) scenes to Colab AnimateDiff
             wan_scenes = []
             if os.path.exists(os.path.expanduser("~/.config/colab-cli/token.json")):

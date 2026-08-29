@@ -1,0 +1,126 @@
+{
+  "benchmark_name": "Napoleon Bonaparte 60-90s Semantic Verification Benchmark",
+  "total_shots": 10,
+  "total_candidates_retrieved": 122,
+  "average_candidates_per_shot": 12.2,
+  "total_candidates_rejected": 105,
+  "total_candidates_accepted": 17,
+  "anachronism_rejections": 30,
+  "entity_mismatches_rejected": 30,
+  "unresolved_shots": 1,
+  "historical_strict_pass_rate": "90.0%",
+  "generic_stock_in_historical_shots": "0.0% (PROHIBITED)",
+  "comparative_examples_count": 19,
+  "audit_examples": [
+    {
+      "shot_id": "napoleon_s001",
+      "requirement": "Napoleon Bonaparte | Imperial Coronation | 1804 | Notre-Dame Cathedral, Paris, France",
+      "candidate_title": "Ingres, Napoleon on his Imperial throne crop.jpg",
+      "candidate_provider": "wikimedia",
+      "match_score": 1.0,
+      "entity_score": 1.0,
+      "anachronism_risk": 0.0,
+      "decision": "ACCEPTED",
+      "notes": "Verified authentic historical asset matching entity, event, and era."
+    },
+    {
+      "shot_id": "napoleon_s001",
+      "requirement": "Napoleon Bonaparte | Imperial Coronation | 1804",
+      "candidate_title": "David - 1943.1815.12.7, verso Faint Sketch of Four Imperial Princesses Caroline, Pauline, and Elisa Bonaparte, and Julie Clary.jpg",
+      "candidate_provider": "wikimedia",
+      "match_score": 0.59,
+      "entity_score": 0.5,
+      "anachronism_risk": 0.0,
+      "decision": "REJECTED",
+      "notes": "Overall match score 0.59 below mode threshold 0.85 (EVIDENCE_STRICT)"
+    },
+    {
+      "shot_id": "napoleon_s002",
+      "requirement": "Napoleon Bonaparte |  | 1804 | Paris, France",
+      "candidate_title": "Sarc\u00f3fago de Napole\u00f3n Bonaparte, c\u00fapula de los Inv\u00e1lidos, Par\u00eds, Francia, 2022-10-30, DD 64.jpg",
+      "candidate_provider": "wikimedia",
+      "match_score": 0.88,
+      "entity_score": 1.0,
+      "anachronism_risk": 0.0,
+      "decision": "ACCEPTED",
+      "notes": "Verified authentic historical asset matching entity, event, and era."
+    },
+    {
+      "shot_id": "napoleon_s002",
+      "requirement": "Napoleon Bonaparte |  | 1804",
+      "candidate_title": "Bonaparte premier Consul G\u00e9rard Chantilly.jpg",
+      "candidate_provider": "wikimedia",
+      "match_score": 0.69,
+      "entity_score": 0.5,
+      "anachronism_risk": 0.0,
+      "decision": "REJECTED",
+      "notes": "Overall match score 0.69 below mode threshold 0.85 (EVIDENCE_STRICT)"
+    },
+    {
+      "shot_id": "napoleon_s003",
+      "requirement": "Napoleon Bonaparte | Imperial Coronation | 1804 | Paris, France",
+      "candidate_title": "Ingres, Napoleon on his Imperial throne crop.jpg",
+      "candidate_provider": "wikimedia",
+      "match_score": 0.92,
+      "entity_score": 1.0,
+      "anachronism_risk": 0.0,
+      "decision": "ACCEPTED",
+      "notes": "Verified authentic historical asset matching entity, event, and era."
+    },
+    {
+      "shot_id": "napoleon_s003",
+      "requirement": "Napoleon Bonaparte | Imperial Coronation | 1804",
+      "candidate_title": "David - 1943.1815.12.7, verso Faint Sketch of Four Imperial Princesses Caroline, Pauline, and Elisa Bonaparte, and Julie Clary.jpg",
+      "candidate_provider": "wikimedia",
+      "match_score": 0.54,
+      "entity_score": 0.5,
+      "anachronism_risk": 0.0,
+      "decision": "REJECTED",
+      "notes": "Overall match score 0.54 below mode threshold 0.85 (EVIDENCE_STRICT)"
+    },
+    {
+      "shot_id": "napoleon_s004",
+      "requirement": "Napoleon Bonaparte | Russian Campaign 1812 | 1812",
+      "candidate_title": "Modern military surveillance drone in blue sky",
+      "candidate_provider": "pexels",
+      "match_score": 0.0,
+      "entity_score": 0.0,
+      "anachronism_risk": 0.95,
+      "decision": "REJECTED",
+      "notes": "Entity mismatch: Required 'Napoleon Bonaparte', detected confidence 0.00; Anachronism detected in historical shot (risk 0.95)"
+    },
+    {
+      "shot_id": "napoleon_s005",
+      "requirement": "Napoleon Bonaparte | Russian Campaign 1812 | 1812 | Smolensk to Berezina, Russia",
+      "candidate_title": "Pierre-Jean David d'Angers - Napoleon Bonaparte (1769-1821) - Walters 542279.jpg",
+      "candidate_provider": "wikimedia",
+      "match_score": 0.95,
+      "entity_score": 1.0,
+      "anachronism_risk": 0.0,
+      "decision": "ACCEPTED",
+      "notes": "Verified authentic historical asset matching entity, event, and era."
+    },
+    {
+      "shot_id": "napoleon_s005",
+      "requirement": "Napoleon Bonaparte | Russian Campaign 1812 | 1812",
+      "candidate_title": "A life of Napoleon Boneparte- (1901) (14580205830).jpg",
+      "candidate_provider": "wikimedia",
+      "match_score": 0.44,
+      "entity_score": 0.5,
+      "anachronism_risk": 0.0,
+      "decision": "REJECTED",
+      "notes": "Overall match score 0.44 below mode threshold 0.85 (EVIDENCE_STRICT)"
+    },
+    {
+      "shot_id": "napoleon_s006",
+      "requirement": "Napoleon Bonaparte | Russian Campaign 1812 | 1812 | Russian frontier",
+      "candidate_title": "Pierre-Jean David d'Angers - Napoleon Bonaparte (1769-1821) - Walters 542279.jpg",
+      "candidate_provider": "wikimedia",
+      "match_score": 1.0,
+      "entity_score": 1.0,
+      "anachronism_risk": 0.0,
+      "decision": "ACCEPTED",
+      "notes": "Verified authentic historical asset matching entity, event, and era."
+    }
+  ]
+}

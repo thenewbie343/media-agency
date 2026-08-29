@@ -1,5 +1,5 @@
 """
-Visual Story Planner & Cinematic Shot Director
+Visual Story Planner & Cinematic Shot Director (Part 2 & Part 3 Execution)
 Orchestrates Visual Sequence Plans, 20 Editorial Visual Jobs, 12 Shot Relationships,
 7-Dimensional Visual Contrast, Dramatic Number Typography Punctuation,
 Cross-Chapter Motif Escalation, and Human Consequence Grounding.
@@ -21,13 +21,16 @@ from .schema import (
     ShotRelationship,
     VisualSequencePlan,
     EditorialEvent,
-    NarrativeIntent
+    NarrativeIntent,
+    EditorialScene,
+    VisualRequirement,
+    HistoricalFidelity
 )
 
 
 class VisualStoryPlanner:
     """
-    Visual Story Planner (R4 & R5).
+    Visual Story Planner (Part 2 & Part 3 Execution).
     Transforms narrative voiceover into an authoritative, cinematic sequence of shots,
     assigning the 20 Editorial Visual Jobs and 12 Shot Relationships while enforcing
     the 7-dimensional contrast engine and cinematic restraint.
@@ -88,14 +91,12 @@ class VisualStoryPlanner:
         act_num: int = 1
     ) -> list:
         """
-        Directs the visual sequence for a continuous narration block:
-        - Ingests VisualSequencePlan (or formulates one via VisualSequenceDirector).
+        Directs the visual sequence for a continuous narration block (Part 2 & 3):
+        - Ingests/Creates EditorialScene via VisualSequenceDirector.
         - Assigns 20 Editorial Visual Jobs and 12 Shot Relationships.
-        - Enforces 7-Dimensional Contrast (Pacing, Motion/Static, Scale, Medium, Sound/Silence, Lighting, Density).
-        - Executes Dramatic Number Typography Punctuation + NUMBER_TO_SCALE relational shots.
-        - Escalates recurring visual motifs across chapters via DirectorMemory.
-        - Grounds abstract systems in human consequence (HUMANIZE shots).
-        - Enforces Cinematic Restraint (locked-off static frames on reveals & intentional silence).
+        - Enforces 7-Dimensional Contrast and Semantic Cinematography.
+        - Attaches normalized VisualRequirements to drive Part 1 asset verification.
+        - Enforces Cinematic Restraint and Strategic Silence.
         """
         if not chapter_lut:
             chapter_lut = self.determine_chapter_color(beat_intent, time_mode)
@@ -105,17 +106,9 @@ class VisualStoryPlanner:
 
         # 1. Analyze Visual Intent & Dramatic Entities
         intent_info = self.intent_engine.analyze_block_intent(voiceover, caption, beat_intent)
-        visual_intent = intent_info["visual_intent"]
         stat_text = intent_info["statistic_text"]
-        timestamp_text = intent_info["timestamp_text"]
         has_anomaly = intent_info["has_anomaly"]
-        has_cyber = intent_info["has_cyber"]
-        has_process = intent_info["has_process"]
-        has_reveal = intent_info["has_reveal"]
-        has_person = intent_info["has_person"]
         has_evidence = intent_info["has_evidence"]
-        has_human_anchor = intent_info["has_human_anchor"]
-        has_comparison = intent_info["has_comparison"]
 
         existing_shots = block.get("shots", [])
         base_shot = existing_shots[0] if existing_shots else {}
@@ -128,30 +121,37 @@ class VisualStoryPlanner:
         if research_package and "visual_motifs" in research_package:
             self.memory.register_motifs(research_package["visual_motifs"])
 
-        # 2. Sequence Plan Ingestion
+        # 2. Phase 2 Sequence Plan & Editorial Scene Orchestration
         plan_obj: Optional[VisualSequencePlan] = None
         if isinstance(sequence_plan, VisualSequencePlan):
             plan_obj = sequence_plan
-        elif isinstance(sequence_plan, dict):
-            try:
-                plan_obj = VisualSequencePlan.model_validate(sequence_plan)
-            except Exception:
-                pass
 
+        editorial_scene, generated_plan, initial_reqs = self.sequence_director.create_editorial_scene(
+            block, research_package, None
+        )
         if not plan_obj:
-            # Generate deterministic sequence plan for this block/beat
-            plan_obj = self.sequence_director._generate_deterministic_plan(
-                beat_intent,
-                block.get("description", voiceover[:60]),
-                f"{voiceover} {caption}",
-                research_package or {},
-                {}
-            )
+            plan_obj = generated_plan
 
-        # 3. Formulate Purposeful Visual Semantic Units
+        # 3. Formulate Purposeful Visual Semantic Units based on Phase 2 EditorialScene
         semantic_units = []
 
-        # ── Unit A: Anomaly / Document Evidence (EXAMINE_EVIDENCE / REVEAL_DETAIL) ──
+        # Unit 1: The Opening Visual (Setup / Establish World)
+        semantic_units.append({
+            "job": VisualJob.ESTABLISH_WORLD.value,
+            "type": "ai_video" if attention_intensity > 0.6 else "ai_image",
+            "provenance": "AI_RECONSTRUCTION" if time_mode == "historical" else "STOCK",
+            "fallback_type": "PhotoWall",
+            "visual_intent": editorial_scene.scene_intent,
+            "subject_entity": editorial_scene.scene_world,
+            "query": f"{clean_topic} {editorial_scene.scene_world} establishing wide",
+            "prompt": editorial_scene.opening_visual or f"Cinematic wide establishing shot of {editorial_scene.scene_world}, {time_mode} lighting, atmospheric tension, shadows and contrast, ultra-detailed, film grain, {chapter_lut} color grade, visual counterpoint to spoken narrative",
+            "weight": 3.0,
+            "density": 0.40,
+            "information_gain": 0.80,
+            "cut_reason": "establish_scene_world"
+        })
+
+        # Unit 2: The Development / Human Anchor / Anomaly
         if has_anomaly or (has_evidence and beat_intent in ["FIRST_DISCOVERY", "REVELATION"]):
             semantic_units.append({
                 "job": VisualJob.EXAMINE_EVIDENCE.value,
@@ -159,15 +159,32 @@ class VisualStoryPlanner:
                 "provenance": "ARCHIVAL_FOOTAGE",
                 "fallback_type": "ClassifiedFile",
                 "visual_intent": "HIGHLIGHT_ANOMALY_DETAIL",
+                "subject_entity": "Forensic case record",
                 "query": f"{clean_topic} official confidential case file wire transfer document anomaly",
-                "prompt": f"Macro top-down detail shot of an authentic archival document and telex record from {clean_topic}, highlighted discrepancy, warm desk lamp illumination, rich paper texture, 35mm photograph",
-                "weight": 3.6,
-                "density": 0.35,  # Simple, focused forensic detail
+                "prompt": f"Macro top-down detail shot of an authentic archival document from {clean_topic}, highlighted discrepancy, warm desk lamp illumination, rich paper texture",
+                "weight": 3.4,
+                "density": 0.35,
+                "information_gain": 0.85,
                 "overlay": "dust_scratches" if time_mode == "historical" else None,
                 "cut_reason": "examine_forensic_document_discrepancy"
             })
+        elif editorial_scene.human_anchor and editorial_scene.human_anchor != "Unknown Subject":
+            semantic_units.append({
+                "job": VisualJob.HUMANIZE.value,
+                "type": "ai_video",
+                "provenance": "AI_RECONSTRUCTION",
+                "fallback_type": "PortraitCard",
+                "visual_intent": "GROUND_IN_HUMAN_ANCHOR",
+                "subject_entity": editorial_scene.human_anchor,
+                "query": f"{clean_topic} {editorial_scene.human_anchor} portrait reaction",
+                "prompt": f"Intense close-up portrait of {editorial_scene.human_anchor} in {editorial_scene.scene_world}, expressing {editorial_scene.viewer_emotion}, atmospheric rim lighting",
+                "weight": 2.8,
+                "density": 0.30,
+                "information_gain": 0.70,
+                "cut_reason": "ground_in_human_anchor"
+            })
 
-        # ── Unit B: Dramatic Number Typography Punctuation (SHOW_SCALE) ──
+        # Unit 3: The Reveal / Visual Argument / Typography Scale
         if stat_text and len(stat_text) > 1:
             semantic_units.append({
                 "job": VisualJob.SHOW_SCALE.value,
@@ -175,189 +192,46 @@ class VisualStoryPlanner:
                 "provenance": "MOTION_GRAPHIC",
                 "fallback_type": "CinematicText",
                 "visual_intent": "VISUALIZE_MAGNITUDE_SCALE",
+                "subject_entity": stat_text,
                 "query": f"{stat_text} kinetic typography financial statistic graphic",
                 "prompt": f"Editorial motion graphics screen displaying {stat_text} in bold serif typography with subtle animated data lines on dark parchment",
                 "weight": 2.6,
-                "density": 0.80,  # High information punch
-                "overlay": None,
+                "density": 0.80,
+                "information_gain": 0.90,
                 "statistic_text": stat_text,
                 "cut_reason": "punctuate_dramatic_financial_scale"
             })
-            # Relational Follow-up: Tangible Real-World Scale
+        elif editorial_scene.visual_argument:
             semantic_units.append({
-                "job": VisualJob.SHOW_COMPARISON.value,
+                "job": VisualJob.CONTRAST.value,
                 "type": "ai_image",
                 "provenance": "AI_RECONSTRUCTION",
                 "fallback_type": "TechnicalDiagram",
-                "visual_intent": "GROUND_STATISTIC_IN_PHYSICAL_SCALE",
-                "query": f"{clean_topic} colossal scale comparison wide angle",
-                "prompt": f"Cinematic wide angle shot illustrating the physical scale of {stat_text} in {clean_topic}, towering container ships and massive logistics hub, atmospheric haze, 35mm film still",
-                "weight": 3.4,
-                "density": 0.40,  # Experiential scale breathing room
-                "overlay": None,
-                "cut_reason": "ground_abstract_number_in_physical_scale"
+                "visual_intent": "VISUAL_DIALECTIC",
+                "subject_entity": editorial_scene.visual_argument.split(" vs ")[0] if " vs " in editorial_scene.visual_argument else clean_topic,
+                "query": f"{clean_topic} {editorial_scene.visual_argument.replace(' vs ', ' contrast ')}",
+                "prompt": editorial_scene.reveal or f"Cinematic composition contrasting {editorial_scene.visual_argument} in {clean_topic}, documentary style",
+                "weight": 3.5,
+                "density": 0.50,
+                "information_gain": 0.85,
+                "cut_reason": "stage_visual_dialectic"
             })
 
-        # ── Unit C: Timestamp / Chronology Punctuation (BUILD_MYSTERY / ESTABLISH_WORLD) ──
-        if timestamp_text and not stat_text:
-            semantic_units.append({
-                "job": VisualJob.BUILD_MYSTERY.value,
-                "type": "motion_graphics",
-                "provenance": "MOTION_GRAPHIC",
-                "fallback_type": "Timeline",
-                "visual_intent": "CHRONOLOGICAL_TIMELINE_ANCHOR",
-                "query": f"{timestamp_text} timeline graphic clock log",
-                "prompt": f"Minimalist editorial timeline graphic displaying {timestamp_text} on dark monochromatic grid, subtle pulsing time marker",
-                "weight": 2.5,
-                "density": 0.65,
-                "overlay": None,
-                "cut_reason": "anchor_chronological_timestamp"
-            })
-
-        # ── Unit D: Human Consequence / Human Anchor Injection (HUMANIZE) ──
-        if has_human_anchor or self.memory.needs_human_anchor():
-            semantic_units.append({
-                "job": VisualJob.HUMANIZE.value,
-                "type": "ai_image",
-                "provenance": "AI_RECONSTRUCTION",
-                "fallback_type": "PortraitCard",
-                "visual_intent": "HUMAN_VULNERABILITY_CONSEQUENCE",
-                "query": f"{clean_topic} workers hands nervous reaction office consequence",
-                "prompt": f"Intimate cinematic close-up of nervous trembling hands at an empty desk in {clean_topic}, cold dawn window light, atmospheric depth of field, documentary realism",
-                "weight": 3.4,
-                "density": 0.30,  # Human breathing room
-                "overlay": "film_grain",
-                "cut_reason": "ground_system_in_human_vulnerability"
-            })
-
-        # ── Unit E: Covert / Cyber / System Breakdown (ESCALATE) ──
-        if has_cyber and not has_anomaly:
-            if not self.memory.is_subject_overused("computer_screen"):
-                semantic_units.append({
-                    "job": VisualJob.ESCALATE.value,
-                    "type": "ai_video",
-                    "provenance": "AI_RECONSTRUCTION",
-                    "fallback_type": "EvidenceBoard",
-                    "visual_intent": "DRAMATIZE_COVERT_OPERATION",
-                    "query": f"{clean_topic} cyber security hacker terminal server room",
-                    "prompt": f"Cinematic wide shot of a dark high-tech operations center during {clean_topic}, glowing server racks, illuminated monitors, moody low-key lighting, atmospheric haze, 35mm film grain, photorealistic",
-                    "weight": 3.8,
-                    "density": 0.65,
-                    "overlay": "vhs_glitch" if random.random() > 0.4 else None,
-                    "cut_reason": "dramatize_mounting_covert_pressure"
-                })
-            else:
-                semantic_units.append({
-                    "job": VisualJob.ESCALATE.value,
-                    "type": "stock_video",
-                    "provenance": "STOCK",
-                    "fallback_type": "TechnicalDiagram",
-                    "visual_intent": "DRAMATIZE_COVERT_OPERATION",
-                    "query": f"{clean_topic} data center server racks blue glowing lights",
-                    "prompt": f"Cinematic low-angle dolly shot of secure humming server racks and blinking network indicators in cold data vault, directional blue lighting, anamorphic lens flare",
-                    "weight": 3.2,
-                    "density": 0.50,
-                    "overlay": None,
-                    "cut_reason": "reveal_infrastructure_under_stress"
-                })
-
-        # ── Unit F: Process / Transaction Flow (VISUALIZE_ABSTRACT_CONCEPT) ──
-        if has_process and not has_anomaly and not stat_text:
-            semantic_units.append({
-                "job": VisualJob.VISUALIZE_ABSTRACT_CONCEPT.value,
-                "type": "motion_graphics",
-                "provenance": "MOTION_GRAPHIC",
-                "fallback_type": "TechnicalDiagram",
-                "visual_intent": "TRACE_TRANSACTION_NETWORK",
-                "query": f"global banking transaction routing network map",
-                "prompt": f"Clean editorial map diagram showing money routing across global banking systems between international accounts",
-                "weight": 3.2,
-                "density": 0.75,
-                "overlay": None,
-                "cut_reason": "visualize_interconnected_transaction_flow"
-            })
-
-        # ── Unit G: Impact Reveal / Smoking Gun (REVEAL) ──
-        if has_reveal and not has_anomaly:
-            semantic_units.append({
-                "job": VisualJob.REVEAL.value,
-                "type": "real_photo",
-                "provenance": "ARCHIVAL_FOOTAGE",
-                "fallback_type": "ArchivalDocument",
-                "visual_intent": "IMPACT_REVEAL_AND_FLAG",
-                "query": f"{clean_topic} smoking gun document unmasked reveal",
-                "prompt": f"Dramatic locked-off macro photograph of the unredacted classified memorandum in {clean_topic}, sharp directional tungsten illumination",
-                "weight": 3.8,
-                "density": 0.40,
-                "overlay": "light_leaks",
-                "cut_reason": "expose_smoking_gun_evidence"
-            })
-
-        # ── Unit H: Cross-Chapter Visual Motif Escalation ──
-        if self.memory.registered_motifs and len(semantic_units) < 2 and random.random() > 0.35:
-            active_motif = self.memory.registered_motifs[0]
-            motif_data = self.memory.get_escalated_motif_prompt(active_motif, act_num, clean_topic)
-            semantic_units.append({
-                "job": motif_data["visual_job"],
-                "type": "ai_image",
-                "provenance": "AI_RECONSTRUCTION",
-                "fallback_type": "EvidenceBoard",
-                "visual_intent": "RECURRING_VISUAL_MOTIF_ESCALATION",
-                "query": motif_data["query"],
-                "prompt": motif_data["prompt"],
-                "weight": 3.3,
-                "density": 0.45,
-                "overlay": "film_grain",
-                "motif_name": active_motif,
-                "motif_treatment": motif_data["treatment"],
-                "cut_reason": f"stage_recurring_motif_{motif_data['treatment'].lower()}"
-            })
-
-        # ── Unit I: Establishing & Character Baseline Fallback ──
-        if not semantic_units:
-            if has_person:
-                semantic_units.append({
-                    "job": VisualJob.INTRODUCE_CHARACTER.value,
-                    "type": "real_photo",
-                    "provenance": "ARCHIVAL_FOOTAGE",
-                    "fallback_type": "PortraitCard",
-                    "visual_intent": "ISOLATE_CENTRAL_FIGURE",
-                    "query": f"{clean_topic} central figure archival portrait photograph",
-                    "prompt": f"Authentic archival historical portrait of key individual in {clean_topic}, documentary lighting, natural 35mm grain, shallow depth of field",
-                    "weight": 3.5,
-                    "density": 0.40,
-                    "overlay": "film_grain" if time_mode == "historical" else None,
-                    "cut_reason": "introduce_investigative_protagonist"
-                })
-            else:
-                if not self.memory.is_subject_overused("building_exterior") and block.get("block_id") in ["n001", "b001"]:
-                    semantic_units.append({
-                        "job": VisualJob.ESTABLISH_WORLD.value,
-                        "type": "real_photo",
-                        "provenance": "ARCHIVAL_FOOTAGE",
-                        "fallback_type": "MapFallback",
-                        "visual_intent": "ESTABLISH_SPECIFIC_ENVIRONMENT",
-                        "query": f"{clean_topic} exterior building architecture landscape",
-                        "prompt": f"Cinematic wide establishing shot of {clean_topic} exterior building, authentic period lighting, architectural photography, Kodak Portra color tones",
-                        "weight": 3.6,
-                        "density": 0.30,
-                        "overlay": "film_grain" if time_mode == "historical" else None,
-                        "cut_reason": "establish_geographic_epicenter"
-                    })
-                else:
-                    semantic_units.append({
-                        "job": VisualJob.SHOW_EVIDENCE.value,
-                        "type": "real_photo",
-                        "provenance": "ARCHIVAL_FOOTAGE",
-                        "fallback_type": "ArchivalDocument",
-                        "visual_intent": "AUTHENTIC_DOCUMENTARY_EVIDENCE",
-                        "query": f"{clean_topic} official case file document record",
-                        "prompt": f"Official investigative case file and documentary evidence from {clean_topic}, archival warm desk lamp lighting, Leica 50mm lens texture",
-                        "weight": 3.2,
-                        "density": 0.35,
-                        "overlay": "dust_scratches" if time_mode == "historical" else None,
-                        "cut_reason": "reveal_official_case_record"
-                    })
+        # Unit 4: The Consequence / Payoff
+        semantic_units.append({
+            "job": VisualJob.CONSEQUENCE.value,
+            "type": "broll_video" if time_mode != "historical" else "ai_video",
+            "provenance": "STOCK" if time_mode != "historical" else "AI_RECONSTRUCTION",
+            "fallback_type": "ArchivalDocument",
+            "visual_intent": "CONSEQUENCE",
+            "subject_entity": clean_topic,
+            "query": f"{clean_topic} aftermath consequence wide",
+            "prompt": editorial_scene.consequence or f"Cinematic wide aftermath shot in {editorial_scene.scene_world}, emotional aftermath, human consequence not literal event, conveying {editorial_scene.knowledge_after}, atmospheric tension, visual counterpoint to narration",
+            "weight": 3.0,
+            "density": 0.40,
+            "information_gain": 0.75,
+            "cut_reason": "show_consequence"
+        })
 
         # ── Dynamic Pacing & Split Loop: Ensure <= 4.5s max duration per shot ──
         max_shot_dur = self.style_profile.get("pacing", {}).get("max_shot_duration", 4.5)
@@ -371,11 +245,13 @@ class VisualStoryPlanner:
                     "type": "ai_image",
                     "provenance": "AI_RECONSTRUCTION",
                     "fallback_type": "PortraitCard",
-                    "visual_intent": "ATMOSPHERIC_BREATHING_ROOM",
-                    "query": f"{clean_topic} human reaction desk coffee cup macro",
-                    "prompt": f"Atmospheric macro detail shot of a lone coffee cup on a cluttered desk in {clean_topic}, shallow depth of field, dramatic cinematic lighting",
+                    "visual_intent": "ATMOSPHERIC_HUMAN_BREATHING_ROOM",
+                    "subject_entity": "Forensic workspace desk",
+                    "query": f"{clean_topic} hands examining document desk macro",
+                    "prompt": f"Atmospheric macro detail shot of tired hands examining classified files on a cluttered desk in {clean_topic}, shallow depth of field, dramatic cinematic lighting",
                     "weight": 2.6,
-                    "density": 0.25,  # Breathing room
+                    "density": 0.25,
+                    "information_gain": 0.50,
                     "overlay": None,
                     "cut_reason": "inject_atmospheric_breathing_room"
                 })
@@ -386,10 +262,12 @@ class VisualStoryPlanner:
                     "provenance": "ARCHIVAL_FOOTAGE",
                     "fallback_type": "ClassifiedFile",
                     "visual_intent": "AUTHENTIC_DOCUMENTARY_EVIDENCE",
+                    "subject_entity": "Investigative log detail",
                     "query": f"{clean_topic} official document record detail",
                     "prompt": f"Macro top-down detail shot of official case record and investigative logs from {clean_topic}",
                     "weight": 2.8,
                     "density": 0.40,
+                    "information_gain": 0.65,
                     "overlay": "dust_scratches" if time_mode == "historical" else None,
                     "cut_reason": "reveal_critical_forensic_detail"
                 })
@@ -400,10 +278,12 @@ class VisualStoryPlanner:
                     "provenance": "ARCHIVAL_FOOTAGE",
                     "fallback_type": "EvidenceBoard",
                     "visual_intent": "DIALECTICAL_VISUAL_CONTRAST",
+                    "subject_entity": "Institutional corridor",
                     "query": f"{clean_topic} empty office dark high contrast",
-                    "prompt": f"High contrast wide shot of dark empty office corridors during {clean_topic}, sharp shadows, cold fluorescent lighting",
+                    "prompt": f"High contrast wide shot of dark empty corridors during {clean_topic}, sharp shadows, cold fluorescent lighting",
                     "weight": 2.7,
                     "density": 0.30,
+                    "information_gain": 0.60,
                     "overlay": None,
                     "cut_reason": "contrast_institutional_grandeur_with_decay"
                 })
@@ -429,6 +309,8 @@ class VisualStoryPlanner:
             shot["fallback_type"] = unit.get("fallback_type", "ArchivalDocument")
             shot["visual_intent"] = unit.get("visual_intent")
             shot["visual_density"] = unit.get("density", 0.5)
+            shot["information_gain"] = unit.get("information_gain", 0.70)
+            shot["viewer_question"] = editorial_scene.viewer_question
             shot["duration_seconds"] = dur
             shot["actual_duration"] = dur
             shot["duration_mode"] = "fixed"
@@ -439,15 +321,51 @@ class VisualStoryPlanner:
             shot["overlay"] = unit.get("overlay")
             shot["cut_reason"] = unit.get("cut_reason", f"execute_{unit['job'].lower()}")
 
-            # Cinematography from style profile
-            pref_sizes = self.style_profile.get("cinematography", {}).get("preferred_shot_sizes", self.sizes)
-            pref_motions = self.style_profile.get("cinematography", {}).get("preferred_motions", self.motions)
+            # Build normalized VisualRequirement for Part 1 Verification
+            fidelity = HistoricalFidelity.ERA_ACCURATE if time_mode == "historical" else HistoricalFidelity.OPTIONAL
+            if unit["provenance"] == "ARCHIVAL_FOOTAGE":
+                fidelity = HistoricalFidelity.STRICT_ARCHIVAL
 
-            shot["shot_size"] = pref_sizes[i % len(pref_sizes)]
-            shot["camera_angle"] = self.angles[i % len(self.angles)]
-            shot["lens"] = self.lenses[i % len(self.lenses)]
-            shot["composition"] = self.comps[i % len(self.comps)]
-            shot["camera_motion"] = self.memory.suggest_diverse_motion(pref_motions)
+            shot["visual_requirement"] = VisualRequirement(
+                shot_id=shot_id,
+                visual_job=unit["job"],
+                subject_entity=unit.get("subject_entity", clean_topic),
+                time_period="1980s" if time_mode == "historical" else "modern",
+                visual_type=unit["type"],
+                visual_purpose=unit.get("visual_intent", "Advance scene visual argument"),
+                historical_fidelity=fidelity
+            ).model_dump()
+
+            # Cinematography: Semantic Motion derived from Visual Job
+            job = unit["job"]
+            if job in [VisualJob.EXAMINE_EVIDENCE.value, "EXAMINE_EVIDENCE"]:
+                shot["shot_size"] = "extreme_close"
+                shot["camera_angle"] = "overhead_shot"
+                shot["lens"] = "macro_lens"
+                shot["camera_motion"] = "static"
+            elif job in [VisualJob.SHOW_SCALE.value, VisualJob.SHOW_COMPARISON.value, "SHOW_SCALE", "SHOW_COMPARISON"]:
+                shot["shot_size"] = "extreme_wide"
+                shot["camera_angle"] = "low_angle"
+                shot["lens"] = "wide_angle_lens"
+                shot["camera_motion"] = "zoom_out"
+            elif job in [VisualJob.HUMANIZE.value, "HUMANIZE"]:
+                shot["shot_size"] = "close"
+                shot["camera_angle"] = "eye_level"
+                shot["lens"] = "telephoto_lens"
+                shot["camera_motion"] = "slow_push_in"
+            elif job in [VisualJob.REVEAL.value, VisualJob.PAYOFF.value, "REVEAL", "PAYOFF"]:
+                shot["shot_size"] = "medium"
+                shot["camera_angle"] = "eye_level"
+                shot["lens"] = "standard_lens"
+                shot["camera_motion"] = "static"
+            else:
+                pref_sizes = self.style_profile.get("cinematography", {}).get("preferred_shot_sizes", self.sizes)
+                pref_motions = self.style_profile.get("cinematography", {}).get("preferred_motions", self.motions)
+                shot["shot_size"] = pref_sizes[i % len(pref_sizes)]
+                shot["camera_angle"] = self.angles[i % len(self.angles)]
+                shot["lens"] = self.lenses[i % len(self.lenses)]
+                shot["composition"] = self.comps[i % len(self.comps)]
+                shot["camera_motion"] = self.memory.suggest_diverse_motion(pref_motions)
 
             # Enforce 12 Shot Relationships & Relational Grammar
             shot = self.relationship_engine.determine_and_enforce_relationship(
@@ -455,23 +373,13 @@ class VisualStoryPlanner:
                 shot,
                 sequence_plan=plan_obj
             )
-
-            # Record Motif Usage if applicable
-            if "motif_name" in unit:
-                self.memory.record_motif_usage(
-                    unit["motif_name"],
-                    act_num,
-                    shot_id,
-                    unit.get("motif_treatment", "GROUNDING")
-                )
+            shot["relationship_to_previous"] = str(shot.get("shot_relationship") or "CONTINUATION")
 
             # ─── 5. CINEMATIC RESTRAINT & SOUND DESIGN ───
             shot_sound = None
             shot_events: List[Dict[str, Any]] = []
             shot_start_time = self.current_timeline_time
             is_restrained = shot.get("is_restrained", False)
-
-            job = unit["job"]
 
             # Anomaly / Reveal Restraint: locked-off static hold
             if attention_intensity >= 0.85 and job in [VisualJob.REVEAL.value, VisualJob.EXAMINE_EVIDENCE.value, "HIGHLIGHT_ANOMALY", "REVEAL"] and dur >= 2.0:
@@ -549,6 +457,7 @@ class VisualStoryPlanner:
             self.prev_shot = shot
             self.current_timeline_time += dur
 
+            shot = self._apply_visual_counterpoint(shot, voiceover)
             new_shots.append(shot)
 
         return new_shots
@@ -559,4 +468,34 @@ class VisualStoryPlanner:
         if len(events) > 2:
             events = events[:2]
         shot["editorial_events"] = events
+        return shot
+
+    def _apply_visual_counterpoint(self, shot: Dict[str, Any], voiceover: str) -> Dict[str, Any]:
+        """Apply visual-audio counterpoint: ensure visuals show dramatic tension,
+        not literal illustration of spoken words.
+        
+        Anti-Literal Rule: If narrator says 'explosion', don't show an explosion.
+        Show the faces watching. Show the aftermath. Show the cause.
+        If narrator says 'money', don't show money. Show what money bought or destroyed.
+        """
+        job = shot.get("visual_job", "")
+        # These jobs SHOULD be literal — they show evidence and data
+        literal_allowed_jobs = [
+            "EXAMINE_EVIDENCE", "SHOW_EVIDENCE", "SHOW_SCALE",
+            "SHOW_COMPARISON", "REVEAL_DETAIL"
+        ]
+        if job in literal_allowed_jobs:
+            return shot
+        
+        # For all other jobs, add counterpoint guidance to the ai_prompt
+        prompt = shot.get("ai_prompt", "")
+        if prompt and "counterpoint" not in prompt.lower():
+            # Add counterpoint instruction
+            counterpoint_suffix = (
+                ", visual counterpoint to narration"
+                ", show the emotional consequence not the literal event"
+                ", human reaction or atmospheric tension preferred over literal depiction"
+            )
+            shot["ai_prompt"] = prompt.rstrip() + counterpoint_suffix
+        
         return shot

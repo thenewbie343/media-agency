@@ -1,0 +1,53 @@
+{
+  "overall_score": 8.19,
+  "broadcast_approved": false,
+  "verdict": "REJECTED_NEEDS_REMEDIATION",
+  "tier1_truth": {
+    "score": 10.0,
+    "status": "PASS",
+    "verified_shots": "24/24",
+    "anachronism_violations": 0,
+    "issues": []
+  },
+  "tier2_story": {
+    "score": 6.5,
+    "status": "FAIL",
+    "scenes_passed": "3/6",
+    "avg_information_gain": 0.781,
+    "issues": [
+      "Redundant subject 'The Computer Error That Almost Started World War 3' in Shot n002_s002 without justified cinematic relationship.",
+      "Redundant subject 'The Computer Error That Almost Started World War 3' in Shot n002_s003 without justified cinematic relationship.",
+      "Redundant subject 'The Computer Error That Almost Started World War 3' in Shot n002_s004 without justified cinematic relationship.",
+      "Redundant subject 'The Computer Error That Almost Started World War 3' in Shot n004_s002 without justified cinematic relationship.",
+      "Redundant subject 'The Computer Error That Almost Started World War 3' in Shot n004_s003 without justified cinematic relationship."
+    ]
+  },
+  "tier3_cinematic": {
+    "score": 8.05,
+    "status": "PASS",
+    "director_metrics": {
+      "number_of_unique_visual_concepts": 8,
+      "repeated_visual_concepts": 16,
+      "repeated_queries": 9,
+      "repeated_camera_movements": 3,
+      "repeated_compositions": 12,
+      "shots_with_no_editorial_reason": 0,
+      "number_of_major_reveals": 15,
+      "number_of_attention_peaks": 15,
+      "number_of_silence_moments": 21,
+      "number_of_typography_punctuation_events": 6,
+      "number_of_graphic_explanations": 6,
+      "number_of_human_anchor_moments": 15,
+      "number_of_visual_motifs": 0,
+      "number_of_visual_contrasts": 14,
+      "number_of_contextual_overlays": 0,
+      "sfx_per_minute": 4.32,
+      "% shots that merely illustrate narration": 0.0,
+      "percentage_illustrative_shots": 0.0
+    },
+    "issues": []
+  },
+  "remediation_actions": [
+    "Re-author low information gain scenes; eliminate consecutive repetitive visual subjects."
+  ]
+}

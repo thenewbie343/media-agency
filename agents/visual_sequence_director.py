@@ -1,12 +1,14 @@
 """
-Visual Sequence Director Layer
-Operates between EditorialBeat[] and Shot[] to formulate a VisualSequencePlan,
-enforce the Anti-Literal Rule & Mute Test, and execute the No-Generic-B-Roll Fallback Cascade.
+Visual Sequence Director Layer (Part 2: Story + Scene Authoring)
+Orchestrates NarrativeMicroBeat decomposition, EditorialScene authoring,
+knowledge delta tracking, dialectical visual arguments, and material selection (EVIDENCE, ARCHIVAL, RECONSTRUCTION, GRAPHIC).
+Enforces the Final Scene Test and Auto-Repair Loop before shot asset fulfillment.
 """
 
 import json
 import logging
-from typing import Dict, Any, List, Optional, Union
+import re
+from typing import Dict, Any, List, Optional, Union, Tuple
 
 from .base_agent import BaseAgent
 from .schema import (
@@ -16,7 +18,18 @@ from .schema import (
     ShotRelationship,
     NarrativeIntent,
     DocumentaryResearchPackage,
-    DocumentaryVision
+    DocumentaryVision,
+    EditorialScene,
+    VisualRequirement,
+    NarrativeMicroBeat,
+    VisualInformationTarget,
+    ReconstructionPlan,
+    GraphicDecision,
+    GraphicType,
+    EvidenceTreatment,
+    AssetClass,
+    HistoricalFidelity,
+    SequenceVerificationResult
 )
 
 log = logging.getLogger(__name__)
@@ -24,10 +37,10 @@ log = logging.getLogger(__name__)
 
 class VisualSequenceDirector(BaseAgent):
     """
-    Visual Sequence Director (R3).
-    Formulates macro visual sequence strategy before individual shot asset selection,
-    ensures sequences pass the Mute Test with dialectical visual arguments,
-    and enforces the 5-stage No-Generic-B-Roll fallback cascade.
+    Visual Sequence Director (Part 2: Story + Scene Authoring).
+    Formulates macro visual sequence strategy and EditorialScene specifications
+    before individual shot asset selection, enforces the Anti-Literal Rule & Mute Test,
+    and conducts the Final Scene Test with Auto-Repair loops.
     """
 
     def __init__(self):
@@ -40,16 +53,69 @@ class VisualSequenceDirector(BaseAgent):
         ]
 
     def _get_mock_fallback(self, prompt: str, system: str, force_json: bool) -> Dict[str, Any]:
-        """Provides a complete, schema-valid mock fallback for VisualSequencePlan."""
+        """Provides a complete, schema-valid mock fallback for EditorialScene & VisualSequencePlan."""
         return {
-            "intention": "Dramatize systemic institutional breakdown through forensic paper trails and human consequence.",
-            "visual_argument": "exponential_financial_flow vs human_vulnerability_and_denial",
-            "withholding_strategy": "Withhold full smoking gun document until escalating transaction discrepancies establish high stakes.",
-            "memorable_image": "Extreme macro close-up of a forged signature on official telex paper under harsh tungsten desk lamp.",
-            "sequence_ending_statement": "Locked-off static frame on empty executive boardroom transitioning to irreversible aftermath.",
-            "information_change": 0.80,
-            "emotional_change": 0.75,
-            "visual_change": 0.85,
+            "scene_intent": "Dramatize systemic institutional breakdown through forensic paper trails and human consequence.",
+            "narrative_function": "ESCALATION_TO_REVEAL",
+            "viewer_emotion": "Mounting tension yielding to startling realization",
+            "viewer_question": "How did an automated safeguard fail to prevent catastrophic escalation?",
+            "knowledge_before": "The viewer assumes standard automated protocols safely governed operations.",
+            "knowledge_after": "The viewer understands that systemic sensor flaws created a catastrophic false signal.",
+            "visual_argument": "sterile_automated_sensor_flaw vs human_intuitive_restraint",
+            "scene_world": "Underground defense command bunker, 1980s Cold War technology",
+            "human_anchor": "Lead duty officer at monitoring console",
+            "micro_beats": [
+                {"text": "A quiet room in a secret bunker south of Moscow.", "micro_intent": "ESTABLISH_ISOLATION"},
+                {"text": "Suddenly, the SIRENA alarm pierces the silence.", "micro_intent": "BREAK_ROUTINE_WITH_ANOMALY"},
+                {"text": "The Oko satellites report five inbound intercontinental missiles.", "micro_intent": "ESCALATE_EXISTENTIAL_THREAT"},
+                {"text": "Petrov realizes a true strike would involve hundreds of missiles, not five.", "micro_intent": "FORENSIC_INTUITIVE_REVELATION"}
+            ],
+            "opening_visual": "Cinematic wide shot of sterile Soviet computer banks and amber phosphor terminals in 1983.",
+            "development": "Macro push on flashing red warning annunciator and bakelite telephone console.",
+            "reveal": "Forensic reconstruction graphic of satellite trajectory blips indicating five anomalous reflections.",
+            "consequence": "Tight close-up on officer's sweating brow and trembling hands hovering over override key.",
+            "closing_visual": "Locked-off static frame on the illuminated master clock holding in silence.",
+            "visual_requirements": [
+                {
+                    "shot_id": "shot_01",
+                    "visual_job": "ESTABLISH_WORLD",
+                    "subject_entity": "Soviet command bunker",
+                    "time_period": "1983",
+                    "visual_type": "ai_video",
+                    "visual_purpose": "Establish quiet claustrophobic baseline before alarm",
+                    "historical_fidelity": "ERA_ACCURATE"
+                },
+                {
+                    "shot_id": "shot_02",
+                    "visual_job": "ESCALATE",
+                    "subject_entity": "Red alarm indicator",
+                    "time_period": "1983",
+                    "visual_type": "ai_image",
+                    "visual_purpose": "Shatter routine with visual anomaly",
+                    "historical_fidelity": "ERA_ACCURATE"
+                },
+                {
+                    "shot_id": "shot_03",
+                    "visual_job": "SHOW_EVIDENCE",
+                    "subject_entity": "Early warning radar screen",
+                    "time_period": "1983",
+                    "visual_type": "motion_graphics",
+                    "visual_purpose": "Reconstruct anomalous 5-missile trajectory display",
+                    "historical_fidelity": "ERA_ACCURATE"
+                },
+                {
+                    "shot_id": "shot_04",
+                    "visual_job": "HUMANIZE",
+                    "subject_entity": "Duty officer Stanislav Petrov",
+                    "time_period": "1983",
+                    "visual_type": "ai_video",
+                    "visual_purpose": "Anchor existential stakes in human decision",
+                    "historical_fidelity": "ERA_ACCURATE"
+                }
+            ],
+            "information_change": 0.85,
+            "emotional_change": 0.80,
+            "visual_change": 0.80,
             "scale_change": 0.65
         }
 
@@ -59,401 +125,398 @@ class VisualSequenceDirector(BaseAgent):
         research_package: Optional[Union[Dict[str, Any], DocumentaryResearchPackage]] = None,
         vision: Optional[Union[Dict[str, Any], DocumentaryVision]] = None
     ) -> VisualSequencePlan:
+        """Formulates a VisualSequencePlan for an entire story beat."""
+        scene, plan, _ = self.create_editorial_scene(beat, research_package, vision)
+        return plan
+
+    def create_editorial_scene(
+        self,
+        block: Dict[str, Any],
+        research_package: Optional[Union[Dict[str, Any], DocumentaryResearchPackage]] = None,
+        vision: Optional[Union[Dict[str, Any], DocumentaryVision]] = None,
+        max_retries: int = 2
+    ) -> Tuple[EditorialScene, VisualSequencePlan, List[VisualRequirement]]:
         """
-        Formulates a VisualSequencePlan for an entire story beat before shot decomposition.
+        Part 2 Core Pipeline:
+        Transforms a continuous NarrationBlock into an authoritative EditorialScene,
+        decomposing it into NarrativeMicroBeats, defining the Visual Argument,
+        and outputting strict VisualRequirements with the Final Scene Test verification loop.
         """
-        intent = beat.get("narrative_intent", "EXPLANATION")
+        voiceover = block.get("voiceover", "")
+        caption = block.get("caption", "")
+        combined_text = f"{voiceover} {caption}".strip()
+        intent = block.get("narrative_intent", "EXPLANATION")
         if hasattr(intent, "value"):
             intent = intent.value
-        desc = beat.get("description", "")
-        blocks = beat.get("narration_blocks", [])
-        combined_text = " ".join(
-            [b.get("voiceover", "") + " " + b.get("caption", "") for b in blocks]
-        ).strip()
 
-        # Extract research and vision context
         pkg_dict = research_package.model_dump() if isinstance(research_package, DocumentaryResearchPackage) else (research_package or {})
         vision_dict = vision.model_dump() if isinstance(vision, DocumentaryVision) else (vision or {})
 
-        topic = pkg_dict.get("topic") or vision_dict.get("core_premise") or "Cinematic Documentary"
+        topic = pkg_dict.get("topic") or vision_dict.get("core_premise") or "Documentary Investigation"
         central_contradiction = pkg_dict.get("central_contradiction") or vision_dict.get("central_contradiction") or "public_facade vs hidden_reality"
-        motifs = pkg_dict.get("visual_motifs") or vision_dict.get("visual_motifs") or []
+        motifs = pkg_dict.get("visual_motifs") or vision_dict.get("visual_motifs") or ["case file", "ticking clock", "terminal screen"]
+        time_mode = block.get("time_mode", "historical")
 
-        prompt = f"""You are the Visual Sequence Director for an elite cinematic documentary.
-Formulate the overarching VisualSequencePlan for this story beat before any individual shots are generated.
+        # Attempt LLM-driven scene authoring with auto-repair loop
+        rejection_feedback: List[str] = []
+        for attempt in range(max_retries + 1):
+            try:
+                scene_data = self._call_llm_scene_authoring(
+                    combined_text, intent, topic, central_contradiction, motifs, time_mode, rejection_feedback
+                )
+                scene, plan, reqs = self._parse_scene_payload(block, scene_data, intent, combined_text, topic)
+                
+                # Perform Final Scene Test
+                verification = self._verify_scene_structure(scene, reqs)
+                if verification.passed:
+                    return scene, plan, reqs
+                else:
+                    log.warning(f"Scene authoring attempt {attempt+1} failed Final Scene Test: {verification.issues}")
+                    rejection_feedback = verification.issues
+            except Exception as e:
+                log.warning(f"LLM scene authoring attempt {attempt+1} failed with error: {e}")
+                rejection_feedback = [str(e)]
+
+        # Fallback to deterministic scene authoring engine
+        log.info("Falling back to deterministic EditorialScene authoring engine.")
+        return self._generate_deterministic_scene(block, pkg_dict, vision_dict)
+
+    def _call_llm_scene_authoring(
+        self,
+        text: str,
+        intent: str,
+        topic: str,
+        contradiction: str,
+        motifs: List[str],
+        time_mode: str,
+        rejection_feedback: List[str]
+    ) -> Dict[str, Any]:
+        """Calls LLM with strict Part 2 directorial instructions."""
+        feedback_prompt = ""
+        if rejection_feedback:
+            feedback_prompt = f"""
+PREVIOUS ATTEMPT FAILED THE FINAL SCENE TEST:
+{chr(10).join(['- ' + issue for issue in rejection_feedback])}
+You MUST fix these specific issues in this attempt. Ensure knowledge_after is completely distinct from knowledge_before.
+"""
+
+        prompt = f"""You are the Master Visual Sequence Director for an investigative documentary (Part 2: Story + Scene Authoring).
+Author a complete EditorialScene and VisualSequencePlan for this narration block.
 
 TOPIC: {topic}
-STORY BEAT:
-- Narrative Intent: {intent}
-- Beat Description: {desc}
-- Combined Narration: {combined_text}
-- Central Contradiction: {central_contradiction}
-- Key Visual Motifs: {motifs}
+CENTRAL CONTRADICTION: {contradiction}
+TIME MODE: {time_mode}
+NARRATIVE INTENT: {intent}
+NARRATION: "{text}"
+RECURRING MOTIFS: {motifs}
+{feedback_prompt}
 
-DIRECTIVES (Master Documentary Director Standards):
-1. intention: Define the overarching editorial intention of this sequence (what the audience must experience).
-2. visual_argument: State the dialectical tension/contradiction (e.g. 'industry_value_growth vs animator_wage_stagnation', 'exponential_market_cap vs internal_system_decay').
-3. withholding_strategy: How do we delay the central reveal to build anticipation rather than instantly illustrating words?
-4. memorable_image: Describe ONE iconic, visually distinctive anchor shot representing the act's thesis.
-5. sequence_ending_statement: Describe the final transitional visual statement leading into the next beat.
-6. 4 Change Metrics (0.0 to 1.0):
-   - information_change: rate of new forensic/narrative facts introduced
-   - emotional_change: shift in tension/gravity
-   - visual_change: diversity of visual framing and medium
-   - scale_change: progression from micro detail to macro context (or reverse)
+DIRECTORIAL REQUIREMENTS:
+1. Break narration into 2-4 NarrativeMicroBeats (Setup -> Action/Complication -> Reveal -> Consequence).
+2. Define the Final Scene Test:
+   - knowledge_before: What did the audience assume before this scene?
+   - knowledge_after: What new factual, systemic, or human insight do they possess after? (MUST be distinct and meaningful)
+   - viewer_question: What dramatic or analytical inquiry does this scene create?
+3. visual_argument: Formulate a dialectical argument (e.g. 'automated_system_flaw vs human_intuitive_restraint', 'corporate_revenue_growth vs worker_stagnation').
+4. Material Decisions: Decide whether each beat requires EVIDENCE, ARCHIVAL, RECONSTRUCTION, MOTION_GRAPHIC, MAP, or TYPOGRAPHY.
+   (Strictly ban generic B-roll and literal metaphors).
+5. Generate 2 to 4 distinct VisualRequirements matching the scene progression (Setup -> Development -> Reveal -> Consequence).
 
-Return strictly valid JSON matching the VisualSequencePlan schema."""
+Return strictly valid JSON with keys:
+- scene_intent (str)
+- narrative_function (str)
+- viewer_emotion (str)
+- viewer_question (str)
+- knowledge_before (str)
+- knowledge_after (str)
+- visual_argument (str)
+- scene_world (str)
+- human_anchor (str)
+- micro_beats (list of {{"text": str, "micro_intent": str}})
+- opening_visual (str)
+- development (str)
+- reveal (str)
+- consequence (str)
+- closing_visual (str)
+- visual_requirements (list of {{"shot_id": str, "visual_job": str, "subject_entity": str, "time_period": str, "visual_type": str, "visual_purpose": str, "historical_fidelity": str}})
+- information_change (float 0.0-1.0)
+- emotional_change (float 0.0-1.0)
+- visual_change (float 0.0-1.0)
+- scale_change (float 0.0-1.0)
+"""
+        system = "You are an elite documentary director. Return strictly valid JSON."
+        return self.call_llm(prompt, system)
 
-        system = "You are an elite cinematic documentary director. Return strictly valid JSON."
-
-        try:
-            plan_dict = self.call_llm(prompt, system)
-            if not isinstance(plan_dict, dict) or "visual_argument" not in plan_dict:
-                raise ValueError("Incomplete LLM output for VisualSequencePlan")
-            return VisualSequencePlan.model_validate(plan_dict)
-        except Exception as e:
-            log.warning(f"LLM visual sequence planning fell back to deterministic plan: {e}")
-            return self._generate_deterministic_plan(intent, desc, combined_text, pkg_dict, vision_dict)
-
-    def _generate_deterministic_plan(
+    def _parse_scene_payload(
         self,
+        block: Dict[str, Any],
+        payload: Dict[str, Any],
         intent: str,
-        desc: str,
         text: str,
+        topic: str
+    ) -> Tuple[EditorialScene, VisualSequencePlan, List[VisualRequirement]]:
+        """Parses and validates LLM payload into Pydantic models."""
+        block_id = block.get("block_id", "scene_01")
+        
+        # Parse micro-beats
+        raw_beats = payload.get("micro_beats", [])
+        micro_beats = []
+        if isinstance(raw_beats, list) and raw_beats:
+            for b in raw_beats:
+                if isinstance(b, dict) and "text" in b:
+                    micro_beats.append(NarrativeMicroBeat(
+                        text=b.get("text", ""),
+                        micro_intent=b.get("micro_intent", "EXPLAIN")
+                    ))
+        if not micro_beats:
+            half = len(text) // 2 if len(text) > 0 else 0
+            micro_beats = [
+                NarrativeMicroBeat(text=text[:half], micro_intent="SETUP_CONTEXT"),
+                NarrativeMicroBeat(text=text[half:], micro_intent="DELIVER_REVEAL")
+            ]
+
+        # Parse Visual Requirements
+        raw_reqs = payload.get("visual_requirements", [])
+        requirements: List[VisualRequirement] = []
+        if isinstance(raw_reqs, list) and raw_reqs:
+            for i, r in enumerate(raw_reqs):
+                if isinstance(r, dict):
+                    fidelity_str = r.get("historical_fidelity", "ERA_ACCURATE")
+                    try:
+                        fidelity = HistoricalFidelity(fidelity_str)
+                    except Exception:
+                        fidelity = HistoricalFidelity.ERA_ACCURATE
+
+                    requirements.append(VisualRequirement(
+                        shot_id=f"{block_id}_s{i+1:03d}",
+                        visual_job=r.get("visual_job", VisualJob.ESTABLISH_WORLD.value),
+                        subject_entity=r.get("subject_entity", topic),
+                        time_period=r.get("time_period", "1980s"),
+                        visual_type=r.get("visual_type", "ai_video"),
+                        visual_purpose=r.get("visual_purpose", "Advance visual argument"),
+                        historical_fidelity=fidelity
+                    ))
+
+        # Build VisualSequencePlan
+        plan = VisualSequencePlan(
+            intention=payload.get("scene_intent", f"Execute {intent} sequence"),
+            visual_argument=payload.get("visual_argument", "systemic_process vs real_world_consequence"),
+            withholding_strategy=payload.get("withholding_strategy", "Withhold smoking gun reveal until contextual build"),
+            memorable_image=payload.get("reveal") or payload.get("opening_visual") or "Iconic archival artifact hold",
+            sequence_ending_statement=payload.get("closing_visual") or "Static frame transitioning into aftermath",
+            information_change=float(payload.get("information_change", 0.75)),
+            emotional_change=float(payload.get("emotional_change", 0.70)),
+            visual_change=float(payload.get("visual_change", 0.80)),
+            scale_change=float(payload.get("scale_change", 0.60)),
+            micro_beats=micro_beats
+        )
+
+        # Build EditorialScene
+        scene = EditorialScene(
+            scene_id=block_id,
+            scene_intent=plan.intention,
+            narrative_function=str(payload.get("narrative_function", intent)),
+            viewer_emotion=payload.get("viewer_emotion", "Tension and Focus"),
+            viewer_question=payload.get("viewer_question", "What does the forensic evidence expose?"),
+            knowledge_before=payload.get("knowledge_before", "Audience understands surface narrative."),
+            knowledge_after=payload.get("knowledge_after", "Audience realizes the systemic contradiction."),
+            visual_argument=plan.visual_argument,
+            scene_world=payload.get("scene_world", topic),
+            human_anchor=payload.get("human_anchor", "Key Investigative Figure"),
+            opening_visual=payload.get("opening_visual", ""),
+            development=payload.get("development", ""),
+            reveal=payload.get("reveal", ""),
+            consequence=payload.get("consequence", ""),
+            closing_visual=payload.get("closing_visual", "")
+        )
+
+        return scene, plan, requirements
+
+    def _verify_scene_structure(
+        self,
+        scene: EditorialScene,
+        reqs: List[VisualRequirement]
+    ) -> SequenceVerificationResult:
+        """Enforces Part 2 Final Scene Test validation."""
+        issues = []
+        if not scene.knowledge_before or not scene.knowledge_after:
+            issues.append("knowledge_before or knowledge_after is missing.")
+        elif scene.knowledge_before.strip().lower() == scene.knowledge_after.strip().lower():
+            issues.append("Zero knowledge delta: knowledge_after is identical to knowledge_before.")
+
+        if not scene.viewer_question or len(scene.viewer_question.strip()) < 5:
+            issues.append("Missing or trivial viewer_question.")
+
+        if not scene.visual_argument or "vs" not in scene.visual_argument:
+            issues.append("visual_argument must express a dialectical tension (contain 'vs').")
+
+        if not reqs:
+            issues.append("No VisualRequirements were generated for the scene.")
+
+        return SequenceVerificationResult(
+            passed=len(issues) == 0,
+            information_gain_score=0.85 if len(issues) == 0 else 0.3,
+            redundancy_penalty=0.0,
+            issues=issues
+        )
+
+    def _generate_deterministic_scene(
+        self,
+        block: Dict[str, Any],
         pkg: Dict[str, Any],
         vision: Dict[str, Any]
-    ) -> VisualSequencePlan:
+    ) -> Tuple[EditorialScene, VisualSequencePlan, List[VisualRequirement]]:
         """
-        Generates a rich, context-aware, dialectical VisualSequencePlan deterministically.
+        Deterministic, robust Part 2 authoring engine.
+        Guarantees schema validity and narrative progression without external LLM dependencies.
         """
-        intent_upper = str(intent).upper()
+        block_id = block.get("block_id", "scene_01")
+        intent = str(block.get("narrative_intent", "EXPLANATION")).upper()
+        voiceover = block.get("voiceover", "")
+        caption = block.get("caption", "")
+        text = f"{voiceover} {caption}".strip()
+
         topic = pkg.get("topic") or vision.get("core_premise") or "The Investigation"
-        contradiction = pkg.get("central_contradiction") or "institutional_power vs human_vulnerability"
-        motifs = pkg.get("visual_motifs") or ["official telex document", "ticking control room clock", "dimly lit trading floor"]
-        selected_motif = motifs[0] if motifs else "forensic case file"
+        contradiction = pkg.get("central_contradiction") or "official_narrative vs hidden_reality"
+        motifs = pkg.get("visual_motifs") or ["case file record", "monitoring terminal", "desk telephone"]
+        motif = motifs[0] if motifs else "forensic document"
+        time_mode = block.get("time_mode", "historical")
 
-        # Dialectical Visual Arguments per Macro Intent Phase
+        # Dialectical Visual Arguments
         dialectics = {
-            "HOOK": f"surface_normalcy vs impending_catastrophe ({contradiction})",
-            "CENTRAL_QUESTION": "official_narrative vs undeniable_forensic_discrepancy",
-            "CONTEXT": "architectural_grandeur vs foundational_instability",
-            "FIRST_DISCOVERY": "routine_paperwork vs fatal_smoking_gun_detail",
-            "COMPLICATION": "frictionless_automation vs human_operator_panic",
-            "ESCALATION": "exponential_system_pressure vs crumbling_institutional_denial",
-            "REVELATION": "concealed_mastermind_record vs unvarnished_evidence_exposure",
-            "CONSEQUENCE": "abstract_financial_figures vs devastating_human_fallout",
-            "DEEPER_REVELATION": "individual_scapegoat vs systemic_cultural_corruption",
-            "FINAL_CONTRADICTION": "colossal_superficial_wealth vs hollowed_core_aftermath",
-            "PAYOFF": "historical_oblivion vs permanent_structural_lesson",
-            "EVIDENCE": "official_press_release vs unredacted_audit_logs",
-            "CONFLICT": "escalating_system_pressure vs desperate_containment",
-            "MYSTERY": "known_anomalies vs unidentified_covert_operators",
-            "EXPLANATION": "abstract_technical_mechanism vs physical_chain_reaction",
-            "RESOLUTION": "momentary_hubris vs permanent_silence"
+            "HOOK": f"surface_calm vs existential_catastrophe ({contradiction})",
+            "CENTRAL_QUESTION": "official_statement vs forensic_discrepancy",
+            "CONTEXT": "architectural_scale vs infrastructural_vulnerability",
+            "FIRST_DISCOVERY": "routine_logbook vs fatal_anomaly",
+            "COMPLICATION": "automated_sensor_flaw vs human_operator_panic",
+            "ESCALATION": "exponential_system_pressure vs crumbling_containment",
+            "REVELATION": "concealed_truth vs unvarnished_evidence_exposure",
+            "CONSEQUENCE": "abstract_numbers vs devastating_human_fallout",
+            "PAYOFF": "historical_oblivion vs permanent_structural_lesson"
         }
+        visual_arg = dialectics.get(intent, f"systemic_process vs human_consequence ({contradiction})")
 
-        visual_arg = dialectics.get(intent_upper, f"systemic_process vs real_world_consequence ({contradiction})")
-
-        withholdings = {
-            "HOOK": "Conceal the identity of the central subject; present only the visual anomaly and immediate aftermath.",
-            "CENTRAL_QUESTION": "Present contradictory data logs before revealing the source of the investigation.",
-            "CONTEXT": "Establish institutional scale before exposing the micro fracture in the infrastructure.",
-            "FIRST_DISCOVERY": "Withhold full document page; focus on macro close-up of the single anomalous typo.",
-            "COMPLICATION": "Show server alerts and operator reactions before revealing the failed failover protocol.",
-            "ESCALATION": "Delay showing executive response; build tension through mounting transaction backlogs.",
-            "REVELATION": "Hold frame on preceding silence before cutting to the unredacted classified memo.",
-            "CONSEQUENCE": "Withhold corporate headquarters; show empty worker desks and foreclosed storefronts.",
-            "DEEPER_REVELATION": "Conceal the final network diagram until every intermediary node has been exposed.",
-            "FINAL_CONTRADICTION": "Juxtapose the celebratory launch footage with silent contemporary ruins.",
-            "PAYOFF": "Linger on the symbolic motif in silence before delivering the final title card."
+        # Knowledge Deltas (Final Scene Test)
+        knowledge_pairs = {
+            "HOOK": (
+                "The audience assumes a standard routine evening.",
+                "The audience discovers that an unprecedented anomaly has breached the system."
+            ),
+            "CENTRAL_QUESTION": (
+                "The audience believes the official record is complete.",
+                "The audience sees an irreconcilable gap between reported facts and physical logs."
+            ),
+            "FIRST_DISCOVERY": (
+                "The audience considers the event an unavoidable accident.",
+                "The audience recognizes that a single overlooked detail triggered the chain reaction."
+            ),
+            "COMPLICATION": (
+                "The audience assumes automatic fail-safes intervened.",
+                "The audience understands that the automated fail-safes actively amplified the error."
+            ),
+            "ESCALATION": (
+                "The audience expects containment protocols to succeed.",
+                "The audience sees exponential pressure overwhelming institutional defenses."
+            ),
+            "REVELATION": (
+                "The audience suspects a complex multi-party conspiracy.",
+                "The audience uncovers the exact smoking gun document proving structural negligence."
+            ),
+            "CONSEQUENCE": (
+                "The audience views the incident as a localized failure.",
+                "The audience witnesses the permanent, global human aftermath."
+            ),
+            "PAYOFF": (
+                "The audience views the historical crisis as concluded.",
+                "The audience realizes the systemic flaw remains active in contemporary architecture."
+            )
         }
-
-        withholding = withholdings.get(
-            intent_upper,
-            "Conceal decisive evidence until preceding contextual framing establishes high stakes."
+        k_before, k_after = knowledge_pairs.get(
+            intent,
+            ("The audience holds a conventional surface understanding.", "The audience understands the deeper structural mechanism.")
         )
 
-        memorable_images = {
-            "HOOK": f"High-contrast opening frame of {selected_motif} isolated under cold noir rim lighting in {topic}.",
-            "CENTRAL_QUESTION": f"Forensic split-screen comparing official ledger against {selected_motif}.",
-            "CONTEXT": f"Sweeping architectural low-angle establishing shot of {topic} headquarters at dusk.",
-            "FIRST_DISCOVERY": f"Extreme macro lens pushing into the red-ink discrepancy on {selected_motif}.",
-            "COMPLICATION": f"Close-up of trembling hands hovering over emergency terminal keys in {topic}.",
-            "ESCALATION": f"Towering kinetic typography chart showing exponential divergence of {contradiction}.",
-            "REVELATION": f"Locked-off static frame on unredacted confidential memo with bold black redactions.",
-            "CONSEQUENCE": f"Haunting medium shot of an abandoned workstation illuminated only by a blinking error light.",
-            "DEEPER_REVELATION": f"Cinematic network diagram revealing interconnected offshore shell entities.",
-            "FINAL_CONTRADICTION": f"Archival photograph of triumphant founders juxtaposed against empty demolished factory.",
-            "PAYOFF": f"Iconic static hold on {selected_motif} gathering dust in archived basement storage."
+        viewer_questions = {
+            "HOOK": "What suddenly shattered the routine?",
+            "CENTRAL_QUESTION": "Why does the physical record contradict the official statement?",
+            "FIRST_DISCOVERY": "How did a catastrophic flaw hide in plain sight?",
+            "COMPLICATION": "Can human intuition override a malfunctioning automated protocol?",
+            "ESCALATION": "How close did the system come to complete collapse?",
+            "REVELATION": "Who authorized the suppression of this evidence?",
+            "CONSEQUENCE": "What was the true human cost of this decision?",
+            "PAYOFF": "What prevents this exact catastrophe from recurring today?"
         }
+        v_question = viewer_questions.get(intent, "What is the structural cause behind this crisis?")
 
-        memorable = memorable_images.get(
-            intent_upper,
-            f"Visually distinctive anchor shot capturing {contradiction} in {desc[:50]}."
-        )
+        # Narrative MicroBeats
+        half = len(text) // 2 if len(text) > 0 else 0
+        micro_beats = [
+            NarrativeMicroBeat(text=text[:half], micro_intent="ESTABLISH_PREMISE_AND_TENSION"),
+            NarrativeMicroBeat(text=text[half:], micro_intent="DELIVER_FORENSIC_TURNING_POINT")
+        ]
 
-        ending_statements = {
-            "HOOK": "Sudden visual cut to black punctuated by anomalous audio cue.",
-            "CENTRAL_QUESTION": "Static wide shot holding on the unanswered forensic discrepancy.",
-            "CONTEXT": "Smooth camera tilt transitioning from skyward architecture to underground cables.",
-            "FIRST_DISCOVERY": "Macro hold on the highlighted document discrepancy fading to next act.",
-            "COMPLICATION": "Harsh cold rim lighting settling on the unresolved system error.",
-            "ESCALATION": "Rapid cadence of data charts resolving into a tense locked-off hold.",
-            "REVELATION": "Static 4-second hold on the smoking gun document in absolute silence.",
-            "CONSEQUENCE": "Slow pull-back revealing human consequence across the landscape.",
-            "DEEPER_REVELATION": "Visual shift from warm archival tones to cold contemporary noir.",
-            "FINAL_CONTRADICTION": "Dual framing illustrating the permanent gulf between gain and loss.",
-            "PAYOFF": "Long static hold on the central motif as room tone naturally decays."
-        }
-
-        ending_stmt = ending_statements.get(
-            intent_upper,
-            "Deliberate static frame on physical artifact transitioning to the next narrative phase."
-        )
-
-        # Dynamic Quality Change Metrics based on Intent
-        info_change = 0.85 if intent_upper in ["FIRST_DISCOVERY", "REVELATION", "DEEPER_REVELATION"] else 0.70
-        emo_change = 0.90 if intent_upper in ["HOOK", "REVELATION", "CONSEQUENCE", "PAYOFF"] else 0.65
-        vis_change = 0.80 if intent_upper in ["HOOK", "COMPLICATION", "FINAL_CONTRADICTION"] else 0.75
-        scale_change = 0.85 if intent_upper in ["CONTEXT", "ESCALATION", "CONSEQUENCE"] else 0.55
-
-        return VisualSequencePlan(
-            intention=f"Cinematically convey {intent.lower()} through dialectical progression: {desc[:70]}",
+        # Sequence Plan
+        plan = VisualSequencePlan(
+            intention=f"Cinematically dramatize {intent.lower()} through dialectic: {topic}",
             visual_argument=visual_arg,
-            withholding_strategy=withholding,
-            memorable_image=memorable,
-            sequence_ending_statement=ending_stmt,
-            information_change=info_change,
-            emotional_change=emo_change,
-            visual_change=vis_change,
-            scale_change=scale_change
+            withholding_strategy="Conceal decisive smoking gun until contextual tension establishes stakes.",
+            memorable_image=f"Cinematic frame of {motif} under cold tungsten illumination in {topic}.",
+            sequence_ending_statement="Static frame on physical artifact transitioning to aftermath.",
+            information_change=0.85 if intent in ["FIRST_DISCOVERY", "REVELATION"] else 0.70,
+            emotional_change=0.85 if intent in ["HOOK", "CONSEQUENCE"] else 0.65,
+            visual_change=0.80,
+            scale_change=0.75,
+            micro_beats=micro_beats
         )
 
-    def evaluate_mute_test(
-        self,
-        shots: List[Dict[str, Any]],
-        sequence_plan: Optional[VisualSequencePlan] = None
-    ) -> Dict[str, Any]:
-        """
-        Evaluates whether the visual sequence communicates its narrative argument when completely muted.
-        Checks for:
-        1. Narrative Arc Progression: Setup -> Development -> Climax/Consequence
-        2. Visual Job Diversity (>= 2 distinct visual jobs)
-        3. Rejection of Literal Clichés / Stock B-roll
-        4. Presence of Visual Restraint / Holding Frames
-        """
-        if not shots:
-            return {
-                "mute_test_passed": False,
-                "score": 0.0,
-                "verdict": "FAILED",
-                "reasons": ["No shots provided in sequence"]
-            }
-
-        jobs = [str(s.get("visual_job", "")) for s in shots]
-        queries = [(s.get("visual_query") or s.get("ai_prompt") or "").lower() for s in shots]
-
-        has_setup = any(
-            j in [
-                VisualJob.ESTABLISH_WORLD.value,
-                VisualJob.INTRODUCE_CHARACTER.value,
-                VisualJob.INTRODUCE_OBJECT.value,
-                VisualJob.BUILD_MYSTERY.value,
-                VisualJob.WITHHOLD_INFORMATION.value,
-                VisualJob.SHOW_EVIDENCE.value,
-                VisualJob.EXAMINE_EVIDENCE.value,
-                "ESTABLISH_WORLD", "INTRODUCE_CHARACTER", "INTRODUCE_OBJECT", "BUILD_MYSTERY",
-                "WITHHOLD_INFORMATION", "SHOW_EVIDENCE", "EXAMINE_EVIDENCE", "ESTABLISH"
-            ] for j in jobs
+        # Editorial Scene
+        scene = EditorialScene(
+            scene_id=block_id,
+            scene_intent=plan.intention,
+            narrative_function=intent,
+            viewer_emotion="Investigative tension yielding to realization",
+            viewer_question=v_question,
+            knowledge_before=k_before,
+            knowledge_after=k_after,
+            visual_argument=visual_arg,
+            scene_world=topic,
+            human_anchor="Duty Investigator / Operator",
+            opening_visual=f"Atmospheric establishing wide shot of {topic} environment, {time_mode} lighting.",
+            development=f"Close detail shot of {motif} showing forensic indicators and tension.",
+            reveal=f"High-impact graphic or document reconstruction illustrating {visual_arg}.",
+            consequence=f"Serene yet haunting wide aftermath frame grounding the human stakes.",
+            closing_visual="Locked-off static frame holding in silence."
         )
 
-        has_development = any(
-            j in [
-                VisualJob.SHOW_EVIDENCE.value,
-                VisualJob.EXAMINE_EVIDENCE.value,
-                VisualJob.VISUALIZE_ABSTRACT_CONCEPT.value,
-                VisualJob.SHOW_SCALE.value,
-                VisualJob.SHOW_COMPARISON.value,
-                VisualJob.RECONSTRUCT_EVENT.value,
-                VisualJob.ESCALATE.value,
-                VisualJob.CONTRAST.value,
-                VisualJob.FOLLOW_OBJECT.value,
-                "SHOW_EVIDENCE", "EXAMINE_EVIDENCE", "VISUALIZE_ABSTRACT_CONCEPT", "SHOW_SCALE",
-                "SHOW_COMPARISON", "RECONSTRUCT_EVENT", "ESCALATE", "CONTRAST", "FOLLOW_OBJECT"
-            ] for j in jobs
-        )
+        # Generate 3 Canonical VisualRequirements
+        reqs = [
+            VisualRequirement(
+                shot_id=f"{block_id}_s001",
+                visual_job=VisualJob.ESTABLISH_WORLD.value,
+                subject_entity=topic,
+                time_period="1980s" if time_mode == "historical" else "modern",
+                visual_type="ai_video" if intent in ["HOOK", "ESCALATION"] else "real_photo",
+                visual_purpose="Establish world context and physical setting",
+                historical_fidelity=HistoricalFidelity.ERA_ACCURATE
+            ),
+            VisualRequirement(
+                shot_id=f"{block_id}_s002",
+                visual_job=VisualJob.EXAMINE_EVIDENCE.value if intent in ["FIRST_DISCOVERY", "REVELATION"] else VisualJob.HUMANIZE.value,
+                subject_entity=motif,
+                time_period="1980s" if time_mode == "historical" else "modern",
+                visual_type="real_photo" if intent in ["FIRST_DISCOVERY", "REVELATION"] else "ai_video",
+                visual_purpose="Examine forensic detail and ground human emotion",
+                historical_fidelity=HistoricalFidelity.ERA_ACCURATE
+            ),
+            VisualRequirement(
+                shot_id=f"{block_id}_s003",
+                visual_job=VisualJob.REVEAL.value if intent in ["FIRST_DISCOVERY", "REVELATION"] else VisualJob.CONSEQUENCE.value,
+                subject_entity=topic,
+                time_period="1980s" if time_mode == "historical" else "modern",
+                visual_type="motion_graphics" if intent in ["EXPLANATION", "CENTRAL_QUESTION"] else "ai_image",
+                visual_purpose="Deliver visual argument payoff and consequence",
+                historical_fidelity=HistoricalFidelity.ERA_ACCURATE
+            )
+        ]
 
-        has_climax_or_consequence = any(
-            j in [
-                VisualJob.REVEAL.value,
-                VisualJob.REVEAL_DETAIL.value,
-                VisualJob.CONSEQUENCE.value,
-                VisualJob.HUMANIZE.value,
-                VisualJob.PAYOFF.value,
-                VisualJob.INTERRUPT.value,
-                "REVEAL", "REVEAL_DETAIL", "CONSEQUENCE", "HUMANIZE", "PAYOFF", "INTERRUPT"
-            ] for j in jobs
-        )
-
-        # Check for literal cliché violations
-        literal_violations = []
-        for i, q in enumerate(queries):
-            for banned in self.banned_literal_keywords:
-                if banned in q:
-                    literal_violations.append(f"Shot {i+1} contains banned cliché: '{banned}'")
-
-        distinct_jobs = len(set(jobs))
-        has_restraint = any(s.get("is_restrained", False) or s.get("camera_motion") == "static" for s in shots)
-
-        # Calculate Mute Test Director Score (0.0 to 10.0)
-        score = 4.0
-        if has_setup:
-            score += 2.0
-        if has_development:
-            score += 2.0
-        if has_climax_or_consequence:
-            score += 2.0
-        if distinct_jobs >= 3:
-            score += 1.0
-        if has_restraint:
-            score += 0.5
-        if literal_violations:
-            score -= (len(literal_violations) * 2.5)
-
-        score = max(0.0, min(10.0, score))
-        passed = (
-            (has_setup or has_development)
-            and (has_climax_or_consequence or (has_setup and has_development))
-            and len(literal_violations) == 0
-            and (distinct_jobs >= 2 or len(shots) == 1)
-        )
-
-        return {
-            "mute_test_passed": passed,
-            "score": round(score, 2),
-            "verdict": "PASSED" if passed else "FAILED",
-            "has_setup": has_setup,
-            "has_development": has_development,
-            "has_climax_or_consequence": has_climax_or_consequence,
-            "distinct_visual_jobs": distinct_jobs,
-            "has_restraint": has_restraint,
-            "literal_violations": literal_violations
-        }
-
-    def is_literal_illustration(self, shot: Dict[str, Any], voiceover: str = "") -> bool:
-        """
-        Detects if a shot is a lazy, literal noun-matching cliché.
-        """
-        query = (shot.get("visual_query") or shot.get("ai_prompt") or "").lower()
-        for banned in self.banned_literal_keywords:
-            if banned in query:
-                return True
-        return False
-
-    def apply_fallback_cascade(
-        self,
-        visual_job: Union[VisualJob, str],
-        intent_info: Optional[Dict[str, Any]] = None,
-        available_assets: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """
-        No-Generic-B-Roll Fallback Cascade (5 Priority Levels):
-        Level 1: Alternative Visual Interpretation (Metaphorical / forensic framing)
-        Level 2: Motion Graphic Diagram (Kinetic data, map, timeline, typography)
-        Level 3: AI Reconstruction (Period drama recreation, atmospheric reconstruction)
-        Level 4: Archival Document (Authentic case file, telex, newspaper React fallback)
-        Level 5: Generic B-roll (Strict last resort only, <15% of total documentary)
-        """
-        job_str = visual_job.value if isinstance(visual_job, VisualJob) else str(visual_job)
-        info = intent_info or {}
-        assets = available_assets or {}
-
-        # ── Level 1: Alternative Visual Interpretation ──
-        if (
-            assets.get("has_metaphorical_photo")
-            or job_str in [VisualJob.HUMANIZE.value, VisualJob.CONTRAST.value, "HUMANIZE", "CONTRAST"]
-            or info.get("has_human_anchor")
-        ):
-            return {
-                "cascade_level": 1,
-                "strategy": "ALTERNATIVE_INTERPRETATION",
-                "visual_type": "real_photo",
-                "asset_provenance": "AUTHENTIC_PHOTO",
-                "fallback_type": "PortraitCard",
-                "priority_score": 1.0
-            }
-
-        # ── Level 2: Motion Graphic Diagram ──
-        if (
-            assets.get("can_render_diagram")
-            or info.get("has_statistic")
-            or info.get("has_process")
-            or info.get("has_timestamp")
-            or job_str in [
-                VisualJob.SHOW_SCALE.value,
-                VisualJob.SHOW_COMPARISON.value,
-                VisualJob.VISUALIZE_ABSTRACT_CONCEPT.value,
-                "SHOW_SCALE", "SHOW_COMPARISON", "VISUALIZE_ABSTRACT_CONCEPT"
-            ]
-        ):
-            return {
-                "cascade_level": 2,
-                "strategy": "MOTION_GRAPHIC_DIAGRAM",
-                "visual_type": "motion_graphics" if not info.get("has_statistic") else "text_stat",
-                "asset_provenance": "MOTION_GRAPHIC",
-                "fallback_type": "TechnicalDiagram" if not info.get("has_statistic") else "CinematicText",
-                "priority_score": 0.9
-            }
-
-        # ── Level 3: AI Reconstruction ──
-        if (
-            assets.get("has_ai_generator")
-            or info.get("has_cyber")
-            or job_str in [
-                VisualJob.RECONSTRUCT_EVENT.value,
-                VisualJob.BUILD_MYSTERY.value,
-                VisualJob.ESCALATE.value,
-                "RECONSTRUCT_EVENT", "BUILD_MYSTERY", "ESCALATE"
-            ]
-        ):
-            return {
-                "cascade_level": 3,
-                "strategy": "AI_RECONSTRUCTION",
-                "visual_type": "ai_video" if job_str in [VisualJob.ESCALATE.value, "ESCALATE"] else "ai_image",
-                "asset_provenance": "AI_RECONSTRUCTION",
-                "fallback_type": "EvidenceBoard",
-                "priority_score": 0.8
-            }
-
-        # ── Level 4: Archival Document ──
-        if (
-            assets.get("has_archival_doc")
-            or info.get("has_anomaly")
-            or info.get("has_evidence")
-            or job_str in [
-                VisualJob.SHOW_EVIDENCE.value,
-                VisualJob.EXAMINE_EVIDENCE.value,
-                VisualJob.REVEAL_DETAIL.value,
-                VisualJob.REVEAL.value,
-                VisualJob.PAYOFF.value,
-                "SHOW_EVIDENCE", "EXAMINE_EVIDENCE", "REVEAL_DETAIL", "REVEAL", "PAYOFF"
-            ]
-        ):
-            return {
-                "cascade_level": 4,
-                "strategy": "ARCHIVAL_DOCUMENT",
-                "visual_type": "real_photo",
-                "asset_provenance": "ARCHIVAL_FOOTAGE",
-                "fallback_type": "ArchivalDocument" if not info.get("has_anomaly") else "ClassifiedFile",
-                "priority_score": 0.7
-            }
-
-        # ── Level 5: Generic B-roll (Strict Last Resort) ──
-        return {
-            "cascade_level": 5,
-            "strategy": "GENERIC_BROLL",
-            "visual_type": "broll_video",
-            "asset_provenance": "STOCK",
-            "fallback_type": "PhotoWall",
-            "priority_score": 0.3
-        }
+        return scene, plan, reqs

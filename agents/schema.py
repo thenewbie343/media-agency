@@ -301,24 +301,100 @@ class DocumentaryVision(BaseModel):
 
 
 # ============================================================================
-# 4. Visual Sequence Planning Models (R3)
+# 4. Visual Sequence Planning Models (R3 & Phase 2)
 # ============================================================================
+
+class AssetClass(str, Enum):
+    EVIDENCE = "EVIDENCE"
+    ARCHIVAL = "ARCHIVAL"
+    REAL_WORLD = "REAL_WORLD"
+    RECONSTRUCTION = "RECONSTRUCTION"
+    GENERATED_IMAGE = "GENERATED_IMAGE"
+    GENERATED_VIDEO = "GENERATED_VIDEO"
+    MOTION_GRAPHIC = "MOTION_GRAPHIC"
+    MAP = "MAP"
+    DOCUMENT = "DOCUMENT"
+    PHOTOGRAPH = "PHOTOGRAPH"
+    TYPOGRAPHY = "TYPOGRAPHY"
+    BLACK_SCREEN = "BLACK_SCREEN"
+
+class EvidenceTreatment(str, Enum):
+    FULL_PAGE = "FULL_PAGE"
+    HEADLINE_FOCUS = "HEADLINE_FOCUS"
+    DETAIL_CROP = "DETAIL_CROP"
+    HIGHLIGHT_LINE = "HIGHLIGHT_LINE"
+    QUOTE_FOCUS = "QUOTE_FOCUS"
+    TIMESTAMP_FOCUS = "TIMESTAMP_FOCUS"
+    SOURCE_COMPARISON = "SOURCE_COMPARISON"
+    PHOTO_ANNOTATION = "PHOTO_ANNOTATION"
+    SIGNATURE_FOCUS = "SIGNATURE_FOCUS"
+    DATE_FOCUS = "DATE_FOCUS"
+    DOCUMENT_STACK = "DOCUMENT_STACK"
+
+class CameraLanguage(str, Enum):
+    SLOW_PUSH = "SLOW_PUSH"
+    PULL_BACK = "PULL_BACK"
+    LATERAL_MOVE = "LATERAL_MOVE"
+    LOCKED_OFF = "LOCKED_OFF"
+    HANDHELD = "HANDHELD"
+    STATIC_CLOSE = "STATIC_CLOSE"
+    ORBIT = "ORBIT"
+
+class GraphicType(str, Enum):
+    MAP = "MAP"
+    TIMELINE = "TIMELINE"
+    COMPARISON = "COMPARISON"
+    FLOW = "FLOW"
+    NETWORK = "NETWORK"
+    CAUSAL_GRAPH = "CAUSAL_GRAPH"
+    DATA_TYPOGRAPHY = "DATA_TYPOGRAPHY"
+
+class ReconstructionPlan(BaseModel):
+    environment: str = Field(..., description="The setting environment")
+    time_period: str = Field(..., description="The time period")
+    location: str = Field(..., description="The location")
+    characters: List[str] = Field(..., description="Characters present")
+    objects: List[str] = Field(..., description="Key objects in the scene")
+    action: str = Field(..., description="The specific action happening")
+    camera: str = Field(..., description="Camera placement/movement")
+    lighting: str = Field(..., description="Lighting description")
+    continuity: str = Field(..., description="Continuity rules")
+
+class GraphicDecision(BaseModel):
+    graphic_type: GraphicType = Field(..., description="Type of graphic")
+    information_goal: str = Field(..., description="What the graphic visualizes")
+
+class VisualInformationTarget(BaseModel):
+    knowledge_before: str = Field(..., description="What the audience knows before")
+    knowledge_after: str = Field(..., description="What the audience learns here")
+    visualizable_concept: str = Field(..., description="The core visual concept")
+
+class NarrativeMicroBeat(BaseModel):
+    text: str = Field(..., description="The voiceover text slice")
+    micro_intent: str = Field(..., description="What this slice accomplishes")
+
+class SequenceVerificationResult(BaseModel):
+    passed: bool = Field(default=False)
+    information_gain_score: float = Field(default=0.0)
+    redundancy_penalty: float = Field(default=0.0)
+    issues: List[str] = Field(default_factory=list)
 
 class VisualSequencePlan(BaseModel):
     """
     Visual Sequence Plan (R3).
     Formulated by VisualSequenceDirector per beat before individual shot decomposition.
-    Enforces the Anti-Literal Rule, Mute Test, and 4 Quality Change Metrics.
     """
     intention: str = Field(..., description="Editorial intention of the visual sequence")
-    visual_argument: str = Field(..., description="Core visual dialectic/argument (e.g., 'industry_value_growth vs animator_wage_stagnation')")
-    withholding_strategy: str = Field(..., description="Strategy for withholding information to build anticipation")
-    memorable_image: str = Field(..., description="Distinctive key visual anchor shot representing the central idea")
-    sequence_ending_statement: str = Field(..., description="Final visual statement transitioning into the next beat")
-    information_change: float = Field(default=0.7, ge=0.0, le=1.0, description="Rate of new visual information introduced (0.0 - 1.0)")
-    emotional_change: float = Field(default=0.6, ge=0.0, le=1.0, description="Shift in emotional tone/tension (0.0 - 1.0)")
-    visual_change: float = Field(default=0.8, ge=0.0, le=1.0, description="Diversity of visual worlds and framing (0.0 - 1.0)")
-    scale_change: float = Field(default=0.5, ge=0.0, le=1.0, description="Progression of scale: micro to macro or macro to micro (0.0 - 1.0)")
+    visual_argument: str = Field(..., description="Core visual dialectic/argument")
+    withholding_strategy: str = Field(..., description="Strategy for withholding information")
+    memorable_image: str = Field(..., description="Distinctive key visual anchor shot")
+    sequence_ending_statement: str = Field(..., description="Final visual statement")
+    information_change: float = Field(default=0.7, ge=0.0, le=1.0)
+    emotional_change: float = Field(default=0.6, ge=0.0, le=1.0)
+    visual_change: float = Field(default=0.8, ge=0.0, le=1.0)
+    scale_change: float = Field(default=0.5, ge=0.0, le=1.0)
+    micro_beats: List[NarrativeMicroBeat] = Field(default_factory=list)
+
 
 
 # ============================================================================
@@ -520,13 +596,49 @@ class EditorialEvent(BaseModel):
     duration: Optional[float] = Field(None, description="Duration in seconds if applicable")
     reason: Optional[str] = Field(None, description="Editorial reason for this event (important for QC)")
 
+class CinematicSceneBlueprint(BaseModel):
+    visual_style: Optional[str] = Field(None, description="Global visual style for this scene (e.g., '1970s archive', 'high-contrast tech')")
+    camera_language: Optional[CameraLanguage] = Field(None, description="Dominant camera movement/language for the scene")
+    lighting_language: Optional[str] = Field(None, description="Lighting style (e.g., 'high-contrast', 'motivated practical')")
+    depth_strategy: Optional[str] = Field(None, description="Depth strategy (e.g., 'shallow focus', 'layered parallax')")
+    transition_language: Optional[str] = Field(None, description="How the scene enters/exits (e.g., 'HARD_CUT', 'MATCH_CUT')")
+    evidence_style: Optional[EvidenceTreatment] = Field(None, description="How evidence is treated visually in this scene")
+    texture_language: Optional[str] = Field(None, description="Texture feeling (e.g., 'film grain', 'clean digital')")
+    typography_style: Optional[str] = Field(None, description="Typography style (e.g., 'bold serif', 'minimalist sans')")
+    graphics_style: Optional[str] = Field(None, description="Graphics style")
+    sound_style: Optional[str] = Field(None, description="Sound design language (e.g., 'room tone heavy', 'subtle drones')")
+
 class EditorialScene(BaseModel):
     """
     An editorial scene represents a conceptual segment of the documentary, structured around a specific claim.
+    Now acts as the core orchestrator for Phase 2 visual planning.
     """
     scene_id: str = Field(..., description="Unique ID for this scene")
+    cinematic_blueprint: Optional[CinematicSceneBlueprint] = Field(default_factory=CinematicSceneBlueprint, description="Cinematic rules for the entire scene")
     claim: Optional[Claim] = Field(None, description="The central claim being asserted and visually supported")
     strategic_silence_seconds: float = Field(default=0.0, description="Amount of room tone/silence to hold before or after TTS")
+    
+    scene_intent: str = Field(default="", description="Editorial intent of the scene")
+    narrative_function: str = Field(default="", description="Narrative function (e.g. SETUP, REVEAL, ESCALATION)")
+    viewer_emotion: str = Field(default="", description="The intended viewer emotion")
+    viewer_question: str = Field(default="", description="The question placed in the viewer's mind")
+    knowledge_before: str = Field(default="", description="What the audience knows before the scene")
+    knowledge_after: str = Field(default="", description="What the audience learns after the scene")
+    visual_argument: str = Field(default="", description="The core visual dialectic or argument")
+    scene_world: str = Field(default="", description="The setting or conceptual world of the scene")
+    human_anchor: str = Field(default="", description="The human subject anchoring the information")
+    
+    evidence_material: Optional[EvidenceTreatment] = Field(None, description="If evidence is used, how it's treated")
+    reconstruction_material: Optional[ReconstructionPlan] = Field(None, description="If reconstruction, the exact plan")
+    graphic_material: Optional[GraphicDecision] = Field(None, description="If graphic, the visualization decision")
+    
+    recurring_motif: Optional[str] = Field(None, description="Any recurring visual motif used")
+    
+    opening_visual: str = Field(default="", description="Opening shot description")
+    development: str = Field(default="", description="Development shots description")
+    reveal: str = Field(default="", description="The reveal visual description")
+    consequence: str = Field(default="", description="The consequence visual description")
+    closing_visual: str = Field(default="", description="Closing shot description")
     
 class Shot(BaseModel):
     """
@@ -553,8 +665,11 @@ class Shot(BaseModel):
         default="N/A", description="Camera shot size. Do NOT use N/A unless it's a motion graphic."
     )
     camera_angle: Optional[str] = Field(None, description="Camera angle (e.g., eye_level, low_angle, overhead_shot, high_angle, dutch_angle)")
+    camera_movement: Optional[CameraLanguage] = Field(None, description="Specific camera movement for this shot (e.g., SLOW_PUSH, LATERAL_MOVE, LOCKED_OFF)")
     lens: Optional[str] = Field(None, description="Lens type (e.g., wide_angle_lens, telephoto_lens, standard_lens, macro_lens)")
-    composition: Optional[str] = Field(None, description="Composition rule (e.g., rule_of_thirds, center_framed, golden_ratio, leading_lines)")
+    composition: Optional[str] = Field(None, description="Composition rule (e.g., negative space, leading lines, foreground obstruction)")
+    evidence_treatment: Optional[EvidenceTreatment] = Field(None, description="If this is an evidence shot, how it is treated visually (e.g., HIGHLIGHT_LINE, DETAIL_CROP)")
+    lighting: Optional[str] = Field(None, description="Lighting intent for this shot (e.g., focused directional light, softer motivated light)")
     foreground: Optional[str] = Field(None, description="What is in the foreground")
     background: Optional[str] = Field(None, description="What is in the background")
     subject_position: Optional[str] = Field(None, description="Position of the main subject")
@@ -605,6 +720,9 @@ class Shot(BaseModel):
     visual_importance: float = Field(default=0.5, description="Scale of visual emphasis (0.0 to 1.0). High means intense motion/sound.")
     visual_density: float = Field(default=0.5, description="Visual complexity score from 0.0 minimal breathing room to 1.0 maximum density")
     visual_intent: Optional[str] = Field(default=None, description="The abstract visual storytelling intent")
+    information_gain: float = Field(default=0.5, description="Information gained compared to previous shot (0.0 to 1.0)")
+    relationship_to_previous: Optional[str] = Field(default=None, description="Relationship logic to previous shot")
+    viewer_question: Optional[str] = Field(default=None, description="The question this shot leaves the viewer with")
     is_restrained: bool = Field(default=False, description="Whether this shot enforces cinematic restraint (no motion/no sfx)")
     director_score: Optional[float] = Field(default=None, description="Director quality score from 0.0 to 10.0")
     
@@ -710,6 +828,7 @@ class StoryBeat(BaseModel):
     description: str = Field(..., description="Description of the story beat")
     attention_intensity: float = Field(default=0.5, description="Expected audience attention curve intensity (0.0 to 1.0). Hook=0.8, Revelation=1.0")
     chapter_color_language: Optional[str] = Field(None, description="Consistent LUT/Color treatment for this entire chapter (e.g., 'archival', 'cinematic', 'high_contrast')")
+    cinematic_blueprint: Optional[CinematicSceneBlueprint] = Field(default_factory=CinematicSceneBlueprint, description="Cinematic rules and blueprints for this story beat/scene")
     narration_blocks: List[NarrationBlock] = Field(..., description="Narration blocks within this story beat")
 
     @field_validator("narrative_intent", mode="before")
