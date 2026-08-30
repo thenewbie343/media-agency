@@ -191,7 +191,6 @@ def youtube_search_by_claim(claim_text: str, max_results: int = 5,
         if resp.status_code != 200:
             log.warning(f"YouTube Search API returned {resp.status_code}: {resp.text[:200]}")
             if resp.status_code == 403:
-                global _YOUTUBE_UNAUTHORIZED
                 _YOUTUBE_UNAUTHORIZED = True
                 log.warning("YouTube API returned 403. Marking YouTube source as UNAUTHORIZED/OFFLINE for the rest of the run to prevent spam.")
             return []
