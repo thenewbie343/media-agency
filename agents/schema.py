@@ -520,6 +520,9 @@ class VerificationResult(BaseModel):
     """Detailed score card from pixel and semantic verification."""
     candidate_id: str = Field(..., description="Candidate identifier")
     candidate_url_or_path: str = Field(..., description="URL or local path to candidate media")
+    verifier_provider: str = Field(default="LOCAL_HEURISTIC", description="Provider used for verification")
+    verifier_status: str = Field(default="READY", description="Status of the verifier")
+    unverified: bool = Field(default=False, description="Whether strict requirement could not be verified")
     entity_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Match score for subject entity (0..1)")
     event_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Match score for event (0..1)")
     date_match: float = Field(default=0.0, ge=0.0, le=1.0, description="Match score for date/era (0..1)")

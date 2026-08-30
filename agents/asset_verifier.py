@@ -87,6 +87,8 @@ class AssetVerifier:
 
         # 4. Perform Structured Analysis (VLM or Local Heuristic Engine)
         observations = self._observe_candidate(candidate, req, combined_text, local_preview_path)
+        provider = observations.pop("_provider", "LOCAL_HEURISTIC")
+        vision_status = observations.pop("_vision_status", "READY")
 
         # 5. Deterministic Python Scoring Policy
         scores, rejection_reasons = self._calculate_deterministic_scores(observations, req, mode)
@@ -106,6 +108,13 @@ class AssetVerifier:
             scores["anachronism_risk"] <= max_anachronism and
             scores["unrelated_subject_risk"] <= max_unrelated
         )
+        
+        unverified = False
+        if provider == "LOCAL_HEURISTIC" and mode in ["EVIDENCE_STRICT", "HISTORICAL_STRICT", "ENTITY_STRICT"]:
+            unverified = True
+            passed = False
+            if "Vision model unavailable; cannot strictly verify" not in rejection_reasons:
+                rejection_reasons.append("Vision model unavailable; cannot strictly verify (UNVERIFIED)")
 
         if not passed and not rejection_reasons:
             if overall_match < threshold:
@@ -118,6 +127,9 @@ class AssetVerifier:
         result = VerificationResult(
             candidate_id=cand_id,
             candidate_url_or_path=cand_url,
+            verifier_provider=provider,
+            verifier_status=vision_status if provider == "LOCAL_HEURISTIC" and vision_status == "UNAVAILABLE" else "READY",
+            unverified=unverified,
             entity_match=round(scores["entity_match"], 2),
             event_match=round(scores["event_match"], 2),
             date_match=round(scores["date_match"], 2),
@@ -145,17 +157,21 @@ class AssetVerifier:
         Gathers factual observations of candidate pixels and metadata.
         Uses Gemini Vision when API key + image are present, otherwise uses deterministic local analyzer.
         """
-        # Attempt Gemini Vision call if available
-        if self.gemini_key and local_preview_path and os.path.exists(local_preview_path):
+        if self.gemini_key and local_preview_path and os.path.exists(local_preview_path) and os.environ.get("VISION_STATUS") != "UNAVAILABLE":
             try:
                 vlm_obs = self._call_vlm_observer(local_preview_path, req)
                 if vlm_obs and isinstance(vlm_obs, dict):
+                    vlm_obs["_provider"] = "GEMINI_VISION"
                     return vlm_obs
             except Exception as e:
                 log.warning(f"VLM observation failed, falling back to local observer: {e}")
 
         # Deterministic Local Observer (analyzes text, entity fingerprints, metadata, provider, era)
-        return self._local_observation_engine(candidate, req, combined_text)
+        local_obs = self._local_observation_engine(candidate, req, combined_text)
+        local_obs["_provider"] = "LOCAL_HEURISTIC"
+        if os.environ.get("VISION_STATUS") == "UNAVAILABLE":
+            local_obs["_vision_status"] = "UNAVAILABLE"
+        return local_obs
 
     def _local_observation_engine(
         self,
@@ -269,10 +285,12 @@ class AssetVerifier:
         """Calls Gemini Vision model to extract structured factual observations from image pixels."""
         import google.generativeai as genai
         genai.configure(api_key=self.gemini_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        vision_model = os.environ.get("VISION_MODEL", "gemini-2.0-flash")
+        model = genai.GenerativeModel(vision_model)
 
         from PIL import Image
-        img = Image.open(image_path)
+        with Image.open(image_path) as img:
+            img_copy = img.copy()
 
         prompt = f"""Analyze this documentary candidate image objectively and return structured factual observations.
 Target Requirement:
@@ -297,7 +315,7 @@ Return ONLY valid JSON matching this schema:
   "is_unrelated_subject": true or false
 }}"""
 
-        response = model.generate_content([prompt, img])
+        response = model.generate_content([prompt, img_copy])
         clean_text = response.text.strip().replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_text)
 

@@ -123,7 +123,7 @@ def run_documentary_pipeline(cfg):
         "repair_count": 0,
         "repaired_shot_ids": [],
         "qc_failures_count": 0,
-        "final_status": "APPROVED"
+        "final_status": "PENDING"
     }
     
     # Surgical QC Loop
@@ -140,6 +140,7 @@ def run_documentary_pipeline(cfg):
             log.warning(f"⚠️ QC Rejected! Reason: {qc_result.get('feedback')}")
             failures = qc_result.get("failures", [])
             stats["qc_failures_count"] += len(failures)
+            stats["final_status"] = "REJECTED"
             
             if not failures:
                 log.warning("No specific surgical failures provided by QC. Skipping repair.")

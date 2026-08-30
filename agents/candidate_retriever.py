@@ -28,6 +28,8 @@ class CandidateRetriever:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update(WIKI_HEADERS)
+        self.ddg_rate_limited = False
+        self.query_cache = {}
 
     def retrieve_candidates(self, req: VisualRequirement, max_candidates: int = 15) -> List[Dict[str, Any]]:
         """
@@ -47,6 +49,12 @@ class CandidateRetriever:
         if req.event: sub_components.append(req.event)
         elif req.location: sub_components.append(req.location)
         secondary_query = " ".join(sub_components) if sub_components else primary_query
+
+        cache_key = (primary_query, secondary_query, str(req.allowed_sources))
+        if cache_key in self.query_cache:
+            log.info(f"Using cached candidate pool for query: {primary_query}")
+            # Still copy to avoid mutating the cached list accidentally
+            return list(self.query_cache[cache_key])[:max_candidates]
 
         log.info(f"Retrieving candidate pool for [{req.shot_id}] with query: '{primary_query}'")
 
@@ -91,6 +99,7 @@ class CandidateRetriever:
                     candidates.append(c)
 
         log.info(f"Retrieved {len(candidates)} candidates for [{req.shot_id}]")
+        self.query_cache[cache_key] = list(candidates)
         return candidates[:max_candidates]
 
     def _search_wikimedia(self, query: str, fallback_query: str, limit: int = 8) -> List[Dict[str, Any]]:
@@ -256,15 +265,15 @@ class CandidateRetriever:
 
     def _search_duckduckgo(self, query: str, limit: int = 8) -> List[Dict[str, Any]]:
         """Searches DuckDuckGo Image Search without aggressive word truncation."""
+        if self.ddg_rate_limited:
+            return []
+            
         results = []
         try:
             import warnings
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                try:
-                    from ddgs import DDGS
-                except ImportError:
-                    from duckduckgo_search import DDGS
+                from duckduckgo_search import DDGS
             
             with DDGS() as ddgs:
                 ddg_results = list(ddgs.images(query, max_results=limit))
@@ -289,7 +298,12 @@ class CandidateRetriever:
                             }
                         })
         except Exception as e:
-            log.warning(f"DuckDuckGo candidate search failed for '{query}': {e}")
+            error_msg = str(e).lower()
+            if "403" in error_msg or "rate limit" in error_msg or "ratelimit" in error_msg:
+                log.warning(f"DuckDuckGo RATE_LIMITED. Marking source offline.")
+                self.ddg_rate_limited = True
+            else:
+                log.warning(f"DuckDuckGo candidate search failed for '{query}': {e}")
 
         return results
 

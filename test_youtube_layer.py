@@ -158,6 +158,12 @@ class TestYouTubeDiscoveryLayer(unittest.TestCase):
         self.assertTrue(passed)
         self.assertEqual(len(violations), 0)
 
+    def test_youtube_research_smoke(self):
+        """Smoke test for YouTube researcher."""
+        from agents.youtube_discovery import youtube_search_by_claim
+        result = youtube_search_by_claim("Edward Bernays archival footage historical", max_results=1)
+        self.assertIsInstance(result, list)
+
 
 if __name__ == "__main__":
     unittest.main()

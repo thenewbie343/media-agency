@@ -40,42 +40,49 @@ class CinematicExecutionResult(BaseModel):
     memorable_images: float
 
 class ViewerExperienceScore(BaseModel):
+    tier4_status: str = "REAL"
     cinematic_execution: Optional[CinematicExecutionResult] = None
-    visual_story_score: float
-    narrative_match: float
-    information_progression: float
-    sequence_coherence: float
-    evidence_presence: float
-    reveal_strength: float
-    pacing_score: float
-    visual_independence: float
-    redundancy_score: float
-    cinematic_coherence: float
-    tier4_verdict: str
-    failed_intervals: List[IntervalAnalysis]
+    visual_story_score: float = 0.0
+    narrative_match: float = 0.0
+    information_progression: float = 0.0
+    sequence_coherence: float = 0.0
+    evidence_presence: float = 0.0
+    reveal_strength: float = 0.0
+    pacing_score: float = 0.0
+    visual_independence: float = 0.0
+    redundancy_score: float = 0.0
+    cinematic_coherence: float = 0.0
+    tier4_verdict: str = ""
+    failed_intervals: List[IntervalAnalysis] = []
 
 class RenderedExperienceCriticAgent(BaseAgent):
     def __init__(self):
         super().__init__()
         import os
         self.gemini_key = os.environ.get("GEMINI_KEY", "")
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=self.gemini_key)
-            self.model = genai.GenerativeModel("gemini-1.5-flash")
-        except Exception:
-            self.model = None
+        if self.gemini_key:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=self.gemini_key)
+                vision_model = os.environ.get("VISION_MODEL", "gemini-2.0-flash")
+                self.model = genai.GenerativeModel(vision_model)
+            except Exception:
+                self.model = None
 
     def evaluate_render(self, video_path: str, manifest: dict, workspace_dir: str) -> ViewerExperienceScore:
         log.info(f"dYZ_ Tier 4: Rendered Experience Critic evaluating {video_path}")
         
         if not os.path.exists(video_path):
-            log.warning(f"Video {video_path} not found. Mocking Tier 4 evaluation.")
-            return self._mock_evaluation()
+            log.warning(f"Video {video_path} not found.")
+            if os.environ.get("MOCK_QC") == "true":
+                return self._mock_evaluation()
+            return ViewerExperienceScore(tier4_status="UNAVAILABLE")
 
-        if not self.gemini_key or not self.model:
-            log.warning("No Gemini key. Mocking Tier 4.")
-            return self._mock_evaluation()
+        if not self.gemini_key or not self.model or os.environ.get("VISION_STATUS") == "UNAVAILABLE":
+            log.warning("Vision model unavailable. Cannot run real Tier 4.")
+            if os.environ.get("MOCK_QC") == "true":
+                return self._mock_evaluation()
+            return ViewerExperienceScore(tier4_status="UNAVAILABLE")
             
         try:
             import google.generativeai as genai

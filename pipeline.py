@@ -861,10 +861,11 @@ def stage_3_voice(manifest, cfg):
             return None, 0.0
             
         import re
-        # Strip dashes and ellipses for smoother TTS pacing
-        text = re.sub(r'[—–-]', ',', text)
-        text = re.sub(r'\.{2,}', ',', text)
+        # Strip dashes and ellipses to spaces for smoother TTS pacing (prevent stammering)
+        text = re.sub(r'[—–-]', ' ', text)
+        text = re.sub(r'\.{2,}', ' ', text)
         text = re.sub(r',{2,}', ',', text)
+        text = re.sub(r'\s+', ' ', text).strip()
         text = re.sub(r'\s+,\s+', ', ', text)
         text = text.replace(" ,", ",")
             
@@ -3406,6 +3407,9 @@ def run_pipeline_v52():
             log.info("🎯 Routing to new AI Studio Documentary Engine (Phase 2 Integration)...")
             from agents.engine import run_documentary_pipeline
             script, research, stats = run_documentary_pipeline(cfg)
+            if stats.get("final_status") in ["REJECTED", "REJECTED_NO_REPAIR"]:
+                log.error("🛑 Master script rejected by Script QC. Halting pipeline to prevent downstream failure cascade.")
+                return False
             
             # V3 VISUAL INTELLIGENCE: Manifest Reviewer
             log.info("🔍 V3: Running Manifest Review before asset generation...")
@@ -3478,7 +3482,7 @@ def run_pipeline_v52():
         music_path = stage_4_music(cfg)
 
         # V3 Automated Repair Loop
-        max_repairs = 2
+        max_repairs = 3
         for repair_attempt in range(max_repairs + 1):
             if repair_attempt > 0:
                 log.info(f'🔧 REPAIR LOOP: Attempt {repair_attempt} for worst shots.')
@@ -3732,8 +3736,8 @@ def run_pipeline_v52():
 
                                         if not os.path.exists(fg_path):
                                             log.info(f"Generating 2.5D Foreground for {vid}...")
-                                            input_img = Image.open(vid)
-                                            output_img = remove(input_img).convert("RGBA")
+                                            with Image.open(vid) as input_img:
+                                                output_img = remove(input_img).convert("RGBA")
                                             r, g, b, alpha = output_img.split()
                                             blurred_alpha = alpha.filter(ImageFilter.GaussianBlur(radius=1))
                                             output_img = Image.merge("RGBA", (r, g, b, blurred_alpha))
@@ -3769,8 +3773,8 @@ def run_pipeline_v52():
 
                                         if not os.path.exists(fg_path):
                                             log.info(f"Generating 2.5D Foreground for {vid}...")
-                                            input_img = Image.open(vid)
-                                            output_img = remove(input_img).convert("RGBA")
+                                            with Image.open(vid) as input_img:
+                                                output_img = remove(input_img).convert("RGBA")
                                             r, g, b, alpha = output_img.split()
                                             blurred_alpha = alpha.filter(ImageFilter.GaussianBlur(radius=1))
                                             output_img = Image.merge("RGBA", (r, g, b, blurred_alpha))

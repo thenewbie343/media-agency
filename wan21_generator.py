@@ -93,8 +93,10 @@ pipe.scheduler = DPMSolverMultistepScheduler.from_config(
 pipe.safety_checker = None
 pipe.requires_safety_checker = False
 
-pipe.enable_vae_slicing()
-pipe.enable_model_cpu_offload()
+if hasattr(pipe, "enable_vae_slicing"):
+    pipe.enable_vae_slicing()
+if hasattr(pipe, "enable_model_cpu_offload"):
+    pipe.enable_model_cpu_offload()
 
 print("AnimateDiff Engine loaded successfully with DreamShaper v8 & DPM++ 2M Karras")
 

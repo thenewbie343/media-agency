@@ -73,7 +73,8 @@ class VideoQCAgent:
         hashes = []
         for f in frames:
             try:
-                h = imagehash.phash(Image.open(f))
+                with Image.open(f) as img:
+                    h = imagehash.phash(img)
                 hashes.append((f.name, h))
             except Exception as e:
                 hashes.append((f.name, None))
@@ -238,7 +239,11 @@ Return ONLY JSON:
   "reason": "Overall flow is good but pacing dips."
 }
 """
-                pil_images = [Image.open(f_path) for _, f_path, _ in selected_frames]
+                pil_images = []
+                for _, f_path, _ in selected_frames:
+                    with Image.open(f_path) as img:
+                        img_copy = img.copy()
+                        pil_images.append(img_copy)
                 resp = self.model.generate_content([prompt] + pil_images)
                 import re
                 text = resp.text.strip().replace("```json","").replace("```","").strip()

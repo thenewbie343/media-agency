@@ -97,7 +97,13 @@ def build_visual_requirement(shot: Dict[str, Any], context: Optional[Dict[str, A
     # 3. Specific Event Extraction
     event = None
     cut_reason = shot.get("cut_reason", "")
-    if "coronation" in vdesc.lower() or "coronation" in cut_reason.lower():
+    visual_query = shot.get("visual_query", "").strip()
+    
+    if visual_query:
+        event = visual_query
+    elif context.get("event"):
+        event = context["event"]
+    elif "coronation" in vdesc.lower() or "coronation" in cut_reason.lower():
         event = "Imperial Coronation"
     elif "russia" in vdesc.lower() or "1812" in vdesc.lower() or "retreat" in vdesc.lower() or "campaign" in vdesc.lower():
         event = "Russian Campaign 1812"
@@ -105,8 +111,6 @@ def build_visual_requirement(shot: Dict[str, Any], context: Optional[Dict[str, A
         event = "Exile on Saint Helena"
     elif "false alarm" in vdesc.lower() or "serpukhov" in vdesc.lower():
         event = "1983 Soviet Nuclear False Alarm"
-    elif context.get("event"):
-        event = context["event"]
 
     # 4. Determine Historical Fidelity & Requirements
     is_historical = False
