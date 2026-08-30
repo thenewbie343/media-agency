@@ -68,15 +68,180 @@ The voiceover must sound like a real human speaking with WEIGHT and BREATHING RO
    NOT: "The system was designed by engineers in 1983 and it monitored satellite data for incoming nuclear threats using infrared sensors."
    YES: "1983. Soviet engineers built a system. One job — detect American nuclear missiles. The machine watched the sky. Day and night. Without blinking."
 
-  2. WORD WEIGHT:
-       To give words gravity, DO NOT put dashes or ellipses between every word! DO NOT write single word sentences! It breaks the TTS engine.
-       YES: "But that night, one man refused to press the button."
-       NOT: "But that night. One man. Refused to press the button."
-       NOT: "But that night — one man — refused to press the button."
-    
+2. WORD WEIGHT:
+     To give words gravity, use short sentences. 
+     DO NOT put dashes or ellipses between every word! It breaks the TTS engine.
+     YES: "But that night. One man. Refused to press the button."
+     NOT: "But that night — one man — refused to press the button."
+     NOT: "The loss... two hundred... billion dollars... gone."
+  
   3. DRAMATIC PACING:
-       Use natural punctuation. Avoid artificial pauses that sound like stammering.
-       "And when they opened the file, everything changed."
+     Use short, punchy sentences for suspenseful pauses before revelations:
+     "And when they opened the file. Everything changed."
+     "The radar showed five incoming missiles. Heading straight for Moscow."
+
+4. RHYTHMIC PUNCH PATTERNS:
+   Alternate between investigation sentences and brutal short punches:
+   Long: "For three decades, the CIA had been running a covert operation across fourteen countries."
+   Punch: "Nobody knew."
+   Long: "The documents revealed payments totaling over forty million dollars to foreign officials."
+   Punch: "Every single one — classified."
+
+5. ONE-SENTENCE PARAGRAPHS FOR IMPACT:
+   When you want maximum weight, give a sentence its own block:
+   "He had twenty-three minutes."
+   (Let that hang. Let the silence do the work.)
+
+============================================================
+BANNED PHRASES (INSTANT SCRIPT REJECTION)
+============================================================
+- "In the world of..."
+- "Little did they know..."
+- "Let's delve deeper..."
+- "It's worth noting that..."
+- "In a shocking turn of events..."
+- "This begs the question..."
+- "At the end of the day..."
+- "The landscape of..."
+- "Nestled in..."
+- "Buckle up" / "Strap in"
+- "Imagine..." as an opening
+- "But here's the thing..." (overused)
+- "Fast forward to..." (lazy transition)
+- Any sentence that reads like a Wikipedia introduction
+
+============================================================
+VISCERAL SENSORY WRITING MANDATE
+============================================================
+Every scene MUST contain at least ONE:
+- Physical sensation (cold sweat, trembling hands, the weight of a phone receiver)
+- Environmental detail (fluorescent hum, ticking wall clock, distant sirens)
+- Human internal state (his stomach dropped, her mind raced, he couldn't breathe)
+
+============================================================
+EMOTIONAL CURVE PER SCENE
+============================================================
+Every scene JSON must include:
+- "viewer_emotion": What the viewer should FEEL (dread, curiosity, disbelief, rage, awe, relief)
+- "vocal_intensity": How the narrator delivers this (whisper, measured, urgent, grave, explosive)
+- "pacing_note": Speed guidance for TTS (slow_and_heavy, building, rapid_fire, dead_pause)
+
+CRITICAL HOOK ENGINE RULE (THE 20-30 SECOND WITHHOLDING LAW):
+- SCENE 1 (THE OPENING 20-30s) MUST BE `narrative_intent: "HOOK"` and `mini_arc_phase: "SETUP"`.
+- STRICT ANTI-CONTEXT MANDATE: You are STRICTLY FORBIDDEN from starting with biographical background, birthdates, company founding stories, or status quo summaries.
+- IMMEDIATE CRISIS: Open on the single most terrifying moment. The viewer must feel their pulse quicken within 5 seconds.
+
+LANGUAGE RULES:
+- `voiceover`: MUST BE IN NATURAL, DRAMATIC, PRECISE HINDI (Devanagari script), formatted for high-end neural TTS.
+- Write Hindi the way Dhruv Rathee speaks — conversational, authoritative, with strategic pauses.
+- `caption`: MUST BE the FULL Romanized Hinglish equivalent (ENGLISH ALPHABET ONLY. NO DEVANAGARI. NO EMOJIS).
+
+RULES:
+1. MUST output EXACTLY {target_scenes} scenes.
+2. DURATION & PACING: {duration_minutes} minutes (~{target_words_total} total Hindi words). Each voiceover ~{target_words_per_scene} to {target_words_per_scene + 10} words.
+3. NARRATIVE FLOW: Cohesive dramatic investigation with causal logic.
+4. Every scene MUST specify `narrative_intent`, `mini_arc_phase`, `viewer_emotion`, `vocal_intensity`, and `pacing_note`.
+
+Output JSON (array of EXACTLY {target_scenes} scenes):
+[
+  {{
+    "scene_number": 1,
+    "narrative_intent": "HOOK",
+    "mini_arc_phase": "SETUP",
+    "purpose": "hook",
+    "dramatic_tension": 0.95,
+    "viewer_emotion": "dread",
+    "vocal_intensity": "grave",
+    "pacing_note": "slow_and_heavy",
+    "voiceover": "26 September, 1983. Midnight. Moscow se 200 kilometer door, ek bunker mein — ek aadmi baitha tha. Uske saamne ek screen thi. Aur us screen pe... paanch nuclear missiles.",
+    "caption": "26 September, 1983. Midnight. Moscow se 200 kilometer door, ek bunker mein — ek aadmi baitha tha. Uske saamne ek screen thi. Aur us screen pe... paanch nuclear missiles.",
+    "visual_cue": "Dark bunker, single green CRT monitor casting eerie glow on a man's sweating face",
+    "withholding_element": "Withhold who this man is and what he decided — maximum suspense"
+  }}
+]"""
+
+        prompt = f"""Documentary Research Package:
+{json.dumps(research_pkg, indent=2)}
+
+Macro Narrative Outline:
+{json.dumps(outline_data, indent=2)}
+
+Documentary Vision Directives:
+{json.dumps(vision_data, indent=2) if vision_data else "Execute calibrated documentary pacing."}
+
+Target Scenes: {target_scenes} ({duration_minutes} min, ~{target_words_total} words total).
+Write ALL {target_scenes} Scenes."""
+
+        raw_output = self.call_llm(prompt, system_prompt)
+
+        if isinstance(raw_output, str):
+            try:
+                raw_output = json.loads(raw_output)
+            except Exception as e:
+                log.error(f"Failed to parse Scriptwriter LLM JSON: {e}")
+                raw_output = self._get_mock_fallback(prompt, system_prompt, True)
+
+        if not isinstance(raw_output, list):
+            if isinstance(raw_output, dict) and "scenes" in raw_output:
+                raw_output = raw_output["scenes"]
+            else:
+                raw_output = self._get_mock_fallback(prompt, system_prompt, True)
+
+        print(f"[*] ScriptwriterAgent: {len(raw_output)} scenes generated successfully!")
+        return raw_output
+
+    def write_act(
+        self,
+        fact_sheet: Union[Dict[str, Any], str, DocumentaryResearchPackage],
+        act_number: int,
+        act_outline: Union[Dict[str, Any], str, List[Any]],
+        vision: Optional[Union[Dict[str, Any], str, DocumentaryVision]] = None,
+        target_scenes: int = 4,
+        duration_minutes: int = 1,
+        context_so_far: str = "",
+    ) -> List[Dict[str, Any]]:
+        """
+        Writes the voiceover & captions for a SINGLE act with calibrated pacing,
+        enforcing macro narrative intents, mini-arcs, and opening hook withholding.
+        """
+        target_words_total = int(duration_minutes * 130)
+        target_words_per_act = max(50, target_words_total // 3)
+        target_words_per_scene = max(25, target_words_per_act // max(1, target_scenes))
+        print(f"[*] ScriptwriterAgent writing Act {act_number} ({target_scenes} scenes, ~{target_words_per_act} words for Act {act_number})...")
+        log.info(f"Writing Act {act_number}: {target_scenes} scenes, ~{target_words_per_act} words.")
+
+        research_pkg = self._normalize_input(fact_sheet)
+        outline_data = self._normalize_input(act_outline)
+        vision_data = self._normalize_input(vision)
+
+        hook_rule = ""
+        if act_number == 1:
+            hook_rule = """
+CRITICAL HOOK ENGINE RULE (ACT 1 SCENE 1 WITHHOLDING LAW):
+- SCENE 1 MUST BE `narrative_intent: "HOOK"` and `mini_arc_phase: "SETUP"`.
+- STRICT ANTI-CONTEXT MANDATE: Absolutely NO biography, founding history, or status quo summaries in Scene 1.
+- Open immediately on the core paradox, anomaly, or shock metric!"""
+
+        system_prompt = f"""You are an elite Documentary Scriptwriter writing Act {act_number} of a 3-Act documentary.
+You write like a fusion of Lemmino, MagnatesMedia, Dhruv Rathee, and HBO True Crime.
+{hook_rule}
+
+============================================================
+DHRUV RATHEE / GAURAV THAKUR PACING MANDATE
+============================================================
+1. SENTENCE BREATHING: Short sentences. Then pause. Then the next blow.
+   NOT: "The system was designed by engineers in 1983 and it monitored satellite data."
+   YES: "1983. Engineers built a system. One job — detect nuclear missiles."
+
+2. WORD WEIGHT:
+     To give words gravity, DO NOT put dashes or ellipses between every word! DO NOT write single word sentences! It breaks the TTS engine.
+     YES: "But that night, one man refused to press the button."
+     NOT: "But that night. One man. Refused to press the button."
+     NOT: "But that night — one man — refused to press the button."
+  
+  3. DRAMATIC PACING:
+     Use natural punctuation. Avoid artificial pauses that sound like stammering.
+     "And when they opened the file, everything changed."
 
 4. RHYTHMIC PUNCH PATTERNS:
    Long sentence, then: "Nobody knew." / "Every page — a lie." / "Twenty-three minutes."
