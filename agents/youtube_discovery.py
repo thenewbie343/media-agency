@@ -142,8 +142,13 @@ def _get_youtube_auth():
         # Fallback if it's just a raw API key stored in the env var
         return None, token_val
 
+_YOUTUBE_UNAUTHORIZED = False
+
 def youtube_search_by_claim(claim_text: str, max_results: int = 5,
                             channel_filter: Optional[str] = None) -> list:
+    global _YOUTUBE_UNAUTHORIZED
+    if _YOUTUBE_UNAUTHORIZED:
+        return []
     """
     Search YouTube by CLAIM text (not broad topic).
     Returns a list of YouTubeDiscovery-compatible dicts with asset state resolved.
@@ -185,6 +190,10 @@ def youtube_search_by_claim(claim_text: str, max_results: int = 5,
         resp = requests.get(search_url, **kwargs)
         if resp.status_code != 200:
             log.warning(f"YouTube Search API returned {resp.status_code}: {resp.text[:200]}")
+            if resp.status_code == 403:
+                global _YOUTUBE_UNAUTHORIZED
+                _YOUTUBE_UNAUTHORIZED = True
+                log.warning("YouTube API returned 403. Marking YouTube source as UNAUTHORIZED/OFFLINE for the rest of the run to prevent spam.")
             return []
         
         search_data = resp.json()
