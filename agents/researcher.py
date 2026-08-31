@@ -41,8 +41,8 @@ class ResearcherAgent(BaseAgent):
             log.info("YouTube discovery module not available. Skipping YouTube search.")
             return []
         
-        if not os.environ.get("YOUTUBE_TOKEN_JSON"):
-            log.info("YOUTUBE_TOKEN_JSON not set. Skipping YouTube discovery.")
+        if not os.environ.get("SOURCE_YT") and not os.environ.get("YOUTUBE_TOKEN_JSON"):
+            log.info("SOURCE_YT and YOUTUBE_TOKEN_JSON not set. Skipping YouTube discovery.")
             return []
         
         youtube_discoveries = []

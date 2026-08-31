@@ -121,7 +121,7 @@ def _parse_iso8601_duration(duration_str: str) -> float:
 
 
 def _get_youtube_auth():
-    token_val = os.environ.get("YOUTUBE_TOKEN_JSON", "")
+    token_val = os.environ.get("SOURCE_YT", os.environ.get("YOUTUBE_TOKEN_JSON", ""))
     if not token_val:
         return None, None
     try:
@@ -153,11 +153,11 @@ def youtube_search_by_claim(claim_text: str, max_results: int = 5,
     Search YouTube by CLAIM text (not broad topic).
     Returns a list of YouTubeDiscovery-compatible dicts with asset state resolved.
     
-    Requires: YOUTUBE_TOKEN_JSON environment variable.
+    Requires: SOURCE_YT or YOUTUBE_TOKEN_JSON environment variable.
     """
     auth_headers, api_key = _get_youtube_auth()
     if not auth_headers and not api_key:
-        log.warning("YOUTUBE_TOKEN_JSON not set. Skipping YouTube discovery.")
+        log.warning("SOURCE_YT / YOUTUBE_TOKEN_JSON not set. Skipping YouTube discovery.")
         return []
     
     try:

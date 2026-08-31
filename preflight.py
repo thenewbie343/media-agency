@@ -50,9 +50,9 @@ def run_preflight_checks(mode="DRAFT"):
     os.environ["VISION_STATUS"] = vision_status
 
     # 3. YouTube config
-    youtube_token = os.environ.get("YOUTUBE_TOKEN_JSON")
+    youtube_token = os.environ.get("SOURCE_YT", os.environ.get("YOUTUBE_TOKEN_JSON"))
     if not youtube_token:
-        issues.append("YOUTUBE_TOKEN_JSON missing. YouTube discovery DEGRADED.")
+        issues.append("SOURCE_YT/YOUTUBE_TOKEN_JSON missing. YouTube discovery DEGRADED.")
         if status == "READY": status = "DEGRADED"
         
     # 4. AI Video Compatibility check
