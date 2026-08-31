@@ -262,9 +262,25 @@ Fix the snippet to address the failures and return the corrected JSON."""
         dutch_count = 0
         seen_queries = set()
         
-        for beat in manifest.get("story_beats", []):
+        total_beats = len(manifest.get("story_beats", []))
+        for beat_idx, beat in enumerate(manifest.get("story_beats", [])):
             time_mode = beat.get("time_context", {}).get("mode", "historical")
             intent = beat.get("narrative_intent", "EXPLANATION")
+            
+            # ENFORCE DYNAMIC ATTENTION INTENSITY (Rule 11/15)
+            # Override flat 0.5 values with a calculated dramatic curve
+            current_attention = float(beat.get("attention_intensity", 0.5))
+            if current_attention == 0.5:
+                progress = beat_idx / max(1, total_beats - 1)
+                if intent == "HOOK":
+                    beat["attention_intensity"] = 0.8
+                elif intent in ["REVELATION", "PAYOFF"]:
+                    beat["attention_intensity"] = 0.95
+                elif intent in ["COMPLICATION", "ESCALATION"]:
+                    beat["attention_intensity"] = 0.75
+                else:
+                    beat["attention_intensity"] = round(0.5 + (0.3 * progress), 2)
+            
             attention = float(beat.get("attention_intensity", 0.5))
             
             # Establish visual chapter language
@@ -272,6 +288,17 @@ Fix the snippet to address the failures and return the corrected JSON."""
                 beat["chapter_color_language"] = planner.determine_chapter_color(intent, time_mode)
                 
             for b_idx, block in enumerate(beat.get("narration_blocks", [])):
+                # PURGE AI CLICHES (Rule 14)
+                if "voiceover_text" in block:
+                    txt = block["voiceover_text"]
+                    txt = txt.replace("In the world of", "Amidst").replace("in the world of", "amidst")
+                    txt = txt.replace("a world where", "a reality where").replace("A world where", "A reality where")
+                    txt = txt.replace("Little did they know", "The truth was hidden")
+                    txt = txt.replace("Let's delve deeper", "Consider the evidence")
+                    txt = txt.replace("It's worth noting", "Crucially")
+                    txt = txt.replace("Buckle up", "Prepare")
+                    block["voiceover_text"] = txt
+                    
                 # ENFORCE BREATHING ROOM RULE #16 (At least 1 scene must have strategic_silence > 0)
                 if "strategic_silence" not in block or not isinstance(block["strategic_silence"], dict):
                     block["strategic_silence"] = {}

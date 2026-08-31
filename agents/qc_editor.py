@@ -192,7 +192,7 @@ CRITICAL EDITORIAL RULES & 17 DIRECTORIAL QC METRICS:
 2. Anti-Literal Rule & Mute Test: Reject any shot that merely illustrates spoken words literally.
 3. 12 Shot Relationships: Adjacent shots must follow relational grammar.
 4. Camera Motion & Composition Diversity: Consecutive identical motions (>2) = FAIL.
-5. Cinematography Completeness: Every non-graphic shot must define `lens`, `camera_angle`, `composition`.
+5. Cinematography Completeness: Every non-graphic shot must define `lens`, `camera_angle`, `composition`. (`lighting` and `depth` are OPTIONAL and should NOT cause rejection if missing).
 6. Editorial Cut Reason: Generic `cut_reason` = FAIL.
 7. Dramatic Numbers & Motifs: Numbers punctuated with typography, motifs escalate.
 8. Human Anchor Grounding: Abstract systems anchored in physical human consequence.
