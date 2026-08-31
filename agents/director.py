@@ -257,7 +257,7 @@ Fix the snippet to address the failures and return the corrected JSON."""
         }
         
         s_idx, a_idx, l_idx, c_idx, m_idx = 0, 0, 0, 0, 0
-        last_motion = None
+        last_two_motions = []
         last_angle = None
         dutch_count = 0
         seen_queries = set()
@@ -271,7 +271,18 @@ Fix the snippet to address the failures and return the corrected JSON."""
             if not beat.get("chapter_color_language"):
                 beat["chapter_color_language"] = planner.determine_chapter_color(intent, time_mode)
                 
-            for block in beat.get("narration_blocks", []):
+            for b_idx, block in enumerate(beat.get("narration_blocks", [])):
+                # ENFORCE BREATHING ROOM RULE #16 (At least 1 scene must have strategic_silence > 0)
+                if "strategic_silence" not in block or not isinstance(block["strategic_silence"], dict):
+                    block["strategic_silence"] = {}
+                
+                # If the LLM failed to add silence, enforce it on the first block of heavy beats, or if it's the only block
+                if block["strategic_silence"].get("duration_seconds", 0) <= 0.0:
+                    if b_idx == 0 and intent in ["HOOK", "REVELATION", "FINAL_CONTRADICTION", "COMPLICATION", "PAYOFF"]:
+                        block["strategic_silence"]["duration_seconds"] = 1.5
+                    elif len(beat.get("narration_blocks", [])) == 1:
+                        block["strategic_silence"]["duration_seconds"] = 1.0
+
                 block_dur = block.get("total_block_duration") or block.get("actual_voice_duration") or 4.0
                 new_shots = []
                 for shot in block.get("shots", []):
@@ -295,13 +306,16 @@ Fix the snippet to address the failures and return the corrected JSON."""
                     if not shot.get("composition") or shot.get("composition", "").upper() == "N/A" or str(shot.get("composition")).lower() == "null":
                         shot["composition"] = comps[c_idx % len(comps)]; c_idx += 1
                         
-                    # 2. ELIMINATE CAMERA FATIGUE (STRICTLY BAN ZOOM_IN REPETITION)
+                    # 2. ELIMINATE CAMERA FATIGUE (STRICTLY BAN ZOOM_IN REPETITION AND A-B-A-B)
                     motion = shot.get("camera_motion", "static")
-                    if motion == "zoom_in" or motion == last_motion or not motion:
-                        available_motions = [m for m in motions if m != last_motion and m != "zoom_in"]
+                    if motion == "zoom_in" or motion in last_two_motions or not motion:
+                        available_motions = [m for m in motions if m not in last_two_motions and m != "zoom_in"]
                         shot["camera_motion"] = available_motions[m_idx % len(available_motions)]
                         m_idx += 1
-                    last_motion = shot["camera_motion"]
+                    
+                    last_two_motions.append(shot["camera_motion"])
+                    if len(last_two_motions) > 2:
+                        last_two_motions.pop(0)
                     
                     # 3. SANITIZE GENERIC CUT REASONS
                     cut_reason = (shot.get("cut_reason") or "").lower()
@@ -387,8 +401,9 @@ CRITICAL DIRECTIVES:
    Do NOT default to generic stock visuals or AI video for everything. Select authentic `asset_provenance` (AUTHENTIC_PHOTO, ARCHIVAL_FOOTAGE, DOCUMENT, MOTION_GRAPHIC, AI_RECONSTRUCTION, STOCK).
    If showing people, evidence, or records, use authentic documents, photos, or diagrams.
 
-2. BAN CLICHÉ DOCUMENTARY VISUALS:
+2. BAN CLICHÉ DOCUMENTARY VISUALS & ANTI-LITERAL RULE:
    Do NOT use generic metaphors (e.g. champagne glasses, generic handcuffs, scales of justice, generic businessman shaking hands, money falling from sky).
+   ANTI-LITERAL RULE: Do not merely illustrate spoken words. If the voiceover says "he pressed the button", do NOT show a finger pressing a button. Show the systemic consequence, the schematic, or the environment.
    Every shot must show specific real evidence, specific environments, technical diagrams, or authentic archival records.
 
 3. CINEMATIC SCENE BLUEPRINT (BEAT-LEVEL):
@@ -416,6 +431,7 @@ CRITICAL DIRECTIVES:
    - Evidence documents/graphics: 5-7 seconds.
    - Emotional faces/reveals: 4-8 seconds.
    DO NOT force every shot into 2-4 seconds. Allow holds where impact is needed.
+   MANDATORY: You MUST utilize `strategic_silence` (set `duration_seconds` to 1.0 - 2.5) in at least one NarrationBlock per beat to allow the audience to digest heavy revelations. NEVER leave it at 0.0 globally.
 
 8. RESTRAINT & VISUAL CONTRAST:
    Fewer but stronger visual decisions. If no effect is needed, do nothing.
