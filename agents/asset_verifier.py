@@ -285,7 +285,7 @@ class AssetVerifier:
         """Calls Gemini Vision model to extract structured factual observations from image pixels."""
         import google.generativeai as genai
         genai.configure(api_key=self.gemini_key)
-        vision_model = os.environ.get("VISION_MODEL", "gemini-2.5-flash-lite")
+        vision_model = os.environ.get("VISION_MODEL", "gemini-3.5-flash-lite")
         model = genai.GenerativeModel(vision_model)
 
         from PIL import Image
