@@ -64,7 +64,7 @@ class RenderedExperienceCriticAgent(BaseAgent):
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=self.gemini_key)
-                vision_model = os.environ.get("VISION_MODEL", "gemini-3.1-flash")
+                vision_model = os.environ.get("VISION_MODEL", "gemini-2.5-flash-lite")
                 self.model = genai.GenerativeModel(vision_model)
             except Exception:
                 self.model = None
