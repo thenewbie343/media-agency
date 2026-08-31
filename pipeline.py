@@ -2063,7 +2063,7 @@ def stage_6_visuals(manifest, cfg):
         else:
             req = None
 
-        # If a video clip was already generated (e.g. by Colab / Wan2.1 / AnimateDiff), preserve it!
+        # If a video clip was already generated (e.g. by Colab / AI Video / AnimateDiff), preserve it!
         if shot.get("asset", {}).get("path") and os.path.exists(shot["asset"]["path"]) and os.path.getsize(shot["asset"]["path"]) > 1000:
             log.info(f"  {n_id}: Using pre-generated clip ({shot.get('asset', {}).get('source', 'Colab')}) ✓")
             continue
@@ -2951,15 +2951,15 @@ def run_pipeline():
         raise
 
 # ═══════════════════════════════════════════════════════════
-#  WAN2.1 COLAB INTEGRATION
+#  AI VIDEO COLAB INTEGRATION
 # ═══════════════════════════════════════════════════════════
-def stage_wan21_colab(scenes_needing_video, topic):
+def stage_ai_video_colab(scenes_needing_video, topic):
     if not scenes_needing_video:
         return {}
 
     session_file = os.path.expanduser("~/.config/colab-cli/token.json")
     if not os.path.exists(session_file):
-        log.warning("Colab CLI token not found — skipping Wan2.1")
+        log.warning("Colab CLI token not found — skipping AI Video")
         return {}
 
     # Enforce pinned compatible versions of colab-cli and jupyter-kernel-client
@@ -2969,14 +2969,14 @@ def stage_wan21_colab(scenes_needing_video, topic):
     except Exception as sync_err:
         log.warning(f"colab_cli version sync notice: {sync_err}")
 
-    log.info(f"Wan2.1 via Colab CLI: {len(scenes_needing_video)} scenes")
-    tg(f"🎨 Wan2.1 GPU generation: {len(scenes_needing_video)} animated clips...")
+    log.info(f"AI Video via Colab CLI: {len(scenes_needing_video)} scenes")
+    tg(f"🎨 AI Video GPU generation: {len(scenes_needing_video)} animated clips...")
 
     prompts_file = str(WORKSPACE / "scene_prompts.json")
     with open(prompts_file, "w") as f:
         json.dump(scenes_needing_video, f, indent=2)
 
-    clips_dir = WORKSPACE / "wan_clips"
+    clips_dir = WORKSPACE / "ai_video_clips"
     clips_dir.mkdir(exist_ok=True)
 
     try:
@@ -2987,12 +2987,12 @@ def stage_wan21_colab(scenes_needing_video, topic):
         
         cmd = [
             "colab", "run", "--gpu", "T4", "--timeout", "21600",
-            "wan21_generator.py",
+            "ai_video_generator.py",
             prompts_json_str,
             hf_token
         ]
         
-        log.info(f"Executing: colab run --gpu T4 --timeout 21600 wan21_generator.py '[json...]' '[token]'")
+        log.info(f"Executing: colab run --gpu T4 --timeout 21600 ai_video_generator.py '[json...]' '[token]'")
         import base64
         
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -3013,7 +3013,7 @@ def stage_wan21_colab(scenes_needing_video, topic):
                 b64_data = "".join(b64_buffer).strip()
                 try:
                     raw_data = base64.b64decode(b64_data)
-                    dest_path = WORKSPACE / current_file if current_file == "wan21_results.json" else clips_dir / current_file
+                    dest_path = WORKSPACE / current_file if current_file == "ai_video_results.json" else clips_dir / current_file
                     with open(dest_path, "wb") as f:
                         f.write(raw_data)
                     log.info(f"Saved {current_file} from Colab ({len(raw_data)//1024}KB)")
@@ -3034,7 +3034,7 @@ def stage_wan21_colab(scenes_needing_video, topic):
         process.wait()
         log.info(f"Colab exit code: {process.returncode}")
 
-        results_file = WORKSPACE / "wan21_results.json"
+        results_file = WORKSPACE / "ai_video_results.json"
         if results_file.exists():
             with open(results_file) as f:
                 results = json.load(f)
@@ -3052,19 +3052,19 @@ def stage_wan21_colab(scenes_needing_video, topic):
                     local_path = str(clips_dir / filename)
                     if os.path.exists(local_path):
                         clip_map[scene_id] = local_path
-                        log.info(f"  Scene {scene_id}: Wan2.1 clip ✓")
-            log.info(f"Wan2.1: {len(clip_map)}/{len(scenes_needing_video)} clips generated")
-            tg(f"✅ Wan2.1: {len(clip_map)} animated clips ready")
+                        log.info(f"  Scene {scene_id}: AI Video clip ✓")
+            log.info(f"AI Video: {len(clip_map)}/{len(scenes_needing_video)} clips generated")
+            tg(f"✅ AI Video: {len(clip_map)} animated clips ready")
             return clip_map
         else:
             log.warning("⚠️ Colab GPU temporarily unavailable or in daily cooldown. Seamlessly routing visual generation to Pollinations Engine...")
             return {}
 
     except subprocess.TimeoutExpired:
-        log.error("Wan2.1 Colab run timed out")
+        log.error("AI Video Colab run timed out")
         return {}
     except Exception as e:
-        log.error(f"Wan2.1 Colab failed: {e}")
+        log.error(f"AI Video Colab failed: {e}")
         return {}
 
 # ═══════════════════════════════════════════════════════════
@@ -3538,7 +3538,7 @@ def run_pipeline_v52():
                                             shot['asset'].pop('status', None)
                                             shot['asset'].pop('source', None)
             # Route ONLY ai_video (25%) scenes to Colab AnimateDiff
-            wan_scenes = []
+            ai_video_scenes = []
             if os.path.exists(os.path.expanduser("~/.config/colab-cli/token.json")):
                 is_v2 = isinstance(script, dict) and "story_beats" in script
                 flat_shots = []
@@ -3561,14 +3561,14 @@ def run_pipeline_v52():
                             "ai_prompt": scene.get("ai_prompt"),
                             "duration_hint": scene.get("duration_hint", 4.0),
                         })
-                wan_scenes = [s for s in flat_shots
+                ai_video_scenes = [s for s in flat_shots
                               if s.get("visual_type") == "ai_video"
                               and not skip_ai(s.get("ai_prompt",""))]
-                log.info(f"Routing {len(wan_scenes)} ai_video shots to Wan2.1 (Colab GPU generator)")
+                log.info(f"Routing {len(ai_video_scenes)} ai_video shots to AI Video (Colab GPU generator)")
 
-            wan_clips = {}
-            if wan_scenes:
-                wan_clips = stage_wan21_colab(wan_scenes, cfg["topic"])
+            ai_video_clips = {}
+            if ai_video_scenes:
+                ai_video_clips = stage_ai_video_colab(ai_video_scenes, cfg["topic"])
 
             is_v2 = isinstance(script, dict) and "story_beats" in script
             if is_v2:
@@ -3576,9 +3576,9 @@ def run_pipeline_v52():
                     for block in beat.get("narration_blocks", []):
                         for shot in block.get("shots", []):
                             s_id = shot.get("shot_id")
-                            if s_id in wan_clips:
-                                shot.setdefault("asset", {})["path"] = wan_clips[s_id]
-                                shot["asset"]["source"] = "wan2.1"
+                            if s_id in ai_video_clips:
+                                shot.setdefault("asset", {})["path"] = ai_video_clips[s_id]
+                                shot["asset"]["source"] = "ai_video"
                                 shot["asset"]["status"] = "success"
 
                                 v_dur = shot.get("duration_seconds")
@@ -3586,7 +3586,7 @@ def run_pipeline_v52():
                                     ratio = shot.get("duration_ratio", 1.0)
                                     v_dur = float(block.get("actual_voice_duration") or block.get("duration_hint", 4.0)) * ratio
 
-                                source_dur = 5.0 # Wan2.1 produces 5s clips
+                                source_dur = 5.0 # AI Video produces 5s clips
                                 if v_dur > source_dur * 1.5:
                                     diff = v_dur / source_dur
                                     shot["asset"]["coverage_strategy"] = "slow_mo" if diff <= 2.0 else "coverage_composition"
@@ -3598,9 +3598,9 @@ def run_pipeline_v52():
             else:
                 scenes = extract_scenes_list(script)
                 for scene in scenes:
-                    if scene.get("scene") in wan_clips:
-                        scene["video_file"] = wan_clips[scene["scene"]]
-                        scene["visual_source"] = "wan2.1"
+                    if scene.get("scene") in ai_video_clips:
+                        scene["video_file"] = ai_video_clips[scene["scene"]]
+                        scene["visual_source"] = "ai_video"
                         if scene.get("audio_file"):
                             scene["actual_duration"] = get_dur(scene["audio_file"])
                         else:
@@ -3898,7 +3898,7 @@ def run_pipeline_v52():
             num_scenes = len(scenes)
             total_dur = sum(s.get('actual_duration', 4.0) for s in scenes) if scenes else 0.0
             
-        wan_ct = len(wan_scenes) if 'wan_scenes' in locals() else 0
+        ai_video_ct = len(ai_video_scenes) if 'ai_video_scenes' in locals() else 0
         
         if is_test_mode:
             log.info("🧪 TEST_MODE: Halting before publish. Test successful.")
@@ -3942,7 +3942,7 @@ def run_pipeline_v52():
             f"🏆 QC: {score}/10\n"
             f"🎬 {num_scenes} scenes | {total_dur:.0f}s\n"
             f"✂️ Avg {total_dur/max(num_scenes,1):.1f}s/cut\n"
-            f"🎥 Wan2.1: {wan_ct} clips\n"
+            f"🎥 AI Video: {ai_video_ct} clips\n"
             f"🌍 {cfg['lang']} | {cfg['genre']} | DUAL-SCRIPT\n"
             f"⚡ {elapsed}s total{drive_note}"
         )
