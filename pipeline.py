@@ -829,7 +829,7 @@ def stage_3_voice(manifest, cfg):
     def _apply_studio_mastering(raw_path, target_path):
         """Applies pitch shift, highpass, vocal warmth, presence boost, and dynamic compression."""
         vocal_filter = (
-            "rubberband=pitch=1.22,"
+            "rubberband=pitch=1.15,"
             "highpass=f=80,"
             "equalizer=f=220:width_type=o:width=1.0:g=2.0,"
             "equalizer=f=3500:width_type=o:width=1.2:g=2.2,"
@@ -863,9 +863,8 @@ def stage_3_voice(manifest, cfg):
             
         import re
         # Strip dashes and ellipses to spaces for smoother TTS pacing (prevent stammering)
-        text = re.sub(r'[—–-]', ' ', text)
-        text = re.sub(r'\.{2,}', ' ', text)
-        text = re.sub(r',{2,}', ',', text)
+        text = re.sub(r'[\-—–]+', ', ', text)
+        text = re.sub(r'[.,]{2,}', '. ', text)
         text = re.sub(r'\s+', ' ', text).strip()
         text = re.sub(r'\s+,\s+', ', ', text)
         text = text.replace(" ,", ",")
@@ -1026,9 +1025,9 @@ def generate_kokoro_voice(text, out_path, lang="hindi", emotion="dramatic", spee
     """Generate voice using Kokoro TTS with adaptive pacing and studio vocal mastering."""
     # Sanitize text to prevent TTS engine from stammering/stuttering on dramatic punctuation
     import re
-    text = re.sub(r'[—–-]', ',', text)  # Replace dashes with single comma
-    text = re.sub(r'\.{2,}', ',', text) # Replace ellipses with single comma
-    text = re.sub(r',{2,}', ',', text)  # Deduplicate commas
+    text = re.sub(r'[\-—–]+', ', ', text)
+    text = re.sub(r'[.,]{2,}', '. ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
     text = re.sub(r'\s+,\s+', ', ', text) # Fix comma spacing
     text = text.replace(" ,", ",")
     
@@ -1142,7 +1141,7 @@ def generate_kokoro_voice(text, out_path, lang="hindi", emotion="dramatic", spee
 
         # 5. Convert to MP3 with studio broadcast mastering filter
         vocal_filter = (
-            "rubberband=pitch=1.22,"
+            "rubberband=pitch=1.15,"
             "highpass=f=80,"
             "equalizer=f=220:width_type=o:width=1.0:g=2.0,"
             "equalizer=f=3500:width_type=o:width=1.2:g=2.2,"
