@@ -171,7 +171,9 @@ Return ONLY a valid JSON object matching this schema:
             
         except Exception as e:
             log.error(f"Rendered Experience Critic failed: {e}")
-            return self._mock_evaluation()
+            if os.environ.get("MOCK_QC") == "true":
+                return self._mock_evaluation()
+            return ViewerExperienceScore(tier4_status="UNAVAILABLE")
 
     def _build_timeline_text(self, manifest: dict) -> str:
         lines = []

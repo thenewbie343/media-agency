@@ -281,6 +281,52 @@ class AssetVerifier:
             "provider": candidate.get("provider", "unknown")
         }
 
+    def _normalize_image_for_vlm(self, image_path: str, max_dim: int = 1536) -> dict:
+        """
+        Safely normalizes an image for Gemini API, preventing 400 Unable to process input errors.
+        Returns a dict expected by google.generativeai: {"mime_type": "...", "data": bytes}
+        """
+        import io
+        from PIL import Image
+
+        try:
+            with Image.open(image_path) as img:
+                img.verify()
+                
+            with Image.open(image_path) as img:
+                img.load()
+                
+                # Convert to RGB, handling RGBA safely
+                if img.mode in ('RGBA', 'LA'):
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    background.paste(img, mask=img.split()[-1])
+                    img = background
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+                    
+                width, height = img.size
+                if max(width, height) > max_dim:
+                    ratio = max_dim / max(width, height)
+                    new_size = (int(width * ratio), int(height * ratio))
+                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+                
+                buffer = io.BytesIO()
+                img.save(buffer, format="JPEG", quality=85)
+                image_bytes = buffer.getvalue()
+                
+                if len(image_bytes) == 0:
+                    raise ValueError("Encoded image byte size is 0.")
+                    
+                log.info(f"[VLM_IMAGE] format=JPEG mime=image/jpeg size={img.size[0]}x{img.size[1]} bytes={len(image_bytes)//1024}KB")
+                
+                return {
+                    "mime_type": "image/jpeg",
+                    "data": image_bytes
+                }
+        except Exception as e:
+            log.error(f"Image normalization failed for {image_path}: {e}")
+            raise ValueError("LOCAL_IMAGE_INVALID")
+
     def _call_vlm_observer(self, image_path: str, req: VisualRequirement) -> Dict[str, Any]:
         """Calls Gemini Vision model to extract structured factual observations from image pixels."""
         import google.generativeai as genai
@@ -288,9 +334,7 @@ class AssetVerifier:
         vision_model = os.environ.get("VISION_MODEL", "gemini-3.5-flash-lite")
         model = genai.GenerativeModel(vision_model)
 
-        from PIL import Image
-        with Image.open(image_path) as img:
-            img_copy = img.copy()
+        image_part = self._normalize_image_for_vlm(image_path)
 
         prompt = f"""Analyze this documentary candidate image objectively and return structured factual observations.
 Target Requirement:
@@ -315,7 +359,10 @@ Return ONLY valid JSON matching this schema:
   "is_unrelated_subject": true or false
 }}"""
 
-        response = model.generate_content([prompt, img_copy])
+        log.info(f"Sending normalized image to Gemini...")
+        response = model.generate_content([prompt, image_part])
+        log.info("[VLM] status=SUCCESS")
+        
         clean_text = response.text.strip().replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_text)
 
