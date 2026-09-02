@@ -75,9 +75,12 @@ The voiceover must sound like a real human speaking with WEIGHT and BREATHING RO
      NOT (Choppy & robotic): "But that night. One man. Refused to press the button."
      NOT (Stammering): "The loss... two hundred... billion dollars... gone."
   
-  3. DRAMATIC PAUSES:
-     Use commas for natural breathing. Only use periods at the actual end of a complete thought. 
-     Never force aggressive stops artificially.
+  3. DRAMATIC PAUSES & STRATEGIC DASHES:
+     - Use commas (,) for natural breathing within flowing sentences.
+     - Use an em-dash (—) ONLY at critical, high-impact moments right before a major reveal, shocking number, or climax (1-2 per scene max).
+       YES: "और वो दस्तावेज़ — तीस सालों तक छुपा रहा।"
+       YES: "The lost document was classified — for thirty years."
+     - Only use periods (.) at the actual end of a complete thought. Never force choppy 2-word stops.
 
 4. RHYTHMIC PUNCH PATTERNS:
    Alternate between investigation sentences and brutal short punches:
@@ -240,9 +243,12 @@ DHRUV RATHEE / GAURAV THAKUR PACING MANDATE
      NOT (Choppy & robotic): "But that night. One man. Refused to press the button."
      NOT (Stammering): "The loss... two hundred... billion dollars... gone."
   
-  3. DRAMATIC PAUSES:
-     Use commas for natural breathing. Only use periods at the actual end of a complete thought. 
-     Never force aggressive stops artificially.
+  3. DRAMATIC PAUSES & STRATEGIC DASHES:
+     - Use commas (,) for natural breathing within flowing sentences.
+     - Use an em-dash (—) ONLY at critical, high-impact moments right before a major reveal, shocking number, or climax (1-2 per scene max).
+       YES: "और वो दस्तावेज़ — तीस सालों तक छुपा रहा।"
+       YES: "The lost document was classified — for thirty years."
+     - Only use periods (.) at the actual end of a complete thought. Never force choppy 2-word stops.
 
 4. RHYTHMIC PUNCH PATTERNS:
    Alternate between investigation sentences and brutal short punches:
