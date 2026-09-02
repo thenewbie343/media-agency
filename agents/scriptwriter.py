@@ -68,17 +68,16 @@ The voiceover must sound like a real human speaking with WEIGHT and BREATHING RO
    NOT: "The system was designed by engineers in 1983 and it monitored satellite data for incoming nuclear threats using infrared sensors."
    YES: "1983. Soviet engineers built a system. One job â€” detect American nuclear missiles. The machine watched the sky. Day and night. Without blinking."
 
-2. WORD WEIGHT:
-     To give words gravity, use short sentences. 
-     DO NOT put dashes or ellipses between every word! It breaks the TTS engine.
-     YES: "But that night. One man. Refused to press the button."
-     NOT: "But that night â€” one man â€” refused to press the button."
-     NOT: "The loss... two hundred... billion dollars... gone."
+  2. WORD WEIGHT & FLUID PACING:
+     To give words gravity, write natural, flowing sentences. 
+     DO NOT chop up your sentences with periods every 2 or 3 words! It breaks the TTS engine and makes the voiceover sound like a stammering robot.
+     YES (Fluid & dramatic): "But that night, one man refused to press the button."
+     NOT (Choppy & robotic): "But that night. One man. Refused to press the button."
+     NOT (Stammering): "The loss... two hundred... billion dollars... gone."
   
-  3. DRAMATIC PACING:
-     Use short, punchy sentences for suspenseful pauses before revelations:
-     "And when they opened the file. Everything changed."
-     "The radar showed five incoming missiles. Heading straight for Moscow."
+  3. DRAMATIC PAUSES:
+     Use commas for natural breathing. Only use periods at the actual end of a complete thought. 
+     Never force aggressive stops artificially.
 
 4. RHYTHMIC PUNCH PATTERNS:
    Alternate between investigation sentences and brutal short punches:
@@ -229,25 +228,34 @@ You write like a fusion of Lemmino, MagnatesMedia, Dhruv Rathee, and HBO True Cr
 ============================================================
 DHRUV RATHEE / GAURAV THAKUR PACING MANDATE
 ============================================================
-1. SENTENCE BREATHING: Short sentences. Then pause. Then the next blow.
-   NOT: "The system was designed by engineers in 1983 and it monitored satellite data."
-   YES: "1983. Engineers built a system. One job â€” detect nuclear missiles."
+1. SENTENCE BREATHING: After every major statement, there is a natural breath.
+   Write SHORT sentences. Then pause. Then deliver the next blow.
+   NOT: "The system was designed by engineers in 1983 and it monitored satellite data for incoming nuclear threats using infrared sensors."
+   YES: "1983. Soviet engineers built a system. One job â€” detect American nuclear missiles. The machine watched the sky. Day and night. Without blinking."
 
-2. WORD WEIGHT:
-     To give words gravity, DO NOT put dashes or ellipses between every word! DO NOT write single word sentences! It breaks the TTS engine.
-     YES: "But that night, one man refused to press the button."
-     NOT: "But that night. One man. Refused to press the button."
-     NOT: "But that night â€” one man â€” refused to press the button."
+  2. WORD WEIGHT & FLUID PACING:
+     To give words gravity, write natural, flowing sentences. 
+     DO NOT chop up your sentences with periods every 2 or 3 words! It breaks the TTS engine and makes the voiceover sound like a stammering robot.
+     YES (Fluid & dramatic): "But that night, one man refused to press the button."
+     NOT (Choppy & robotic): "But that night. One man. Refused to press the button."
+     NOT (Stammering): "The loss... two hundred... billion dollars... gone."
   
-  3. DRAMATIC PACING:
-     Use natural punctuation. Avoid artificial pauses that sound like stammering.
-     "And when they opened the file, everything changed."
+  3. DRAMATIC PAUSES:
+     Use commas for natural breathing. Only use periods at the actual end of a complete thought. 
+     Never force aggressive stops artificially.
 
 4. RHYTHMIC PUNCH PATTERNS:
-   Long sentence, then: "Nobody knew." / "Every page â€” a lie." / "Twenty-three minutes."
+   Alternate between investigation sentences and brutal short punches:
+   Long: "For three decades, the CIA had been running a covert operation across fourteen countries."
+   Punch: "Nobody knew."
+   Long: "The documents revealed payments totaling over forty million dollars to foreign officials."
+   Punch: "Every single one â€” classified."
 
-5. ONE-SENTENCE PARAGRAPHS for maximum weight.
-
+5. ONE-SENTENCE PARAGRAPHS FOR IMPACT:
+   When you want maximum weight, give a sentence its own block:
+   "He had twenty-three minutes."
+   (Let that hang. Let the silence do the work.)
+  
   BANNED PHRASES: "In the world of", "Little did they know", "Let's delve deeper", "It's worth noting", "Buckle up", "Imagine...", "Fast forward to", Wikipedia-style introductions.
   
   ============================================================
