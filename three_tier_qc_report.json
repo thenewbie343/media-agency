@@ -1,5 +1,5 @@
 {
-  "overall_score": 8.19,
+  "overall_score": 8.21,
   "broadcast_approved": false,
   "verdict": "REJECTED_NEEDS_REMEDIATION",
   "tier1_truth": {
@@ -15,19 +15,19 @@
     "scenes_passed": "3/6",
     "avg_information_gain": 0.781,
     "issues": [
-      "Redundant subject 'The Computer Error That Almost Started World War 3' in Shot n002_s002 without justified cinematic relationship.",
-      "Redundant subject 'The Computer Error That Almost Started World War 3' in Shot n002_s003 without justified cinematic relationship.",
-      "Redundant subject 'The Computer Error That Almost Started World War 3' in Shot n002_s004 without justified cinematic relationship.",
-      "Redundant subject 'The Computer Error That Almost Started World War 3' in Shot n004_s002 without justified cinematic relationship.",
-      "Redundant subject 'The Computer Error That Almost Started World War 3' in Shot n004_s003 without justified cinematic relationship."
+      "Redundant subject 'The Man Who Mastered 'Human Minds': Edward Bernays archival footage historical' in Shot n002_s002 without justified cinematic relationship.",
+      "Redundant subject 'The Man Who Mastered 'Human Minds': Edward Bernays archival footage historical' in Shot n002_s003 without justified cinematic relationship.",
+      "Redundant subject 'The Man Who Mastered 'Human Minds': Edward Bernays archival footage historical' in Shot n002_s004 without justified cinematic relationship.",
+      "Redundant subject 'The Man Who Mastered 'Human Minds': Edward Bernays archival footage historical' in Shot n004_s002 without justified cinematic relationship.",
+      "Redundant subject 'The Man Who Mastered 'Human Minds': Edward Bernays archival footage historical' in Shot n004_s003 without justified cinematic relationship."
     ]
   },
   "tier3_cinematic": {
-    "score": 8.05,
+    "score": 8.11,
     "status": "PASS",
     "director_metrics": {
-      "number_of_unique_visual_concepts": 8,
-      "repeated_visual_concepts": 16,
+      "number_of_unique_visual_concepts": 15,
+      "repeated_visual_concepts": 9,
       "repeated_queries": 9,
       "repeated_camera_movements": 3,
       "repeated_compositions": 12,
@@ -39,7 +39,7 @@
       "number_of_graphic_explanations": 6,
       "number_of_human_anchor_moments": 15,
       "number_of_visual_motifs": 0,
-      "number_of_visual_contrasts": 14,
+      "number_of_visual_contrasts": 17,
       "number_of_contextual_overlays": 0,
       "sfx_per_minute": 4.32,
       "% shots that merely illustrate narration": 0.0,
