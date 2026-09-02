@@ -92,11 +92,14 @@ class SequenceVerifier:
 
             if current_subject and current_subject in previous_subjects[-2:]:
                 rel = _get_val(shot, "relationship_to_previous") or _get_val(shot, "shot_relationship")
-                valid_relational_justifications = [
+                valid_relational_justifications = {
                     "CONTINUATION", "DETAIL_TO_CONTEXT", "CONTEXT_TO_DETAIL",
-                    "CAUSE_TO_EFFECT", "BEFORE_TO_AFTER", "NUMBER_TO_SCALE"
-                ]
-                if not rel or str(rel) not in valid_relational_justifications:
+                    "CAUSE_TO_EFFECT", "BEFORE_TO_AFTER", "NUMBER_TO_SCALE",
+                    "EVIDENCE_TO_REVEAL", "QUESTION_TO_ANSWER", "CONTRAST",
+                    "EXPECTATION_TO_SUBVERSION", "OBJECT_TO_PERSON", "PERSON_TO_CONSEQUENCE"
+                }
+                rel_str = rel.value if hasattr(rel, "value") else str(rel).split(".")[-1] if rel else ""
+                if not rel or (rel_str not in valid_relational_justifications and str(rel) not in valid_relational_justifications):
                     redundancy_penalty += 0.25
                     issues.append(f"Redundant subject '{current_subject}' in Shot {shot_id} without justified cinematic relationship.")
                     passed = False

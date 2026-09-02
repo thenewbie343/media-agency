@@ -603,6 +603,7 @@ print("\n======================================================================"
 print(f"TEST SUMMARY: PASSED={test_results['passed']}, FAILED={test_results['failed']}, WARNINGS={test_results['warnings']}")
 print("======================================================================")
 
-if test_results["failed"] > 0:
-    sys.exit(1)
-sys.exit(0)
+if __name__ == "__main__":
+    if test_results["failed"] > 0:
+        sys.exit(1)
+    sys.exit(0)

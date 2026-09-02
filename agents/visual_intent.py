@@ -14,7 +14,7 @@ class VisualIntentEngine:
     def __init__(self):
         # Compiled regex patterns for high-performance extraction
         self.num_pattern = re.compile(
-            r'(\$?\€?\£?\₹?\d+[\d,\.]*\s*(?:billion|million|trillion|crore|lakh|thousand|percent|%|dollars|rupees|euros|pounds|users|employees|hours|days|seconds|people|fold|x)\b|\$\d+[\d,\.]+|\₹\d+[\d,\.]+)',
+            r'(\$?\€?\£?\₹?\d+[\d,\.]*\s*(?:billion|million|trillion|crore|lakh|thousand|percent|dollars|rupees|euros|pounds|users|employees|hours|days|seconds|people|fold|x)\b|\$?\€?\£?\₹?\d+[\d,\.]*\s*%|\$\d+[\d,\.]+|\₹\d+[\d,\.]+)',
             re.IGNORECASE
         )
         self.time_pattern = re.compile(

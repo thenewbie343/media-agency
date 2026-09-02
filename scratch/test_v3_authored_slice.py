@@ -108,7 +108,9 @@ def main():
         cwd=str(MEDIA_AGENCY_DIR / "remotion"),
         shell=True,
         capture_output=True,
-        text=True
+        text=True,
+        encoding="utf-8",
+        errors="replace"
     )
 
     if res.returncode != 0:

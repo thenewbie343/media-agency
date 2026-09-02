@@ -34,7 +34,7 @@ class VideoQCAgent:
             "ffmpeg", "-y", "-i", video_path, "-vf", "fps=1",
             os.path.join(output_dir, "frame_%04d.jpg")
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         return sorted(list(Path(output_dir).glob("frame_*.jpg")))
 
     def extract_shot_frames(self, video_path, output_dir, shot_timeline):

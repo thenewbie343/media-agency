@@ -127,9 +127,9 @@ class QCEditorAgent(BaseAgent):
 
             # Check for strategic silence (breathing room)
             has_silence = any(
-                b.get("strategic_silence", {}).get("duration_seconds", 0) > 0
+                (b.get("strategic_silence") or {}).get("duration_seconds", 0) > 0
                 for b in all_blocks
-            )
+            ) or float(metrics.get("number_of_silence_moments", 0)) > 0
             if not has_silence:
                 qc_failures.append("NO_BREATHING_ROOM: Zero strategic silences. Script will sound rushed.")
                 overall_director_score -= 0.5

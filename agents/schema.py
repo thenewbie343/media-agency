@@ -750,6 +750,20 @@ class Shot(BaseModel):
                 return VisualJob[LEGACY_VISUAL_JOB_MAP[v_clean]]
         return v
 
+    @field_validator("shot_size", mode="before")
+    @classmethod
+    def normalize_shot_size(cls, v):
+        if v is None:
+            return "N/A"
+        if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean in ["establishing_shot", "establishing", "establishing shot"]:
+                return "wide"
+            valid_sizes = {"extreme_wide", "wide", "medium", "medium_close", "close", "extreme_close", "n/a"}
+            if v_clean in valid_sizes:
+                return "N/A" if v_clean == "n/a" else v_clean
+        return v
+
     @field_validator("shot_relationship", mode="before")
     @classmethod
     def normalize_shot_relationship(cls, v):

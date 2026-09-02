@@ -29,8 +29,7 @@ class GeminiQuotaManager:
             return False
             
         if self.mode == ReviewMode.BALANCED_REVIEW and priority < 0.5:
-            # Low priority shots get filtered.
-            pass
+            return False
             
         return True
         
@@ -60,7 +59,7 @@ class FrameSampler:
         frames = []
         try:
             cmd = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{video_path}"'
-            res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
             duration = float(res.stdout.strip()) if res.stdout.strip() else 4.0
             
             timestamps = [duration * 0.1, duration * 0.5, duration * 0.9]

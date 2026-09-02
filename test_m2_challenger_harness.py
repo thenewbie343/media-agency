@@ -500,9 +500,10 @@ print('\n' + '=' * 75)
 print(f'M2 CHALLENGER TEST SUMMARY: PASSED={test_results["passed"]}, FAILED={test_results["failed"]}, WARNINGS={test_results["warnings"]}')
 print('=' * 75)
 
-if test_results['failed'] > 0:
-    print('\n[VERDICT]: REQUEST_CHANGES — Empirical verification failed!')
-    sys.exit(1)
-else:
-    print('\n[VERDICT]: APPROVE — 100% of empirical tests passed!')
-    sys.exit(0)
+if __name__ == "__main__":
+    if test_results['failed'] > 0:
+        print('\n[VERDICT]: REQUEST_CHANGES — Empirical verification failed!')
+        sys.exit(1)
+    else:
+        print('\n[VERDICT]: APPROVE — 100% of empirical tests passed!')
+        sys.exit(0)

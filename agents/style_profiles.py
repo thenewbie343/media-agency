@@ -16,7 +16,7 @@ STYLE_PROFILES: Dict[str, Dict[str, Any]] = {
             "montage_allowed": True
         },
         "cinematography": {
-            "preferred_shot_sizes": ["extreme_close", "close", "medium", "establishing_shot"],
+            "preferred_shot_sizes": ["extreme_close", "close", "medium", "wide"],
             "preferred_angles": ["low_angle", "eye_level", "dutch_angle"],
             "preferred_motions": ["slow_push_in", "pan_left", "static", "dolly_in"],
             "static_probability": 0.35,
@@ -96,7 +96,7 @@ STYLE_PROFILES: Dict[str, Dict[str, Any]] = {
         "cinematography": {
             "preferred_shot_sizes": ["close", "extreme_close", "medium"],
             "preferred_angles": ["eye_level", "overhead_shot"],
-            "preferred_motions": ["pan_left", "pan_right", "zoom_in", "static"],
+            "preferred_motions": ["pan_left", "pan_right", "slow_push_in", "static"],
             "static_probability": 0.25,
             "macro_detail_frequency": 0.5
         },
@@ -133,7 +133,7 @@ STYLE_PROFILES: Dict[str, Dict[str, Any]] = {
             "montage_allowed": False
         },
         "cinematography": {
-            "preferred_shot_sizes": ["medium", "close", "establishing_shot"],
+            "preferred_shot_sizes": ["medium", "close", "wide"],
             "preferred_angles": ["eye_level", "low_angle"],
             "preferred_motions": ["slow_push_in", "dolly_out", "static"],
             "static_probability": 0.45,
@@ -174,7 +174,7 @@ STYLE_PROFILES: Dict[str, Dict[str, Any]] = {
         "cinematography": {
             "preferred_shot_sizes": ["extreme_close", "close", "wide", "extreme_wide"],
             "preferred_angles": ["dutch_angle", "low_angle", "overhead_shot"],
-            "preferred_motions": ["zoom_in", "pan_left", "pan_right", "dolly_in"],
+            "preferred_motions": ["slow_push_in", "pan_left", "pan_right", "dolly_in"],
             "static_probability": 0.15,
             "macro_detail_frequency": 0.4
         },

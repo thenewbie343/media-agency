@@ -1181,12 +1181,12 @@ def stage_4_music(cfg):
         try:
             r = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration",
                 "-of","default=noprint_wrappers=1:nokey=1", path],
-                capture_output=True, text=True, timeout=15)
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
             if r.returncode != 0 or r.stdout.strip() == "":
                 return False
             r2 = subprocess.run(["ffprobe","-v","error","-select_streams","a",
                 "-show_entries","stream=codec_type","-of","default=noprint_wrappers=1:nokey=1", path],
-                capture_output=True, text=True, timeout=15)
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
             if r2.returncode != 0 or "audio" not in r2.stdout.lower():
                 return False
             dur = float(r.stdout.strip())
@@ -1384,7 +1384,7 @@ def get_dur(path):
     try:
         r = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration",
             "-of","default=noprint_wrappers=1:nokey=1",path],
-            capture_output=True, text=True, timeout=20)
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
         return float(r.stdout.strip())
     except: return 4.0
 
@@ -2996,7 +2996,7 @@ def stage_ai_video_colab(scenes_needing_video, topic):
         log.info(f"Executing: colab run --gpu T4 --timeout 21600 ai_video_generator.py '[json...]' '[token]'")
         import base64
         
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)
         
         current_file = None
         b64_buffer = []
@@ -3854,7 +3854,7 @@ def run_pipeline_v52():
 
             qc = stage_8_qc(final_video, script, cfg)
 
-            is_test_mode = os.environ.get("TEST_MODE", "").lower() in ("true", "1", "yes")
+            is_test_mode = os.environ.get("TEST_MODE", "").lower() in ("true", "1", "yes", "grammar", "hero")
 
             if is_test_mode:
                 import shutil

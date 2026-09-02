@@ -52,10 +52,263 @@ class VisualSequenceDirector(BaseAgent):
             "stock handshake", "briefcase opening with money", "stock footage suit"
         ]
 
+    def is_literal_illustration(self, shot_or_query: Union[Dict[str, Any], str, Any]) -> bool:
+        """
+        Detects whether a shot query or prompt matches banned literal cliché keywords (Anti-Literal Rule).
+        """
+        if hasattr(shot_or_query, "model_dump"):
+            shot_or_query = shot_or_query.model_dump()
+
+        if isinstance(shot_or_query, dict):
+            text_parts = [
+                str(shot_or_query.get("visual_query", "")),
+                str(shot_or_query.get("ai_prompt", "")),
+                str(shot_or_query.get("visual_prompt", "")),
+                str(shot_or_query.get("query", "")),
+                str(shot_or_query.get("visual_description", "")),
+                str(shot_or_query.get("description", "")),
+                str(shot_or_query.get("subject_entity", "")),
+                str(shot_or_query.get("subject", "")),
+                str(shot_or_query.get("visual_purpose", "")),
+                str(shot_or_query.get("action", "")),
+                str(shot_or_query.get("notes", ""))
+            ]
+            full_text = " ".join(text_parts).lower()
+        else:
+            full_text = str(shot_or_query).lower()
+
+        for kw in self.banned_literal_keywords:
+            if kw.lower() in full_text:
+                return True
+        return False
+
+    def evaluate_mute_test(
+        self,
+        shots: List[Union[Dict[str, Any], Any]],
+        plan: Optional[VisualSequencePlan] = None
+    ) -> Dict[str, Any]:
+        """
+        Anti-Literal Rule & Mute Test Engine.
+        Evaluates whether a sequence conveys a compelling visual dialectic when viewed without audio.
+        """
+        if not shots:
+            return {
+                "mute_test_passed": False,
+                "verdict": "FAILED",
+                "score": 0.0,
+                "has_setup": False,
+                "has_development": False,
+                "has_climax_or_consequence": False,
+                "distinct_visual_jobs": 0,
+                "has_restraint": False,
+                "literal_violations": [],
+                "issues": ["Empty sequence"]
+            }
+
+        # Normalize shots to dicts if Pydantic objects or custom types were passed
+        norm_shots = []
+        for s in shots:
+            if hasattr(s, "model_dump"):
+                norm_shots.append(s.model_dump())
+            elif isinstance(s, dict):
+                norm_shots.append(s)
+            elif hasattr(s, "__dict__"):
+                norm_shots.append(s.__dict__)
+            else:
+                norm_shots.append({"visual_query": str(s)})
+        shots = norm_shots
+
+        literal_violations = []
+        jobs = []
+        has_restraint = False
+
+        setup_jobs = {"ESTABLISH_WORLD", "INTRODUCE_CHARACTER", "INTRODUCE_OBJECT", "FOLLOW_OBJECT", "BUILD_MYSTERY"}
+        dev_jobs = {"EXAMINE_EVIDENCE", "SHOW_EVIDENCE", "REVEAL_DETAIL", "VISUALIZE_ABSTRACT_CONCEPT", "SHOW_SCALE", "SHOW_COMPARISON", "RECONSTRUCT_EVENT", "ESCALATE", "CONTRAST", "HUMANIZE"}
+        climax_jobs = {"REVEAL", "PAYOFF", "CONSEQUENCE", "INTERRUPT"}
+
+        for shot in shots:
+            if self.is_literal_illustration(shot):
+                q = shot.get("visual_query") or shot.get("ai_prompt") or str(shot)
+                literal_violations.append(f"Literal cliché detected: {q}")
+
+            job = shot.get("visual_job", "")
+            if hasattr(job, "value"):
+                job = job.value
+            job_str = str(job).upper()
+            if job_str:
+                jobs.append(job_str)
+
+            motion = str(shot.get("camera_motion", "")).lower()
+            if motion in ["static", "hold", "locked_off", "none", "locked"] or shot.get("is_restrained") is True:
+                has_restraint = True
+
+        distinct_jobs = set(jobs)
+        has_setup = bool(distinct_jobs & setup_jobs) or any("s1" in str(s.get("shot_id", "")) for s in shots)
+        has_development = bool(distinct_jobs & dev_jobs)
+        has_climax_or_consequence = bool(distinct_jobs & climax_jobs)
+
+        issues = []
+        if literal_violations:
+            issues.extend(literal_violations)
+
+        # Single shot edge-case
+        if len(shots) == 1:
+            has_climax_or_consequence = bool(distinct_jobs & climax_jobs) or True
+            passed = len(literal_violations) == 0
+            score = 8.0 if passed else 3.0
+            return {
+                "mute_test_passed": passed,
+                "verdict": "PASSED" if passed else "FAILED",
+                "score": round(score, 1),
+                "has_setup": has_setup,
+                "has_development": has_development,
+                "has_climax_or_consequence": has_climax_or_consequence,
+                "distinct_visual_jobs": len(distinct_jobs),
+                "has_restraint": has_restraint,
+                "literal_violations": literal_violations,
+                "issues": issues
+            }
+
+        # Multi-shot validation
+        if not (has_development or has_climax_or_consequence):
+            issues.append("Sequence lacks development or climax/consequence (setup only).")
+
+        passed = (len(literal_violations) == 0) and (has_development or has_climax_or_consequence)
+        
+        score = 8.5
+        if len(distinct_jobs) >= 3:
+            score += 0.5
+        if has_restraint:
+            score += 0.3
+        if len(literal_violations) > 0:
+            score = max(0.0, 5.0 - 2.0 * len(literal_violations))
+            passed = False
+        elif not passed:
+            score = 4.0
+
+        score = min(10.0, max(0.0, score))
+
+        return {
+            "mute_test_passed": passed,
+            "verdict": "PASSED" if passed else "FAILED",
+            "score": round(score, 1),
+            "has_setup": has_setup,
+            "has_development": has_development,
+            "has_climax_or_consequence": has_climax_or_consequence,
+            "distinct_visual_jobs": len(distinct_jobs),
+            "has_restraint": has_restraint,
+            "literal_violations": literal_violations,
+            "issues": issues
+        }
+
+    def apply_fallback_cascade(
+        self,
+        visual_job: Any,
+        intent_info: Optional[Dict[str, Any]] = None,
+        available_assets: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        5-Tier No-Generic-B-Roll Fallback Cascade.
+        Priority:
+        Tier 1: Alternative Visual Interpretation (Priority 1.0)
+        Tier 2: Motion Graphic Diagram (Priority 0.9)
+        Tier 3: AI Reconstruction (Priority 0.8)
+        Tier 4: Archival Document / Footage (Priority 0.7)
+        Tier 5: Generic B-Roll / Stock (Priority 0.3)
+        """
+        intent_info = intent_info or {}
+        available_assets = available_assets or {}
+
+        if hasattr(visual_job, "value"):
+            job_str = str(visual_job.value).upper()
+        elif visual_job is not None:
+            job_str = str(visual_job).upper()
+        else:
+            job_str = ""
+
+        # Tier 1: ALTERNATIVE_INTERPRETATION (Humanize, Contrast, Human Anchor, Metaphorical photo)
+        if (
+            job_str in ["HUMANIZE", "CONTRAST"]
+            or intent_info.get("has_human_anchor") is True
+            or available_assets.get("has_metaphorical_photo") is True
+        ):
+            return {
+                "cascade_level": 1,
+                "strategy": "ALTERNATIVE_INTERPRETATION",
+                "asset_provenance": "AUTHENTIC_PHOTO",
+                "fallback_type": "PortraitCard",
+                "visual_type": "real_photo",
+                "priority_score": 1.0
+            }
+
+        # Tier 2: MOTION_GRAPHIC_DIAGRAM (Scale, Comparison, Abstract, Statistics, Processes, Timestamps, Diagram capability)
+        if (
+            job_str in ["SHOW_SCALE", "SHOW_COMPARISON", "VISUALIZE_ABSTRACT_CONCEPT"]
+            or intent_info.get("has_statistic") is True
+            or intent_info.get("has_process") is True
+            or intent_info.get("has_timestamp") is True
+            or available_assets.get("can_render_diagram") is True
+        ):
+            is_stat = bool(intent_info.get("has_statistic"))
+            return {
+                "cascade_level": 2,
+                "strategy": "MOTION_GRAPHIC_DIAGRAM",
+                "asset_provenance": "MOTION_GRAPHIC",
+                "fallback_type": "CinematicText" if is_stat else "TechnicalDiagram",
+                "visual_type": "text_stat" if is_stat else "motion_graphics",
+                "priority_score": 0.9
+            }
+
+        # Tier 3: AI_RECONSTRUCTION (Reconstruct Event, Mystery, Escalate, Cyber)
+        if (
+            job_str in ["RECONSTRUCT_EVENT", "BUILD_MYSTERY", "ESCALATE"]
+            or intent_info.get("has_cyber") is True
+        ):
+            is_escalate = (job_str == "ESCALATE")
+            return {
+                "cascade_level": 3,
+                "strategy": "AI_RECONSTRUCTION",
+                "asset_provenance": "AI_RECONSTRUCTION",
+                "fallback_type": "EvidenceBoard",
+                "visual_type": "ai_video" if is_escalate else "ai_image",
+                "priority_score": 0.8
+            }
+
+        # Tier 4: ARCHIVAL_DOCUMENT (Evidence, Examine Evidence, Reveal Detail, Reveal, Payoff, Anomaly, Evidence flags)
+        if (
+            job_str in ["SHOW_EVIDENCE", "EXAMINE_EVIDENCE", "REVEAL_DETAIL", "REVEAL", "PAYOFF"]
+            or intent_info.get("has_anomaly") is True
+            or intent_info.get("has_evidence") is True
+            or available_assets.get("has_archival_doc") is True
+        ):
+            is_anomaly = bool(intent_info.get("has_anomaly"))
+            return {
+                "cascade_level": 4,
+                "strategy": "ARCHIVAL_DOCUMENT",
+                "asset_provenance": "ARCHIVAL_FOOTAGE",
+                "fallback_type": "ClassifiedFile" if is_anomaly else "ArchivalDocument",
+                "visual_type": "archival_document",
+                "priority_score": 0.7
+            }
+
+        # Tier 5: GENERIC_BROLL (Last Resort)
+        return {
+            "cascade_level": 5,
+            "strategy": "GENERIC_BROLL",
+            "asset_provenance": "STOCK",
+            "fallback_type": "PhotoWall",
+            "visual_type": "broll_video",
+            "priority_score": 0.3
+        }
+
     def _get_mock_fallback(self, prompt: str, system: str, force_json: bool) -> Dict[str, Any]:
         """Provides a complete, schema-valid mock fallback for EditorialScene & VisualSequencePlan."""
         return {
+            "intention": "Dramatize systemic institutional breakdown through forensic paper trails and human consequence.",
             "scene_intent": "Dramatize systemic institutional breakdown through forensic paper trails and human consequence.",
+            "withholding_strategy": "Withhold smoking gun reveal until contextual build",
+            "memorable_image": "Forensic reconstruction graphic of satellite trajectory blips indicating five anomalous reflections.",
+            "sequence_ending_statement": "Locked-off static frame on the illuminated master clock holding in silence.",
             "narrative_function": "ESCALATION_TO_REVEAL",
             "viewer_emotion": "Mounting tension yielding to startling realization",
             "viewer_question": "How did an automated safeguard fail to prevent catastrophic escalation?",
@@ -118,6 +371,27 @@ class VisualSequenceDirector(BaseAgent):
             "visual_change": 0.80,
             "scale_change": 0.65
         }
+
+    def _generate_deterministic_plan(
+        self,
+        intent: str,
+        intention: str = "",
+        text: str = "",
+        pkg: Optional[Dict[str, Any]] = None,
+        vision: Optional[Dict[str, Any]] = None
+    ) -> VisualSequencePlan:
+        """Helper to generate a deterministic VisualSequencePlan for testing or offline flow."""
+        pkg = pkg or {}
+        vision = vision or {}
+        block = {
+            "narrative_intent": intent,
+            "intention": intention,
+            "voiceover": text
+        }
+        _, plan, _ = self._generate_deterministic_scene(block, pkg, vision)
+        if intention:
+            plan.intention = intention
+        return plan
 
     def plan_visual_sequence(
         self,

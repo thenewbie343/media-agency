@@ -47,7 +47,7 @@ class VisualStoryPlanner:
         self.angles = ["eye_level", "low_angle", "high_angle", "dutch_angle", "overhead_shot"]
         self.lenses = ["standard_lens", "wide_angle_lens", "telephoto_lens", "macro_lens"]
         self.comps = ["rule_of_thirds", "center_framed", "leading_lines", "symmetry"]
-        self.motions = ["slow_push_in", "pan_left", "pan_right", "zoom_in", "zoom_out", "dolly_in", "static"]
+        self.motions = ["slow_push_in", "pan_left", "pan_right", "zoom_out", "dolly_in", "static"]
 
         # Timeline state for sound design & silence pacing
         self.current_timeline_time = 0.0
@@ -337,6 +337,16 @@ class VisualStoryPlanner:
             ).model_dump()
 
             # Cinematography: Semantic Motion derived from Visual Job
+            # Cinematography: Base Cinematography from Profile & Memory
+            pref_sizes = self.style_profile.get("cinematography", {}).get("preferred_shot_sizes", self.sizes)
+            pref_motions = self.style_profile.get("cinematography", {}).get("preferred_motions", self.motions)
+            shot["shot_size"] = pref_sizes[i % len(pref_sizes)]
+            shot["camera_angle"] = self.angles[i % len(self.angles)]
+            shot["lens"] = self.lenses[i % len(self.lenses)]
+            shot["composition"] = self.comps[i % len(self.comps)]
+            shot["camera_motion"] = self.memory.suggest_diverse_motion(pref_motions)
+
+            # Semantic Motion & Framing derived from Visual Job
             job = unit["job"]
             if job in [VisualJob.EXAMINE_EVIDENCE.value, "EXAMINE_EVIDENCE"]:
                 shot["shot_size"] = "extreme_close"
@@ -352,20 +362,15 @@ class VisualStoryPlanner:
                 shot["shot_size"] = "close"
                 shot["camera_angle"] = "eye_level"
                 shot["lens"] = "telephoto_lens"
-                shot["camera_motion"] = "slow_push_in"
+                if self.memory.motion_history and self.memory.motion_history[-1] == "slow_push_in":
+                    shot["camera_motion"] = "static"
+                else:
+                    shot["camera_motion"] = "slow_push_in"
             elif job in [VisualJob.REVEAL.value, VisualJob.PAYOFF.value, "REVEAL", "PAYOFF"]:
                 shot["shot_size"] = "medium"
                 shot["camera_angle"] = "eye_level"
                 shot["lens"] = "standard_lens"
                 shot["camera_motion"] = "static"
-            else:
-                pref_sizes = self.style_profile.get("cinematography", {}).get("preferred_shot_sizes", self.sizes)
-                pref_motions = self.style_profile.get("cinematography", {}).get("preferred_motions", self.motions)
-                shot["shot_size"] = pref_sizes[i % len(pref_sizes)]
-                shot["camera_angle"] = self.angles[i % len(self.angles)]
-                shot["lens"] = self.lenses[i % len(self.lenses)]
-                shot["composition"] = self.comps[i % len(self.comps)]
-                shot["camera_motion"] = self.memory.suggest_diverse_motion(pref_motions)
 
             # Enforce 12 Shot Relationships & Relational Grammar
             shot = self.relationship_engine.determine_and_enforce_relationship(
@@ -382,9 +387,14 @@ class VisualStoryPlanner:
             is_restrained = shot.get("is_restrained", False)
 
             # Anomaly / Reveal Restraint: locked-off static hold
-            if attention_intensity >= 0.85 and job in [VisualJob.REVEAL.value, VisualJob.EXAMINE_EVIDENCE.value, "HIGHLIGHT_ANOMALY", "REVEAL"] and dur >= 2.0:
+            if (
+                (attention_intensity >= 0.85 and (job in [VisualJob.REVEAL.value, VisualJob.EXAMINE_EVIDENCE.value, VisualJob.PAYOFF.value, "HIGHLIGHT_ANOMALY", "REVEAL", "EXAMINE_EVIDENCE"] or beat_intent in ["REVELATION", "DEEPER_REVELATION", "FINAL_CONTRADICTION", "PAYOFF"]))
+                or (shot.get("camera_motion") == "static" and attention_intensity >= 0.8)
+                or shot.get("is_restrained") is True
+            ):
                 is_restrained = True
-                shot["camera_motion"] = "static"
+                if attention_intensity >= 0.85 and (job in [VisualJob.REVEAL.value, VisualJob.EXAMINE_EVIDENCE.value, "HIGHLIGHT_ANOMALY", "REVEAL"] or beat_intent in ["REVELATION", "DEEPER_REVELATION"]):
+                    shot["camera_motion"] = "static"
 
             # A. Number Reveal Typography Editorial Event
             if "statistic_text" in unit:
@@ -447,6 +457,13 @@ class VisualStoryPlanner:
                     "reason": "forensic_paper_evidence_handling"
                 })
                 self.last_punctuation_time = shot_start_time
+
+            # Anti-Camera Fatigue Safety Net: Prevent 3+ consecutive dynamic motions
+            if self.memory.motion_history and len(self.memory.motion_history) >= 2:
+                last_m = self.memory.motion_history[-1]
+                prev_last_m = self.memory.motion_history[-2]
+                if shot.get("camera_motion") == last_m == prev_last_m and shot.get("camera_motion") != "static":
+                    shot["camera_motion"] = "static"
 
             shot["sound_design"] = shot_sound
             shot["editorial_events"] = shot_events

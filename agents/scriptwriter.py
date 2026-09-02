@@ -49,7 +49,7 @@ class ScriptwriterAgent(BaseAgent):
 
         system_prompt = f"""You are the Lead Master Scriptwriter for visceral, emotionally devastating YouTube documentaries.
 You write like a fusion of Lemmino, MagnatesMedia, Dhruv Rathee, and HBO True Crime.
-Your scripts make people FEEL â€” dread, curiosity, rage, awe â€” not just learn facts.
+Your scripts make people FEEL — dread, curiosity, rage, awe — not just learn facts.
 
 ============================================================
 THE GOLDEN RULE: YOU ARE A STORYTELLER, NOT A TEXTBOOK
@@ -66,7 +66,7 @@ The voiceover must sound like a real human speaking with WEIGHT and BREATHING RO
 1. SENTENCE BREATHING: After every major statement, there is a natural breath.
    Write SHORT sentences. Then pause. Then deliver the next blow.
    NOT: "The system was designed by engineers in 1983 and it monitored satellite data for incoming nuclear threats using infrared sensors."
-   YES: "1983. Soviet engineers built a system. One job â€” detect American nuclear missiles. The machine watched the sky. Day and night. Without blinking."
+   YES: "1983. Soviet engineers built a system. One job — detect American nuclear missiles. The machine watched the sky. Day and night. Without blinking."
 
   2. WORD WEIGHT & FLUID PACING:
      To give words gravity, write natural, flowing sentences. 
@@ -87,7 +87,7 @@ The voiceover must sound like a real human speaking with WEIGHT and BREATHING RO
    Long: "For three decades, the CIA had been running a covert operation across fourteen countries."
    Punch: "Nobody knew."
    Long: "The documents revealed payments totaling over forty million dollars to foreign officials."
-   Punch: "Every single one â€” classified."
+   Punch: "Every single one — classified."
 
 5. ONE-SENTENCE PARAGRAPHS FOR IMPACT:
    When you want maximum weight, give a sentence its own block:
@@ -135,7 +135,7 @@ CRITICAL HOOK ENGINE RULE (THE 20-30 SECOND WITHHOLDING LAW):
 
 LANGUAGE RULES:
 - `voiceover`: MUST BE IN NATURAL, DRAMATIC, PRECISE HINDI (Devanagari script), formatted for high-end neural TTS.
-- Write Hindi the way Dhruv Rathee speaks â€” conversational, authoritative, with strategic pauses.
+- Write Hindi the way Dhruv Rathee speaks — conversational, authoritative, with strategic pauses.
 - `caption`: MUST BE the FULL Romanized Hinglish equivalent (ENGLISH ALPHABET ONLY. NO DEVANAGARI. NO EMOJIS).
 
 RULES:
@@ -155,10 +155,10 @@ Output JSON (array of EXACTLY {target_scenes} scenes):
     "viewer_emotion": "dread",
     "vocal_intensity": "grave",
     "pacing_note": "slow_and_heavy",
-    "voiceover": "26 September, 1983. Midnight. Moscow se 200 kilometer door, ek bunker mein â€” ek aadmi baitha tha. Uske saamne ek screen thi. Aur us screen pe... paanch nuclear missiles.",
-    "caption": "26 September, 1983. Midnight. Moscow se 200 kilometer door, ek bunker mein â€” ek aadmi baitha tha. Uske saamne ek screen thi. Aur us screen pe... paanch nuclear missiles.",
+    "voiceover": "26 September, 1983. Midnight. Moscow se 200 kilometer door, ek bunker mein — ek aadmi baitha tha. Uske saamne ek screen thi. Aur us screen pe... paanch nuclear missiles.",
+    "caption": "26 September, 1983. Midnight. Moscow se 200 kilometer door, ek bunker mein — ek aadmi baitha tha. Uske saamne ek screen thi. Aur us screen pe... paanch nuclear missiles.",
     "visual_cue": "Dark bunker, single green CRT monitor casting eerie glow on a man's sweating face",
-    "withholding_element": "Withhold who this man is and what he decided â€” maximum suspense"
+    "withholding_element": "Withhold who this man is and what he decided — maximum suspense"
   }}
 ]"""
 
@@ -234,7 +234,7 @@ DHRUV RATHEE / GAURAV THAKUR PACING MANDATE
 1. SENTENCE BREATHING: After every major statement, there is a natural breath.
    Write SHORT sentences. Then pause. Then deliver the next blow.
    NOT: "The system was designed by engineers in 1983 and it monitored satellite data for incoming nuclear threats using infrared sensors."
-   YES: "1983. Soviet engineers built a system. One job â€” detect American nuclear missiles. The machine watched the sky. Day and night. Without blinking."
+   YES: "1983. Soviet engineers built a system. One job — detect American nuclear missiles. The machine watched the sky. Day and night. Without blinking."
 
   2. WORD WEIGHT & FLUID PACING:
      To give words gravity, write natural, flowing sentences. 
@@ -255,7 +255,7 @@ DHRUV RATHEE / GAURAV THAKUR PACING MANDATE
    Long: "For three decades, the CIA had been running a covert operation across fourteen countries."
    Punch: "Nobody knew."
    Long: "The documents revealed payments totaling over forty million dollars to foreign officials."
-   Punch: "Every single one â€” classified."
+   Punch: "Every single one — classified."
 
 5. ONE-SENTENCE PARAGRAPHS FOR IMPACT:
    When you want maximum weight, give a sentence its own block:
@@ -274,7 +274,7 @@ DHRUV RATHEE / GAURAV THAKUR PACING MANDATE
 EMOTIONAL CURVE: Every scene must include `viewer_emotion`, `vocal_intensity`, `pacing_note`.
 
 LANGUAGE:
-- `voiceover`: NATURAL, DRAMATIC HINDI (Devanagari), written like Dhruv Rathee speaks â€” conversational and authoritative.
+- `voiceover`: NATURAL, DRAMATIC HINDI (Devanagari), written like Dhruv Rathee speaks — conversational and authoritative.
 - `caption`: FULL Romanized Hinglish (ENGLISH ALPHABET ONLY. NO DEVANAGARI. NO EMOJIS).
 
 RULES:
@@ -294,8 +294,8 @@ Output JSON (array of EXACTLY {target_scenes} scenes):
     "viewer_emotion": "dread",
     "vocal_intensity": "grave",
     "pacing_note": "slow_and_heavy",
-    "voiceover": "26 September, 1983. Midnight. Ek Soviet officer â€” apni screen ko ghoor raha tha.",
-    "caption": "26 September, 1983. Midnight. Ek Soviet officer â€” apni screen ko ghoor raha tha.",
+    "voiceover": "26 September, 1983. Midnight. Ek Soviet officer — apni screen ko ghoor raha tha.",
+    "caption": "26 September, 1983. Midnight. Ek Soviet officer — apni screen ko ghoor raha tha.",
     "visual_cue": "Dark bunker, green CRT glow on sweating face",
     "withholding_element": "Withhold identity and decision"
   }}

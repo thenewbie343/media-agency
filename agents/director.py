@@ -370,6 +370,7 @@ Fix the snippet to address the failures and return the corrected JSON."""
                     if dur > 4.5:
                         splits = math.ceil(dur / 4.5)
                         new_ratio = ratio / splits
+                        last_motion = shot.get("camera_motion", "static")
                         for i in range(splits):
                             sub = copy.deepcopy(shot)
                             sub["shot_id"] = f"{shot.get('shot_id', 's')}_part{i}"

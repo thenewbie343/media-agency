@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 # Add project root to path
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent))
 
 from pipeline import parse_input, run_pipeline_v52
 

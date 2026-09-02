@@ -184,15 +184,23 @@ class DirectorMemory:
         return len(self.visual_job_history) >= 2 and self.visual_job_history[-1] == candidate_job and self.visual_job_history[-2] == candidate_job
 
     def suggest_diverse_motion(self, preferred_motions: List[str]) -> str:
-        """Suggests a camera motion that avoids consecutive duplicates."""
+        """Suggests a camera motion that avoids consecutive duplicates and camera motion fatigue."""
         if not self.motion_history:
             return preferred_motions[0] if preferred_motions else "slow_push_in"
             
         last_motion = self.motion_history[-1]
-        available = [m for m in preferred_motions if m != last_motion]
+        avoid_motions = {last_motion}
+        if len(self.motion_history) >= 2 and self.motion_history[-1] != "static":
+            avoid_motions.add(self.motion_history[-2])
+
+        available = [m for m in preferred_motions if m not in avoid_motions]
+        if not available:
+            available = [m for m in preferred_motions if m != last_motion]
         if not available:
             all_motions = ["pan_left", "pan_right", "slow_push_in", "dolly_in", "dolly_out", "static"]
-            available = [m for m in all_motions if m != last_motion]
+            available = [m for m in all_motions if m not in avoid_motions]
+            if not available:
+                available = [m for m in all_motions if m != last_motion]
             
         return available[0] if available else "static"
 
