@@ -829,7 +829,7 @@ def stage_3_voice(manifest, cfg):
     def _apply_studio_mastering(raw_path, target_path):
         """Applies pitch shift, highpass, vocal warmth, presence boost, and dynamic compression."""
         vocal_filter = (
-            "rubberband=pitch=1.15,"
+            "rubberband=pitch=1.12,"
             "highpass=f=80,"
             "equalizer=f=220:width_type=o:width=1.0:g=2.0,"
             "equalizer=f=3500:width_type=o:width=1.2:g=2.2,"
@@ -1141,7 +1141,7 @@ def generate_kokoro_voice(text, out_path, lang="hindi", emotion="dramatic", spee
 
         # 5. Convert to MP3 with studio broadcast mastering filter
         vocal_filter = (
-            "rubberband=pitch=1.15,"
+            "rubberband=pitch=1.12,"
             "highpass=f=80,"
             "equalizer=f=220:width_type=o:width=1.0:g=2.0,"
             "equalizer=f=3500:width_type=o:width=1.2:g=2.2,"
